@@ -45,7 +45,9 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
 13. Orta seviye bot tek savaş hakkını, seçenekler arasında beklenen net değeri en yüksek olana kullanır:
     kara savaşında tüm 64 topaç sonucu üzerinden E[alınacak toprakların değeri] − E[karşı saldırıda
     kaybedileceklerin değeri] (maden/yapı/birim olan kareler daha değerli; seçilebilecek toprak sayısı
-    sınırı hesaba katılır), başkent savaşında 1/8 × rakibin tüm toprak değeri, üs savaşında 1/4 × üs değeri.
+    sınırı hesaba katılır; rakip başkenti henüz komşu değilse başkente doğru ilerlemenin küçük bir ek değeri
+    vardır), başkent savaşında 1/8 × rakibin tüm toprak değeri, üs savaşında 1/4 × üs karesinin değeri.
+    Fetihte bot rakip başkentine doğru koridor açar; karşı saldırıda kendi başkentine yakın cepheyi geri iter.
     Değer pozitif değilse saldırmaz. Karşı saldırıda bot savunan madenleri, kıyıları ve kendi bölgesini
     birleştiren kareleri tercih eder.
 14. Başkent savaşında saldıran kazanırsa savunan elenir: tüm toprakları, yapıları, birimleri,
@@ -82,7 +84,8 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
     seçilir. Vergi idare eden oyuncuya ödenir.
 25. Boğaz ayarlarını idare eden oyuncu her an değiştirebilir (motor buna izin verir; arayüzde kendi
     turunda "Boğazlarım" panelinden).
-26. Madenler oyuncu başına her türden 3 adettir (`minesPerTypePerPlayer`) ve mümkünse birbirine komşu
+26. Her maden türünden oyuncu sayısı kadar maden vardır (oyuncu başına her türden 1, `minesPerTypePerPlayer`;
+    yeni oyun ekranından değiştirilebilir). Madenler mümkünse birbirine komşu
     olmayacak şekilde dağıtılır. Yapılar maden karelerine de kurulabilir.
 
 ## Diplomasi ve kazanma

@@ -19,6 +19,7 @@ npm test           # kural motoru testleri (Vitest)
 1. **Yeni oyun:** oyuncu sayısı, ad, renk, İnsan/Bot; harita boyutu ve seed (önizlemeli); kural ayarları.
 2. **Kurulum:** herkes sırayla başkentini seçer, sonra başkentine bitişik 9 toprak seçer. Bu aşamada maden
    kareleri seçilemez (haritada kırmızı taranır); madenler oyun başladıktan sonra alınır.
+   Haritada her maden türünden (altın, petrol, demir, çelik) oyuncu sayısı kadar maden vardır.
 3. **Her tur:** madenler 1'er kaynak verir → sekizgen topacı çevir (sayı × 100 akçe) → istediğin kadar eylem yap → **Turu bitir**.
 
 Haritayı sürükleyerek kaydır, tekerlekle (ya da iki parmakla) yakınlaş. Bir eylem seçince geçerli hedefler

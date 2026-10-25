@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { getBot } from '../src/bot';
 import {
+  DEFAULT_CONFIG,
   MINE_TYPES,
   createGame,
   createGameFromMap,
@@ -32,9 +33,9 @@ function neighbours3(): GameState {
 
 describe('harita üretici', () => {
   it('aynı seed ile aynı haritayı üretir', () => {
-    const a = generateMap({ width: 40, height: 30, seed: 1234, players: 4, minesPerTypePerPlayer: 3, startTerritoryCount: 9 });
-    const b = generateMap({ width: 40, height: 30, seed: 1234, players: 4, minesPerTypePerPlayer: 3, startTerritoryCount: 9 });
-    const c = generateMap({ width: 40, height: 30, seed: 999, players: 4, minesPerTypePerPlayer: 3, startTerritoryCount: 9 });
+    const a = generateMap({ width: 40, height: 30, seed: 1234, players: 4, minesPerTypePerPlayer: DEFAULT_CONFIG.minesPerTypePerPlayer, startTerritoryCount: 9 });
+    const b = generateMap({ width: 40, height: 30, seed: 1234, players: 4, minesPerTypePerPlayer: DEFAULT_CONFIG.minesPerTypePerPlayer, startTerritoryCount: 9 });
+    const c = generateMap({ width: 40, height: 30, seed: 999, players: 4, minesPerTypePerPlayer: DEFAULT_CONFIG.minesPerTypePerPlayer, startTerritoryCount: 9 });
     expect(a).toEqual(b);
     expect(a.terrain).not.toEqual(c.terrain);
   });
@@ -43,13 +44,13 @@ describe('harita üretici', () => {
     [3, 40, 30],
     [6, 50, 36],
     [8, 60, 42],
-  ])('%i oyuncu: yeterli kara, boğazlar, göl ve dengeli madenler', (players, width, height) => {
+  ])('%i oyuncu: yeterli kara, boğazlar, göl ve her madenden oyuncu sayısı kadar', (players, width, height) => {
     for (let seed = 1; seed <= 5; seed++) {
-      const m = generateMap({ width, height, seed, players, minesPerTypePerPlayer: 3, startTerritoryCount: 9 });
+      const m = generateMap({ width, height, seed, players, minesPerTypePerPlayer: DEFAULT_CONFIG.minesPerTypePerPlayer, startTerritoryCount: 9 });
       expect(mapProblems(m, { players, startTerritoryCount: 9 })).toEqual([]);
       expect(m.straits.length).toBeGreaterThanOrEqual(3);
       expect(fitsStartAreas(m, players, 9, 5)).toBe(true);
-      for (const t of MINE_TYPES) expect(m.mines.filter((x) => x === t)).toHaveLength(players * 3);
+      for (const t of MINE_TYPES) expect(m.mines.filter((x) => x === t)).toHaveLength(players);
       for (let i = 0; i < m.mines.length; i++) if (m.mines[i]) expect(m.terrain[i]).toBe('land');
       // Boğaz yakaları kara, boğaz kareleri deniz
       for (const st of m.straits) {

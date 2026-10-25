@@ -63,7 +63,7 @@ export const DEFAULT_CONFIG: GameConfig = {
   baseBlockRadius: 3,
   baseBlockMetric: 'chebyshev',
   maxSortiesPerUnitPerTurn: 0,
-  minesPerTypePerPlayer: 3,
+  minesPerTypePerPlayer: 1,
   maxPeaceRounds: 30,
 };
 

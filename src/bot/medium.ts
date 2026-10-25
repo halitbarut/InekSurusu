@@ -123,7 +123,10 @@ export class MediumBot implements BotBrain {
         // Seçen taraf: saldıran ya da karşı saldırıdaki savunan
         const c = conquestCandidates(state);
         if (c.length === 0) return { type: 'END_CONQUEST', player: ph.taker };
-        return { type: 'CONQUER_TILE', player: ph.taker, tile: best(c, (t) => conquestScore(state, ph.taker, t)) };
+        // Saldıran rakip başkentine doğru koridor açar; karşı saldırıda savunan kendi başkentine yakın cepheyi geri iter
+        const focus = ph.counter ? state.players[ph.taker].capital : state.players[ph.victim].capital;
+        const score = (t: number) => conquestScore(state, ph.taker, t) - (focus === null ? 0 : CORRIDOR_WEIGHT * manhattan(state.map, t, focus));
+        return { type: 'CONQUER_TILE', player: ph.taker, tile: best(c, score) };
       }
       case 'vote':
         return { type: 'CAST_VOTE', player: p, accept: true };
@@ -296,7 +299,9 @@ export class MediumBot implements BotBrain {
         const normalBorder = border.filter((t) => isNormal(state, t));
         if (normalBorder.length) {
           const gainPool = poolValues(state, normalBorder, qNormal.length);
-          options.push({ action: { type: 'ATTACK', player: p, target: normalBorder[0] }, value: landValue(outcomes, gainPool, lossPool) });
+          // Başkent yalnızca karadan alınabildiği için başkente doğru ilerlemek ayrıca değerli
+          const push = border.includes(state.players[q].capital ?? -1) ? 0 : PUSH_BONUS * expectedGain(outcomes, gainPool.length);
+          options.push({ action: { type: 'ATTACK', player: p, target: nearestToCapital(state, normalBorder, q) }, value: landValue(outcomes, gainPool, lossPool) + push });
         }
         const cap = state.players[q].capital;
         if (cap !== null && border.includes(cap)) {
@@ -304,7 +309,7 @@ export class MediumBot implements BotBrain {
         }
         const base = border.find((t) => state.structure[t] === 'base');
         if (base !== undefined) {
-          options.push({ action: { type: 'ATTACK', player: p, target: base }, value: seriesWinProbability(cfg.baseStreak) * (tileValue(state, base) + 2) });
+          options.push({ action: { type: 'ATTACK', player: p, target: base }, value: seriesWinProbability(cfg.baseStreak) * tileValue(state, base) });
         }
       }
     }
@@ -320,7 +325,7 @@ export class MediumBot implements BotBrain {
         const type = kind === 'ship' ? ('SHIP_EXPEDITION' as const) : ('PLANE_EXPEDITION' as const);
         const action: Action = { type, player: p, unitId: unit.id, target: t.tile };
         let value: number;
-        if (t.kind === 'base') value = seriesWinProbability(cfg.baseStreak) * (tileValue(state, t.tile) + 2);
+        if (t.kind === 'base') value = seriesWinProbability(cfg.baseStreak) * tileValue(state, t.tile);
         else {
           const around = [t.tile, ...neighbors4(state.map, t.tile)].filter((x) => state.owner[x] === q && isNormal(state, x));
           const gainPool = poolValues(state, around, around.length);
@@ -483,6 +488,23 @@ function poolValues(state: GameState, frontier: number[], total: number): number
   const vals = frontier.map((t) => tileValue(state, t)).sort((a, b) => b - a);
   while (vals.length < total) vals.push(1);
   return vals;
+}
+
+/** Fetihte başkente uzaklığın kare başına ceza ağırlığı */
+const CORRIDOR_WEIGHT = 1.5;
+
+/** Kara savaşında, rakip başkentine doğru ilerlemenin alınan toprak başına ek değeri */
+const PUSH_BONUS = 0.5;
+
+function expectedGain(outcomes: { gain: number }[], cap: number): number {
+  return outcomes.reduce((sum, o) => sum + Math.min(o.gain, cap), 0) / outcomes.length;
+}
+
+/** Rakibin başkentine en yakın sınır karesi (saldırı hedefi olarak) */
+function nearestToCapital(state: GameState, tiles: number[], q: number): number {
+  const cap = state.players[q].capital;
+  if (cap === null) return tiles[0];
+  return best(tiles, (t) => -manhattan(state.map, t, cap));
 }
 
 function landValue(outcomes: { gain: number; loss: number }[], gainPool: number[], lossPool: number[]): number {
