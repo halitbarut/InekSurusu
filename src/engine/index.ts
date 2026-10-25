@@ -9,6 +9,6 @@ export * from './diplomacy';
 export * from './rules';
 export * from './setup';
 export * from './queries';
-export { fitsStartAreas, generateMap, mapProblems } from './map/generate';
+export { farthestFromMine, fitsStartAreas, generateMap, mapProblems } from './map/generate';
 export { detectStraits } from './map/straits';
 export { mapFromAscii } from './map/ascii';

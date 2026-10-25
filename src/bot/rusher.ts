@@ -7,7 +7,7 @@ import {
   type Action,
   type GameState,
 } from '../engine';
-import { MediumBot, MEDIUM_TUNING } from './medium';
+import { MediumBot, MEDIUM_TUNING, type BotTuning } from './medium';
 
 /**
  * Acele eden bot (denge simülasyonu için): en yakın rakip başkentine doğru toprak alır,
@@ -15,8 +15,9 @@ import { MediumBot, MEDIUM_TUNING } from './medium';
  * yetiyorsa (zayıflık şartı ya da hedefin gücü umursanmadan) başkent savaşına girer.
  */
 export class RusherBot extends MediumBot {
-  constructor() {
-    super({ ...MEDIUM_TUNING, capitalWeakRatio: Infinity, capitalCostCushion: 1, capitalReserveUpkeep: false });
+  /** overrides: koşudan bağımsız ayarlar (ör. bakım politikası) diğer botlarla aynı olsun diye */
+  constructor(overrides: Partial<BotTuning> = {}) {
+    super({ ...MEDIUM_TUNING, ...overrides, capitalWeakRatio: Infinity, capitalCostCushion: 1, capitalReserveUpkeep: false });
   }
 
   /** En yakın, saldırılabilir rakip başkenti */

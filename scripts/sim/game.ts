@@ -1,5 +1,5 @@
 import { MediumBot, MEDIUM_TUNING, RusherBot, type BotBrain, type BotTuning } from '../../src/bot';
-import { createGame, defaultMapSize, dispatch, structureCost, type GameConfig, type GameState } from '../../src/engine';
+import { battleCost, createGame, defaultMapSize, dispatch, neighbors4, structureCost, type GameConfig, type GameState } from '../../src/engine';
 
 export const SNAPSHOT_ROUNDS = [10, 25, 50, 100] as const;
 
@@ -25,6 +25,19 @@ export interface GameMetrics {
   rusherSeat: number | null;
   /** Elenme sırası */
   eliminations: { player: number; by: number; round: number }[];
+  /** Darboğaz ölçümleri: ilk kez olduğu tur (olmadıysa null) */
+  milestones: {
+    /** Bir oyuncu rakip başkentine komşu oldu */
+    adjCapital: number | null;
+    /** Bir oyuncu başkent savaşı masrafını karşılayabildi */
+    afford: number | null;
+    /** Aynı oyuncu hem komşu hem masrafı karşılıyor */
+    adjAndAfford: number | null;
+    firstCapitalBattle: number | null;
+  };
+  /** 60. tur başında yaşayan oyunculardan demiri / çeliği olmayanların oranı (o tura ulaşıldıysa) */
+  noIronAt60: number | null;
+  noSteelAt60: number | null;
 }
 
 export interface GameSpec {
@@ -35,11 +48,13 @@ export interface GameSpec {
   rusherSeat: number | null;
   /** Orta seviye botların ayarları (verilmezse varsayılan) */
   tuning?: Partial<BotTuning>;
+  /** Harita boyutu (verilmezse oyuncu sayısına göre varsayılan) */
+  size?: { width: number; height: number };
 }
 
 /** Arayüz olmadan, yalnızca kural motoru ve botlarla bir oyun oynatır. */
 export function playGame(spec: GameSpec): GameMetrics {
-  const { width, height } = defaultMapSize(spec.players);
+  const { width, height } = spec.size ?? defaultMapSize(spec.players);
   let s: GameState = createGame({
     players: Array.from({ length: spec.players }, (_, i) => ({ name: `B${i}`, color: '#000', kind: 'bot' as const })),
     width,
@@ -48,7 +63,8 @@ export function playGame(spec: GameSpec): GameMetrics {
     config: spec.config,
   });
   const medium = new MediumBot({ ...MEDIUM_TUNING, ...spec.tuning });
-  const rusher = new RusherBot();
+  // Acele eden bot, koşu dışındaki ayarları (bakım politikası vb.) diğer botlarla paylaşır
+  const rusher = new RusherBot(spec.tuning);
   const brain = (p: number): BotBrain => (p === spec.rusherSeat ? rusher : medium);
   const m: GameMetrics = {
     seed: spec.seed,
@@ -65,7 +81,11 @@ export function playGame(spec: GameSpec): GameMetrics {
     battles: { land: 0, base: 0, capital: 0, capitalWon: 0, baseWon: 0 },
     rusherSeat: spec.rusherSeat,
     eliminations: [],
+    milestones: { adjCapital: null, afford: null, adjAndAfford: null, firstCapitalBattle: null },
+    noIronAt60: null,
+    noSteelAt60: null,
   };
+  const capCost = battleCost(s, 'capital');
   const cfg = s.config;
   let guard = 0;
   let lastTurn = -1;
@@ -83,13 +103,27 @@ export function playGame(spec: GameSpec): GameMetrics {
     if (++guard > 2_000_000) throw new Error('Simülasyon çok uzun sürdü');
     for (const e of r.events) {
       switch (e.type) {
-        case 'turn_start':
-          if (e.player === s.players.find((pl) => pl.alive)!.id && (SNAPSHOT_ROUNDS as readonly number[]).includes(e.round) && !(e.round in m.akceAt)) {
-            const alive = s.players.filter((pl) => pl.alive);
-            m.akceAt[e.round] = alive.reduce((a, pl) => a + pl.resources.akce, 0) / alive.length;
-            m.minesAt[e.round] = alive.reduce((a, pl) => a + pl.resources.gold + pl.resources.oil + pl.resources.iron + pl.resources.steel, 0) / alive.length;
+        case 'turn_start': {
+          const pl = s.players[e.player];
+          const ms = m.milestones;
+          const adj = s.players.some((q) => q.alive && q.id !== pl.id && q.capital !== null && neighbors4(s.map, q.capital).some((t) => s.owner[t] === pl.id));
+          const r = pl.resources;
+          const aff = r.akce >= capCost.akce && r.iron >= capCost.iron && r.steel >= capCost.steel;
+          if (adj && ms.adjCapital === null) ms.adjCapital = e.round;
+          if (aff && ms.afford === null) ms.afford = e.round;
+          if (adj && aff && ms.adjAndAfford === null) ms.adjAndAfford = e.round;
+          if (e.round === 60 && m.noIronAt60 === null && e.player === s.players.find((p) => p.alive)!.id) {
+            const alive = s.players.filter((p) => p.alive);
+            m.noIronAt60 = alive.filter((p) => p.resources.iron === 0).length / alive.length;
+            m.noSteelAt60 = alive.filter((p) => p.resources.steel === 0).length / alive.length;
+          }
+          if (e.player === s.players.find((p) => p.alive)!.id && (SNAPSHOT_ROUNDS as readonly number[]).includes(e.round) && !(e.round in m.akceAt)) {
+            const alive = s.players.filter((p) => p.alive);
+            m.akceAt[e.round] = alive.reduce((a, p) => a + p.resources.akce, 0) / alive.length;
+            m.minesAt[e.round] = alive.reduce((a, p) => a + p.resources.gold + p.resources.oil + p.resources.iron + p.resources.steel, 0) / alive.length;
           }
           break;
+        }
         case 'spin':
           m.income += e.akce;
           break;
@@ -118,6 +152,7 @@ export function playGame(spec: GameSpec): GameMetrics {
           m.spend.battle += e.cost.akce;
           m.battles[e.kind]++;
           if (e.kind === 'capital' && e.success) m.battles.capitalWon++;
+          if (e.kind === 'capital' && m.milestones.firstCapitalBattle === null) m.milestones.firstCapitalBattle = s.round;
           if (e.kind === 'base' && e.success) m.battles.baseWon++;
           break;
         case 'eliminated':

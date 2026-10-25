@@ -32,6 +32,8 @@ export function createGame(settings: NewGameSettings): GameState {
     minesPerTypePerPlayer: config.minesPerTypePerPlayer,
     startTerritoryCount: config.startTerritoryCount,
     minCapitalDistance: config.minCapitalDistance,
+    mineLayout: config.mineLayout,
+    maxMineDistance: config.maxMineDistance,
   });
   return createGameFromMap(map, settings.players, config);
 }

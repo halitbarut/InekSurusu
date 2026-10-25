@@ -72,7 +72,8 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
 
 ## Harita ve boğazlar
 
-21. Harita kenarları okyanustur; kara oranı yaklaşık %50'dir. Her harita en az 3 boğaz ve en az
+21. Varsayılan harita boyutu 3–4 oyuncuda 35×26, 5–6 oyuncuda 44×32, 7–8 oyuncuda 53×37'dir (3. denge turunda
+    önceki 40×30 / 50×36 / 60×42 boyutlarından %12 küçültüldü). Harita kenarları okyanustur; kara oranı yaklaşık %50'dir. Her harita en az 3 boğaz ve en az
     1 göl içerir; sağlanamazsa tohumdan türetilen yeni denemeler yapılır (aynı seed hep aynı haritayı verir).
 22. **Göl:** Haritanın kenarına değmeyen, en fazla 14 karelik kapalı su kütlesi. Daha büyük kapalı sular
     iç denizdir.
@@ -85,64 +86,74 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
 25. Boğaz ayarlarını idare eden oyuncu her an değiştirebilir (motor buna izin verir; arayüzde kendi
     turunda "Boğazlarım" panelinden).
 26. Her maden türünden oyuncu sayısı kadar maden vardır (oyuncu başına her türden 1, `minesPerTypePerPlayer`;
-    yeni oyun ekranından değiştirilebilir). Madenler mümkünse birbirine komşu
-    olmayacak şekilde dağıtılır. Yapılar maden karelerine de kurulabilir.
+    yeni oyun ekranından değiştirilebilir). Madenler birbirine bitişik olmaz. Yapılar maden karelerine de kurulabilir.
+27. **Dengeli maden yerleşimi** (`mineLayout: 'spread'`, varsayılan): yerleşmeye uygun kara parçalarında
+    (en az 10 kare) her tür ayrı ayrı yayılır. Önce açgözlü "en uzak nokta" seçimi yapılır, sonra her maden
+    kendisine en yakın karelerin en kötü uzaklığını küçülten kareye kaydırılır. Bu, birkaç farklı rastgele
+    başlangıçla denenip en iyisi alınır. Harita, her yerleşilebilir kareden her türün en yakın madenine
+    uzaklık `maxMineDistance` (varsayılan 10) kareyi aşmıyorsa kabul edilir; aşıyorsa tohumdan türetilen yeni
+    denemeler yapılır. Uzaklık **Chebyshev**'dir (başkent mesafesi ve üs yarıçapıyla aynı ölçü). Manhattan
+    ölçüsüyle 10 sınırı, her türden yalnızca oyuncu sayısı kadar maden varken pratikte sağlanamıyordu
+    (en kötü uzaklık 17–22). Eski tamamen rastgele düzen `mineLayout: 'random'` ile seçilebilir.
+28. **3 oyunculu varsayılan harita (35×26)** küçük olduğu için denemelerin bir kısmında en az 3 boğaz şartı
+    tutmuyor. Bu durumda üretici şartlara en çok uyan haritayı kullanır (ör. 2 boğazlı).
 
 ## Diplomasi ve kazanma
 
-27. İttifaklar ikilidir. "Kalan tüm devletler aynı ittifakta" = kalanların her ikisi birbirinin müttefiki.
-28. Barış N tur: kabul edildiği turdan itibaren `tur + N` numaralı turun sonuna kadar sürer, bozulamaz.
+29. İttifaklar ikilidir. "Kalan tüm devletler aynı ittifakta" = kalanların her ikisi birbirinin müttefiki.
+30. Barış N tur: kabul edildiği turdan itibaren `tur + N` numaralı turun sonuna kadar sürer, bozulamaz.
     Var olan barış uzatılabilir.
-29. İttifak yalnızca kendi turunda bozulabilir. Bozulduğu oyuncu turu boyunca iki taraf birbirine
+31. İttifak yalnızca kendi turunda bozulabilir. Bozulduğu oyuncu turu boyunca iki taraf birbirine
     saldıramaz; sonraki turlardan itibaren saldırı serbesttir.
-30. Teklif yalnızca kendi turunda yapılır, yanıt her zaman verilebilir. Geçerlilik kabul anında yeniden
+32. Teklif yalnızca kendi turunda yapılır, yanıt her zaman verilebilir. Geçerlilik kabul anında yeniden
     kontrol edilir; kaynak/toprak artık yoksa teklif düşer. Teklifler süresiz bekler, gönderen geri çekebilir.
-31. Toprak devrinde başkent devredilemez; yapı ve birimler toprakla birlikte geçer.
-32. "Boğaz geçiş izni / vergi muafiyeti" kalemi, veren tarafın idaresindeki boğazda alan tarafa
+33. Toprak devrinde başkent devredilemez; yapı ve birimler toprakla birlikte geçer.
+34. "Boğaz geçiş izni / vergi muafiyeti" kalemi, veren tarafın idaresindeki boğazda alan tarafa
     "geçiş açık + belirtilen vergi (0 = muafiyet)" ayarını uygular.
-33. Zafer oylamasını kalan herkes müttefikken herhangi biri kendi turunda başlatabilir; öneren
+35. Zafer oylamasını kalan herkes müttefikken herhangi biri kendi turunda başlatabilir; öneren
     otomatik "evet" sayılır, tek bir "hayır" oylamayı düşürür.
-34. Hot-seat'te bilgiler gizli değildir: herkesin kaynakları kâğıt oyundaki gibi görünür.
-35. Arayüzde insan → insan teklifinde cihaz hemen alıcıya geçer; bot → insan teklifleri insanın kendi
+36. Hot-seat'te bilgiler gizli değildir: herkesin kaynakları kâğıt oyundaki gibi görünür.
+37. Arayüzde insan → insan teklifinde cihaz hemen alıcıya geçer; bot → insan teklifleri insanın kendi
     turunda Diplomasi panelinde yanıtlanır. Botlar kendilerine gelen teklifleri anında yanıtlar.
 
 ## Çevrimiçi oyun
 
-36. Oda sahibinin tarayıcısı hakemdir: eylemleri doğrular ve uygular, botları oynatır, sonucu herkese
+38. Oda sahibinin tarayıcısı hakemdir: eylemleri doğrular ve uygular, botları oynatır, sonucu herkese
     yayınlar. Katılanlar yalnızca kendi koltukları adına eylem gönderebilir; izleyiciler hiç gönderemez.
     Arkadaşlar arası bir oyun olduğu için oda sahibinin hilesine karşı önlem yoktur.
-37. İstemcilere giden durumda RNG durumu sıfırlanır, böylece sonraki topaç sonucu önceden hesaplanamaz.
-38. Kopan oyuncu için 60 saniye beklenir (bağlantı 12 saniye sessiz kalırsa kopmuş sayılır). Süre dolunca
+39. İstemcilere giden durumda RNG durumu sıfırlanır, böylece sonraki topaç sonucu önceden hesaplanamaz.
+40. Kopan oyuncu için 60 saniye beklenir (bağlantı 12 saniye sessiz kalırsa kopmuş sayılır). Süre dolunca
     koltuk bota geçer; oyuncu aynı tarayıcıdan döndüğünde (oda başına saklanan kimlikle) koltuğu hemen
     insana döner, bot o anki hamlesini bitirmiş olabilir.
-39. Oyun başladıktan sonra gelen yeni katılımcılar izleyici olur; bota geçmiş bir koltuğa başkası oturamaz.
-40. Çevrimiçide "Cihazı X'e verin" ekranları yoktur: teklifler, oylama ve karşı saldırıda toprak seçimi
+41. Oyun başladıktan sonra gelen yeni katılımcılar izleyici olur; bota geçmiş bir koltuğa başkası oturamaz.
+42. Çevrimiçide "Cihazı X'e verin" ekranları yoktur: teklifler, oylama ve karşı saldırıda toprak seçimi
     ilgili oyuncunun kendi ekranında sorulur. Teklif "Sonra yanıtla" ile Diplomasi paneline bırakılabilir.
-41. Oda sahibi çıkarsa oyun biter; katılanlara "oda kapandı" bildirilir. Oyunu yalnızca oda sahibi kaydeder.
+43. Oda sahibi çıkarsa oyun biter; katılanlara "oda kapandı" bildirilir. Oyunu yalnızca oda sahibi kaydeder.
 
 ## Denge kuralları
 
-42. **Savaş masrafı** savaş başlatılırken, sonuçtan (eşitlik dahil) bağımsız ödenir. Gemi/uçakla sahipli
+44. **Savaş masrafı** savaş başlatılırken, sonuçtan (eşitlik dahil) bağımsız ödenir. Gemi/uçakla sahipli
     toprağa saldırıda masrafa ek olarak petrol ve varsa boğaz vergisi de gerekir; hepsi aynı anda yetmelidir.
     Sahipsiz toprağa sefer savaş değildir, savaş masrafı yoktur.
-43. **Başkent savaşı yalnızca karadan yapılır (kesin kural).** Başkente gemi ya da uçakla saldırılamaz;
+45. **Başkent savaşı yalnızca karadan yapılır (kesin kural).** Başkente gemi ya da uçakla saldırılamaz;
     başkent savaşı için sınır komşuluğu gerekir. Üs savaşı gemiyle yapılabilir (uçakla yapılamaz, çünkü üs
     kendi engel alanının içindedir).
-44. **Bakım** her oyuncu turunun başında, gelirden (madenler) sonra ve topaçtan önce ödenir. Akçe yetmezse
+46. **Bakım** her oyuncu turunun başında, gelirden (madenler) sonra ve topaçtan önce ödenir. Akçe yetmezse
     bakım aşamasına geçilir: oyuncu altın bozdurabilir, gemi/uçak dağıtabilir ya da üs yıkabilir; borç akçesine
     inince kalan bakım otomatik ödenir ve topaç aşaması başlar. Dağıtılan birim tamamen yok olur. Oyuncu eylem
     aşamasında da kendi isteğiyle birim dağıtıp üs yıkabilir (motor destekler).
-45. Başkentin kendisi ve tersane/uçak fabrikası bakım gerektirmez; yalnızca gemi, uçak ve askeri üs.
-46. **Zayıflık şartı** yalnızca başkent savaşına uygulanır ve toprak sayılarıyla (başkent dahil) karşılaştırılır:
+47. Başkentin kendisi ve tersane/uçak fabrikası bakım gerektirmez; yalnızca gemi, uçak ve askeri üs.
+48. **Zayıflık şartı** yalnızca başkent savaşına uygulanır ve toprak sayılarıyla (başkent dahil) karşılaştırılır:
     savunanın toprağı × 2 < saldıranın toprağı.
-47. **Açılış barışı** 1'den N'e kadar (dahil) tam turlarda geçerlidir; kara savaşı, seferle saldırı, üs ve başkent
+49. **Açılış barışı** 1'den N'e kadar (dahil) tam turlarda geçerlidir; kara savaşı, seferle saldırı, üs ve başkent
     savaşının hepsini engeller. Sahipsiz toprak almak ve diğer eylemler serbesttir.
-48. Ayarlardaki akçe değerleri (maliyetler, masraflar, bakım) 0 ya da pozitif tam sayı olmalıdır; oyun
+50. Ayarlardaki akçe değerleri (maliyetler, masraflar, bakım) 0 ya da pozitif tam sayı olmalıdır; oyun
     oluşturulurken denetlenir. Ayar ekranında akçe alanları 50'şer artıp azalır ama elle her değer yazılabilir.
     Boğaz vergisi ve tekliflerdeki akçe de herhangi bir pozitif (vergi için 0 dahil) tam sayı olabilir.
-49. Simülasyon ve testler için savaş masrafları (`battleCostsEnabled`) ve bakım (`upkeepEnabled`) ayrı
+51. Simülasyon ve testler için savaş masrafları (`battleCostsEnabled`) ve bakım (`upkeepEnabled`) ayrı
     bayraklarla kapatılabilir; ikisi de kapalıyken kurallar bu güncellemeden öncekiyle aynıdır.
-50. Orta seviye bot birim ve üs üretirken toplam bakımı beklenen tur gelirinin (ortalama topaç + altın madenleri)
-    en fazla %70'inde tutar; bakım gelirin %80'ini aşarsa fazla birimi kendiliğinden dağıtır. Başkent savaşına
+52. Orta seviye bot birim ve üs üretirken toplam bakımı beklenen tur gelirinin (ortalama topaç + altın madenleri)
+    %30'u (+ akçe stokunun 1/50'si) ile sınırlar, tavan gelirin %45'idir; bakım gelirin %60'ını aşarsa fazla birimi
+    kendiliğinden dağıtır (bot ayarları `maxUpkeepShare`, `upkeepCap`, `upkeepExcessShare`). Başkent savaşına
     masraf ile bir sonraki turun bakımını karşılayabiliyorsa ve hedefin toprağı kendisininkinden fazla değilse
     girer (bot ayarları: `capitalCostCushion` = 1, `capitalReserveUpkeep` = açık, `capitalWeakRatio` = 1).

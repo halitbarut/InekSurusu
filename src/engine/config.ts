@@ -36,6 +36,10 @@ export interface GameConfig {
   maxSortiesPerUnitPerTurn: number;
   /** Oyuncu başına her maden türünden kaç adet */
   minesPerTypePerPlayer: number;
+  /** Maden yerleşimi: 'spread' kara alanına dengeli yayar, 'random' eski tamamen rastgele düzen */
+  mineLayout: 'spread' | 'random';
+  /** 'spread' düzeninde: büyük kara parçalarındaki her kareden her türün en yakın madenine en fazla uzaklık (Chebyshev) */
+  maxMineDistance: number;
   /** Barış anlaşması en fazla kaç tur sürebilir */
   maxPeaceRounds: number;
 
@@ -86,6 +90,8 @@ export const DEFAULT_CONFIG: GameConfig = {
   baseBlockMetric: 'chebyshev',
   maxSortiesPerUnitPerTurn: 0,
   minesPerTypePerPlayer: 1,
+  mineLayout: 'spread',
+  maxMineDistance: 10,
   maxPeaceRounds: 30,
   battleCostsEnabled: true,
   landBattleAkce: 100,
@@ -93,7 +99,7 @@ export const DEFAULT_CONFIG: GameConfig = {
   baseBattleIron: 1,
   capitalBattleAkce: 600,
   capitalBattleIron: 2,
-  capitalBattleSteel: 2,
+  capitalBattleSteel: 0,
   upkeepEnabled: true,
   shipUpkeep: 50,
   planeUpkeep: 50,
@@ -143,9 +149,9 @@ export const BATTLES_PER_TURN = 1;
 export const MIN_PLAYERS = 3;
 export const MAX_PLAYERS = 8;
 
-/** Oyuncu sayısına göre önerilen harita boyutu. */
+/** Oyuncu sayısına göre önerilen harita boyutu (3. denge turunda %12 küçültüldü). */
 export function defaultMapSize(players: number): { width: number; height: number } {
-  if (players <= 4) return { width: 40, height: 30 };
-  if (players <= 6) return { width: 50, height: 36 };
-  return { width: 60, height: 42 };
+  if (players <= 4) return { width: 35, height: 26 };
+  if (players <= 6) return { width: 44, height: 32 };
+  return { width: 53, height: 37 };
 }

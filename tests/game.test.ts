@@ -6,6 +6,8 @@ import {
   createGame,
   createGameFromMap,
   dispatch,
+  defaultMapSize,
+  farthestFromMine,
   fitsStartAreas,
   generateMap,
   mapFromAscii,
@@ -40,17 +42,25 @@ describe('harita üretici', () => {
     expect(a.terrain).not.toEqual(c.terrain);
   });
 
-  it.each([
-    [3, 40, 30],
-    [6, 50, 36],
-    [8, 60, 42],
-  ])('%i oyuncu: yeterli kara, boğazlar, göl ve her madenden oyuncu sayısı kadar', (players, width, height) => {
+  const opts = (players: number, seed: number, extra = {}) => ({
+    ...defaultMapSize(players),
+    seed,
+    players,
+    minesPerTypePerPlayer: DEFAULT_CONFIG.minesPerTypePerPlayer,
+    startTerritoryCount: 9,
+    minCapitalDistance: 5,
+    mineLayout: 'spread' as const,
+    maxMineDistance: DEFAULT_CONFIG.maxMineDistance,
+    ...extra,
+  });
+
+  it.each([4, 5, 6, 8])('%i oyuncu, varsayılan boyut: kara, boğazlar, göl, madensiz başlangıç alanları', (players) => {
     for (let seed = 1; seed <= 5; seed++) {
-      const m = generateMap({ width, height, seed, players, minesPerTypePerPlayer: DEFAULT_CONFIG.minesPerTypePerPlayer, startTerritoryCount: 9 });
-      expect(mapProblems(m, { players, startTerritoryCount: 9 })).toEqual([]);
+      const o = opts(players, seed);
+      const m = generateMap(o);
+      expect(mapProblems(m, o)).toEqual([]);
       expect(m.straits.length).toBeGreaterThanOrEqual(3);
       expect(fitsStartAreas(m, players, 9, 5)).toBe(true);
-      for (const t of MINE_TYPES) expect(m.mines.filter((x) => x === t)).toHaveLength(players);
       for (let i = 0; i < m.mines.length; i++) if (m.mines[i]) expect(m.terrain[i]).toBe('land');
       // Boğaz yakaları kara, boğaz kareleri deniz
       for (const st of m.straits) {
@@ -58,6 +68,49 @@ describe('harita üretici', () => {
         for (const b of st.banks) expect(m.terrain[b]).toBe('land');
       }
     }
+  });
+
+  it.each([4, 5, 6, 8])('%i oyuncu: madenler dengeli; her türden oyuncu sayısı kadar, her kareye en fazla 10 kare', (players) => {
+    for (let seed = 1; seed <= 5; seed++) {
+      const m = generateMap(opts(players, seed));
+      // Türler arası oran korunur
+      for (const t of MINE_TYPES) expect(m.mines.filter((x) => x === t)).toHaveLength(players);
+      const far = farthestFromMine(m, 10);
+      for (const t of MINE_TYPES) expect(far[t]).toBeLessThanOrEqual(10);
+      // Madenler birbirine bitişik değil
+      for (let i = 0; i < m.mines.length; i++) {
+        if (!m.mines[i]) continue;
+        const x = i % m.width;
+        const y = Math.floor(i / m.width);
+        for (let dy = -1; dy <= 1; dy++)
+          for (let dx = -1; dx <= 1; dx++) {
+            if (!dx && !dy) continue;
+            const nx = x + dx;
+            const ny = y + dy;
+            if (nx >= 0 && ny >= 0 && nx < m.width && ny < m.height) expect(m.mines[ny * m.width + nx]).toBeNull();
+          }
+      }
+    }
+  });
+
+  it('dengeli yerleşim eski rastgele düzenden daha iyi yayılır ve belirlenimlidir', () => {
+    let spreadWorst = 0;
+    let randomWorst = 0;
+    for (let seed = 1; seed <= 5; seed++) {
+      const a = generateMap(opts(5, seed));
+      expect(generateMap(opts(5, seed))).toEqual(a);
+      spreadWorst = Math.max(spreadWorst, ...Object.values(farthestFromMine(a, 10)));
+      const r = generateMap(opts(5, seed, { mineLayout: 'random' as const }));
+      for (const t of MINE_TYPES) expect(r.mines.filter((x) => x === t)).toHaveLength(5);
+      randomWorst = Math.max(randomWorst, ...Object.values(farthestFromMine(r, 10)));
+    }
+    expect(spreadWorst).toBeLessThan(randomWorst);
+  });
+
+  it('küçük haritalar oyuncu sayısıyla orantılı', () => {
+    expect(defaultMapSize(5)).toEqual({ width: 44, height: 32 });
+    expect(defaultMapSize(3)).toEqual({ width: 35, height: 26 });
+    expect(defaultMapSize(8)).toEqual({ width: 53, height: 37 });
   });
 });
 

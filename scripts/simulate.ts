@@ -4,10 +4,14 @@
  *
  *   npm run simulate                      # 1. tur: A, B, C, D, RA, RB (150'şer oyun)
  *   npm run simulate -- --round 2         # 2. tur: B2, RB2 ve karşılaştırma için 1. tur ayarlarıyla B, RB (100'er oyun)
+ *   npm run simulate -- --round 3         # 3. tur: B3, RB3 ve karşılaştırma için B, RB, B2, RB2 (100'er oyun)
  *   npm run simulate -- --games 20        # hızlı deneme
  *   npm run simulate -- --scenarios B,C   # yalnızca seçilen senaryolar
+ *   npm run simulate -- --round 3 --scenarios RB,RB2 --reuse   # yalnızca seçilenleri oynat, diğerlerini önbellekten al
+ *
+ * Her çalıştırmada senaryo sonuçları scripts/.sim-cache/ altına yazılır (git'e girmez).
  */
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { availableParallelism } from 'node:os';
 import { resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -23,10 +27,19 @@ interface Scenario {
   rusher: boolean;
   /** Orta seviye botların ayarları */
   tuning?: Partial<BotTuning>;
+  /** Harita boyutu (verilmezse varsayılan) */
+  size?: { width: number; height: number };
 }
+
+/** 3. turdan önceki harita: 5 oyuncuda 50×36, madenler eski rastgele düzende */
+const OLD_MAP: Partial<GameConfig> = { mineLayout: 'random' };
+const OLD_SIZE = { width: 50, height: 36 };
+/** 3. turdan önceki botun bakım politikası */
+const OLD_UPKEEP_TUNING: Partial<BotTuning> = { maxUpkeepShare: 0.5, upkeepCap: 0.7, upkeepExcessShare: 0.8 };
 
 /** 1. turdaki varsayılan değerler ve bot temkini (sonuçlar yeniden üretilebilsin diye sabit) */
 const ROUND1_CONFIG: Partial<GameConfig> = {
+  ...OLD_MAP,
   landBattleAkce: 100,
   baseBattleAkce: 400,
   baseBattleIron: 2,
@@ -37,23 +50,45 @@ const ROUND1_CONFIG: Partial<GameConfig> = {
   planeUpkeep: 100,
   baseUpkeep: 100,
 };
-const ROUND1_TUNING: Partial<BotTuning> = { capitalCostCushion: 1.5, capitalReserveUpkeep: false, capitalWeakRatio: 0.75 };
+const ROUND1_TUNING: Partial<BotTuning> = { ...OLD_UPKEEP_TUNING, capitalCostCushion: 1.5, capitalReserveUpkeep: false, capitalWeakRatio: 0.75 };
+/** 2. turdaki varsayılanlar */
+const ROUND2_CONFIG: Partial<GameConfig> = {
+  ...OLD_MAP,
+  landBattleAkce: 100,
+  baseBattleAkce: 200,
+  baseBattleIron: 1,
+  capitalBattleAkce: 600,
+  capitalBattleIron: 2,
+  capitalBattleSteel: 2,
+  shipUpkeep: 50,
+  planeUpkeep: 50,
+  baseUpkeep: 0,
+};
+const ROUND2_TUNING: Partial<BotTuning> = { ...OLD_UPKEEP_TUNING, capitalCostCushion: 1, capitalReserveUpkeep: true, capitalWeakRatio: 1 };
 const LEGACY: Partial<GameConfig> = { ...ROUND1_CONFIG, battleCostsEnabled: false, upkeepEnabled: false };
 
 const SCENARIOS: Scenario[] = [
-  { id: 'A', title: 'Eski kurallar (savaş masrafı ve bakım yok)', config: LEGACY, tuning: ROUND1_TUNING, rusher: false },
-  { id: 'B', title: '1. tur varsayılanları (savaş 100 · üs 400+2 demir · başkent 1000+3+3 · bakım 100/100/100) ve temkinli bot', config: ROUND1_CONFIG, tuning: ROUND1_TUNING, rusher: false },
-  { id: 'C', title: 'B + zayıflık şartı', config: { ...ROUND1_CONFIG, weaknessRule: true }, tuning: ROUND1_TUNING, rusher: false },
-  { id: 'D', title: `B + açılış barışı (${DEFAULT_CONFIG.openingPeaceRounds} tur)`, config: { ...ROUND1_CONFIG, openingPeace: true }, tuning: ROUND1_TUNING, rusher: false },
-  { id: 'RA', title: 'A + 1 acele eden bot', config: LEGACY, tuning: ROUND1_TUNING, rusher: true },
-  { id: 'RB', title: 'B + 1 acele eden bot', config: ROUND1_CONFIG, tuning: ROUND1_TUNING, rusher: true },
-  { id: 'B2', title: '2. tur varsayılanları (savaş 100 · üs 200+1 demir · başkent 600+2+2 · bakım 50/50/0) ve gevşetilmiş bot', config: {}, rusher: false },
-  { id: 'RB2', title: 'B2 + 1 acele eden bot', config: {}, rusher: true },
+  { id: 'A', title: 'Eski kurallar (savaş masrafı ve bakım yok)', config: LEGACY, tuning: ROUND1_TUNING, size: OLD_SIZE, rusher: false },
+  { id: 'B', title: '1. tur varsayılanları (savaş 100 · üs 400+2 demir · başkent 1000+3+3 · bakım 100/100/100) ve temkinli bot', config: ROUND1_CONFIG, tuning: ROUND1_TUNING, size: OLD_SIZE, rusher: false },
+  { id: 'C', title: 'B + zayıflık şartı', config: { ...ROUND1_CONFIG, weaknessRule: true }, tuning: ROUND1_TUNING, size: OLD_SIZE, rusher: false },
+  { id: 'D', title: `B + açılış barışı (${DEFAULT_CONFIG.openingPeaceRounds} tur)`, config: { ...ROUND1_CONFIG, openingPeace: true }, tuning: ROUND1_TUNING, size: OLD_SIZE, rusher: false },
+  { id: 'RA', title: 'A + 1 acele eden bot', config: LEGACY, tuning: ROUND1_TUNING, size: OLD_SIZE, rusher: true },
+  { id: 'RB', title: 'B + 1 acele eden bot', config: ROUND1_CONFIG, tuning: ROUND1_TUNING, size: OLD_SIZE, rusher: true },
+  { id: 'B2', title: '2. tur varsayılanları (savaş 100 · üs 200+1 demir · başkent 600+2+2 · bakım 50/50/0) ve gevşetilmiş bot', config: ROUND2_CONFIG, tuning: ROUND2_TUNING, size: OLD_SIZE, rusher: false },
+  { id: 'RB2', title: 'B2 + 1 acele eden bot', config: ROUND2_CONFIG, tuning: ROUND2_TUNING, size: OLD_SIZE, rusher: true },
+  {
+    id: 'B3',
+    title: '3. tur varsayılanları (başkent 600+2 demir, çelik yok · dengeli madenler · 44×32 harita · bot bakım payı 0,3 / tavan 0,45)',
+    config: {},
+    rusher: false,
+  },
+  { id: 'RB3', title: 'B3 + 1 acele eden bot', config: {}, rusher: true },
 ];
 
 const ROUNDS: Record<string, { scenarios: string[]; games: number }> = {
   '1': { scenarios: ['A', 'B', 'C', 'D', 'RA', 'RB'], games: 150 },
   '2': { scenarios: ['B', 'RB', 'B2', 'RB2'], games: 100 },
+  '3': { scenarios: ['B', 'RB', 'B2', 'RB2', 'B3', 'RB3'], games: 100 },
 };
 
 // ------------------------------------------------------------------
@@ -83,18 +118,25 @@ async function main() {
   const maxRounds = Number(arg('max-rounds') ?? 300);
   const workers = Number(arg('workers') ?? Math.max(1, availableParallelism() - 1));
   const wanted = arg('scenarios')?.split(',') ?? ROUNDS[round].scenarios;
+  const reuse = process.argv.includes('--reuse');
+  const cacheDir = resolve('scripts/.sim-cache');
+  const cacheFile = (id: string) => resolve(cacheDir, `${id}-${games}g-${players}p-${maxRounds}r.json`);
   const out = resolve(arg('out') ?? 'docs/BALANCE_REPORT.md');
   const scenarios = wanted.map((id) => SCENARIOS.find((s) => s.id === id)!).filter(Boolean);
+  // --reuse: turun diğer senaryoları önbellekten (aynı oyun/oyuncu/tur sınırıyla) gelir
+  const cached = reuse ? ROUNDS[round].scenarios.filter((id) => !wanted.includes(id)) : [];
+  for (const id of cached) if (!existsSync(cacheFile(id))) throw new Error(`Önbellekte yok: ${id} (önce bu senaryoyu çalıştır)`);
 
   const jobs: { scenario: string; spec: GameSpec }[] = [];
   for (const sc of scenarios) {
     for (let g = 0; g < games; g++) {
       // Aynı seed'ler tüm senaryolarda kullanılır: haritalar aynı, yalnızca kurallar farklı
       const seed = 10_000 + g;
-      jobs.push({ scenario: sc.id, spec: { seed, players, maxRounds, config: sc.config, tuning: sc.tuning, rusherSeat: sc.rusher ? g % players : null } });
+      jobs.push({ scenario: sc.id, spec: { seed, players, maxRounds, config: sc.config, tuning: sc.tuning, size: sc.size, rusherSeat: sc.rusher ? g % players : null } });
     }
   }
   const results = new Map<string, GameMetrics[]>(scenarios.map((s) => [s.id, []]));
+  for (const id of cached) results.set(id, JSON.parse(readFileSync(cacheFile(id), 'utf8')));
   const t0 = Date.now();
   let done = 0;
   console.log(`${jobs.length} oyun, ${workers} işçi, ${players} oyuncu, tur sınırı ${maxRounds}`);
@@ -127,10 +169,16 @@ async function main() {
     }
   });
   console.log(`\nBitti (${Math.round((Date.now() - t0) / 1000)} sn).`);
+  mkdirSync(cacheDir, { recursive: true });
+  for (const sc of scenarios) writeFileSync(cacheFile(sc.id), JSON.stringify(results.get(sc.id)!.sort((a, b) => a.seed - b.seed)));
+  // Rapor senaryoları turun sırasıyla görsün
+  const all = ROUNDS[round].scenarios.filter((id) => results.has(id)).map((id) => SCENARIOS.find((s) => s.id === id)!);
 
   const opt = { games, players, maxRounds };
-  if (round === '1') writeReport(out, buildReport(scenarios, results, opt));
-  else writeSection(out, 'tur2', buildRound2(scenarios, results, opt));
+  const shown = reuse ? all : scenarios;
+  if (round === '1') writeReport(out, buildReport(shown, results, opt));
+  else if (round === '2') writeSection(out, 'tur2', buildRound2(shown, results, opt));
+  else writeSection(out, 'tur3', buildRound3(shown, results, opt));
   console.log(`Rapor yazıldı: ${out}`);
 }
 
@@ -471,6 +519,89 @@ function buildRound2(scenarios: Scenario[], results: Map<string, GameMetrics[]>,
   return L.join('\n');
 }
 
+function median(xs: (number | null)[]): number {
+  return quantile(xs.filter((x): x is number => x !== null), 0.5);
+}
+
+function buildRound3(scenarios: Scenario[], results: Map<string, GameMetrics[]>, opt: Opt): string {
+  const L: string[] = [];
+  const get = (id: string) => results.get(id);
+  L.push('## 3. tur');
+  L.push('');
+  L.push(
+    `\`npm run simulate -- --round 3\` ile üretilir (son çalıştırma: ${new Date().toISOString().slice(0, 10)}). ` +
+      `Her senaryo için ${opt.games} oyun, ${opt.players} oyuncu, ${opt.maxRounds} tur sınırı, seed'ler 10000–${10_000 + opt.games - 1}. ` +
+      '1. ve 2. turun ayarları da (eski 50×36 harita ve eski rastgele maden düzeniyle) aynı seed\'lerde yeniden oynatıldı; üç tur aynı koşullarda karşılaştırılıyor.',
+  );
+  L.push('');
+  L.push('| Senaryo | Açıklama |');
+  L.push('|---|---|');
+  for (const s of scenarios) L.push(`| ${s.id} | ${s.title} |`);
+  L.push('');
+  const rounds = [
+    ['1. tur', 'B', 'RB'],
+    ['2. tur', 'B2', 'RB2'],
+    ['3. tur', 'B3', 'RB3'],
+  ].filter(([, b, r]) => get(b) && get(r)) as [string, string, string][];
+  const sums = rounds.map(([name, b, r]) => [name, summarize(get(b)!, get(r)), get(b)!] as const);
+  if (sums.length) {
+    const last = sums[sums.length - 1][1];
+    L.push('### Karşılaştırma ve hedefler');
+    L.push('');
+    const ok = (v: boolean) => (v ? '✔' : '✘');
+    const rows: [string, (x: Summary) => string, string, ((x: Summary) => boolean) | null][] = [
+      ['Acele eden botun kazanma payı (%95 üst sınır)', (x) => `${pct(x.rusherShare)} (${pct(x.rusherHi, 0)})`, '< %24', (x) => x.rusherShare < 0.24],
+      ['İlk başkent fethi, medyan tur', (x) => f(x.firstFallMedian === 999 ? NaN : x.firstFallMedian), '30–60', (x) => x.firstFallMedian >= 30 && x.firstFallMedian <= 60],
+      ['Hiç başkent düşmeyen oyun', (x) => pct(x.neverFell, 0), '', null],
+      ['Tur sınırına takılan oyun', (x) => pct(x.limitShare, 0), '< %10', (x) => x.limitShare < 0.1],
+      ['Bakım / tüm harcama', (x) => pct(x.upkeepShare, 0), '< %50', (x) => x.upkeepShare < 0.5],
+      ['Harcama / gelir', (x) => pct(x.spendIncome, 0), '', null],
+      ['Ortalama akçe stoku, tur 100', (x) => f(x.akce100), '', null],
+      ['Biten oyunların bitiş turu, medyan', (x) => f(x.endMedian), '', null],
+      ['Oyun başına savaş', (x) => f(x.battlesPerGame, 0), '', null],
+      ['Oyun başına başkent savaşı', (x) => f(x.capitalPerGame, 1), '', null],
+    ];
+    L.push(`| Ölçüt | ${sums.map(([n]) => n).join(' | ')} | Hedef | Son turda tuttu mu |`);
+    L.push(`|---|${sums.map(() => '---').join('|')}|---|---|`);
+    for (const [name, fmt, target, check] of rows) {
+      L.push(`| ${name} | ${sums.map(([, x]) => fmt(x)).join(' | ')} | ${target || '—'} | ${check ? ok(check(last)) : ''} |`);
+    }
+    L.push('');
+    L.push('Tur kolonlarındaki acele eden pay RB/RB2/RB3, diğer satırlar B/B2/B3 senaryolarından. İlk başkent fethi medyanında hiç başkent düşmeyen oyunlar tur sınırı olarak sayıldı.');
+    L.push('');
+    L.push('### Darboğaz ölçümü');
+    L.push('');
+    L.push('Normal botlu senaryolarda, oyun başına bir olayın ilk görüldüğü turun medyanı (parantez içinde olayın görüldüğü oyun sayısı).');
+    L.push('');
+    const mile = (ms: GameMetrics[], k: keyof GameMetrics['milestones']) => {
+      const xs = ms.map((m) => m.milestones[k]);
+      return `${f(median(xs))} (${xs.filter((x) => x !== null).length})`;
+    };
+    const fall = (ms: GameMetrics[]) => `${f(median(ms.map((m) => m.firstCapitalFall)))} (${ms.filter((m) => m.firstCapitalFall !== null).length})`;
+    const share = (ms: GameMetrics[], k: 'noIronAt60' | 'noSteelAt60') => {
+      const xs = ms.map((m) => m[k]).filter((x): x is number => x !== null);
+      return `${pct(mean(xs), 0)} (${xs.length})`;
+    };
+    L.push(`| Ölçüm | ${sums.map(([n]) => n).join(' | ')} |`);
+    L.push(`|---|${sums.map(() => '---').join('|')}|`);
+    const lines: [string, (ms: GameMetrics[]) => string][] = [
+      ['Bir oyuncu rakip başkentine komşu oluyor', (ms) => mile(ms, 'adjCapital')],
+      ['Bir oyuncu başkent savaşı masrafını karşılayabiliyor', (ms) => mile(ms, 'afford')],
+      ['Komşuluk ve masraf aynı oyuncuda', (ms) => mile(ms, 'adjAndAfford')],
+      ['İlk başkent savaşı', (ms) => mile(ms, 'firstCapitalBattle')],
+      ['İlk başkent fethi (yalnızca düşen oyunlar)', fall],
+      ['60. turda demiri olmayan oyuncu oranı', (ms) => share(ms, 'noIronAt60')],
+      ['60. turda çeliği olmayan oyuncu oranı', (ms) => share(ms, 'noSteelAt60')],
+    ];
+    for (const [name, fn] of lines) L.push(`| ${name} | ${sums.map(([, , ms]) => fn(ms)).join(' | ')} |`);
+    L.push('');
+    L.push('Masraf her turun kendi başkent savaşı değerleriyle ölçüldü (1. tur 1000+3+3, 2. tur 600+2+2, 3. tur 600+2 demir).');
+    L.push('');
+  }
+  L.push(...tables(scenarios.filter((s) => s.id === 'B3' || s.id === 'RB3'), results, opt, '###'));
+  return L.join('\n');
+}
+
 const MARKER = '<!-- öneriler: bu satırın altı simülasyon tarafından değiştirilmez -->';
 
 /**
@@ -484,7 +615,9 @@ function writeSection(path: string, name: string, generated: string) {
   const old = existsSync(path) ? readFileSync(path, 'utf8') : '# Denge raporu\n';
   const i = old.indexOf(open);
   const j = old.indexOf(close);
-  const next = i >= 0 && j > i ? old.slice(0, i) + block + old.slice(j + close.length) : `${old.trimEnd()}\n\n${block}\n\n### Değerlendirme ve öneriler (2. tur)\n\n_Henüz yazılmadı._\n`;
+  const title = name.replace('tur', '') + '. tur';
+  const next =
+    i >= 0 && j > i ? old.slice(0, i) + block + old.slice(j + close.length) : `${old.trimEnd()}\n\n${block}\n\n### Değerlendirme ve öneriler (${title})\n\n_Henüz yazılmadı._\n`;
   writeFileSync(path, next);
 }
 

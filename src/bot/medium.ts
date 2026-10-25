@@ -44,8 +44,12 @@ const RESOURCE_VALUE: Record<ResourceKey, number> = { akce: 1, gold: 200, oil: 1
 export interface BotTuning {
   /** Savaşa girmek için gereken en düşük beklenen net kazanç (toprak değeri cinsinden) */
   minBattleValue: number;
-  /** Toplam bakım, beklenen tur gelirinin en fazla bu oranı olabilir */
+  /** Toplam bakım, beklenen tur gelirinin en fazla bu oranı olabilir (+ akçe stokunun küçük bir payı) */
   maxUpkeepShare: number;
+  /** Stok ne olursa olsun bakımın gelire oranı bu tavanı aşmaz */
+  upkeepCap: number;
+  /** Bakım gelirin bu oranını aşarsa fazla birim dağıtılır (tavandan büyük olmalı) */
+  upkeepExcessShare: number;
   /** Başkent savaşı için masrafın en az bu katı kaynak olmalı */
   capitalCostCushion: number;
   /** Başkent savaşında akçe, masrafa ek olarak bir sonraki turun bakımını da karşılamalı */
@@ -59,7 +63,9 @@ export interface BotTuning {
 
 export const MEDIUM_TUNING: BotTuning = {
   minBattleValue: 0.05,
-  maxUpkeepShare: 0.5,
+  maxUpkeepShare: 0.3,
+  upkeepCap: 0.45,
+  upkeepExcessShare: 0.6,
   capitalCostCushion: 1,
   capitalReserveUpkeep: true,
   capitalWeakRatio: 1,
@@ -276,15 +282,15 @@ export class MediumBot implements BotBrain {
   protected upkeepRoom(state: GameState, p: number, extra: number): boolean {
     if (!state.config.upkeepEnabled) return true;
     const income = this.expectedIncome(state, p);
-    // Dağıtma eşiğinin (%80) altında kal ki üret-dağıt döngüsü olmasın
-    const limit = Math.min(this.tuning.maxUpkeepShare * income + state.players[p].resources.akce / 50, 0.7 * income);
+    // Dağıtma eşiğinin altında kal ki üret-dağıt döngüsü olmasın
+    const limit = Math.min(this.tuning.maxUpkeepShare * income + state.players[p].resources.akce / 50, this.tuning.upkeepCap * income);
     return upkeepDue(state, p) + extra <= limit;
   }
 
-  /** Bakım beklenen gelirin %80'ini aşıyorsa dağıtılacak birim */
+  /** Bakım beklenen gelirin upkeepExcessShare oranını aşıyorsa dağıtılacak birim */
   protected excessUnit(state: GameState, p: number): number | null {
     if (!state.config.upkeepEnabled) return null;
-    if (upkeepDue(state, p) <= 0.8 * this.expectedIncome(state, p)) return null;
+    if (upkeepDue(state, p) <= this.tuning.upkeepExcessShare * this.expectedIncome(state, p)) return null;
     const mine = state.units.filter((u) => u.owner === p);
     if (mine.length <= 1) return null;
     const ships = mine.filter((u) => u.kind === 'ship');

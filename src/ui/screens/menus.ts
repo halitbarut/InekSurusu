@@ -188,6 +188,7 @@ const CONFIG_FIELDS: ConfigField[] = [
   { key: 'baseBlockRadius', label: 'Üs uçak engeli yarıçapı', min: 0, max: 20 },
   { key: 'maxSortiesPerUnitPerTurn', label: 'Birim başına tur içi sefer (0 = sınırsız)', min: 0, max: 100 },
   { key: 'minesPerTypePerPlayer', label: 'Oyuncu başına maden (her türden)', min: 0, max: 20 },
+  { key: 'maxMineDistance', label: 'Her türün en yakın madenine en fazla uzaklık (dengeli düzen)', min: 1, max: 50 },
   { key: 'maxPeaceRounds', label: 'En uzun barış süresi (tur)', min: 1, max: 200 },
   { key: 'landBattleAkce', label: 'Normal savaş masrafı (akçe)', min: 0, max: 10000 },
   { key: 'baseBattleAkce', label: 'Üs savaşı masrafı (akçe)', min: 0, max: 10000 },
@@ -312,7 +313,17 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
     const width = clampInt(wIn.value, 20, 120);
     const height = clampInt(hIn.value, 16, 90);
     const seed = toSeed(seedIn.value);
-    const map = generateMap({ width, height, seed, players: count, minesPerTypePerPlayer: config.minesPerTypePerPlayer, startTerritoryCount: config.startTerritoryCount });
+    const map = generateMap({
+      width,
+      height,
+      seed,
+      players: count,
+      minesPerTypePerPlayer: config.minesPerTypePerPlayer,
+      startTerritoryCount: config.startTerritoryCount,
+      minCapitalDistance: config.minCapitalDistance,
+      mineLayout: config.mineLayout,
+      maxMineDistance: config.maxMineDistance,
+    });
     paintPreview(preview, map);
     const land = map.terrain.filter((t) => t === 'land').length;
     previewInfo.textContent = `Seed ${seed} · ${width}×${height} · ${land} kara karesi · ${map.straits.length} boğaz · ${map.terrain.filter((t) => t === 'lake').length} göl karesi`;
@@ -360,7 +371,7 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
           value: config[f.key] as number,
           onInput: (e: Event) => {
             (config as unknown as Record<string, number>)[f.key] = clampInt((e.target as HTMLInputElement).value, f.min, f.max);
-            if (f.key === 'minesPerTypePerPlayer' || f.key === 'startTerritoryCount') schedulePreview();
+            if (f.key === 'minesPerTypePerPlayer' || f.key === 'startTerritoryCount' || f.key === 'maxMineDistance') schedulePreview();
           },
         }),
       ];
@@ -373,6 +384,18 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
         onChange: (e: Event) => ((config as unknown as Record<string, boolean>)[t.key] = (e.target as HTMLInputElement).checked),
       }),
     ]),
+    h('label', {}, 'Maden yerleşimi'),
+    h(
+      'select',
+      {
+        onChange: (e: Event) => {
+          config.mineLayout = (e.target as HTMLSelectElement).value as 'spread' | 'random';
+          schedulePreview();
+        },
+      },
+      h('option', { value: 'spread', selected: true }, 'Dengeli'),
+      h('option', { value: 'random' }, 'Rastgele (eski)'),
+    ),
     h('label', {}, 'Üs engeli mesafe ölçüsü'),
     h(
       'select',

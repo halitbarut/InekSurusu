@@ -12,6 +12,7 @@ npm run build      # dist/ klasörüne statik derleme
 npm test           # kural motoru testleri (Vitest)
 npm run simulate   # denge simülasyonu, 1. tur → docs/BALANCE_REPORT.md (uzun sürer; --games 20 ile kısalt)
 npm run simulate -- --round 2   # 2. tur: yeni varsayılanlar ve karşılaştırma
+npm run simulate -- --round 3   # 3. tur: dengeli madenler, küçük harita; 1.–3. tur karşılaştırması
 ```
 
 `npm run build` çıktısı (`dist/`) herhangi bir statik sunucuda ya da alt klasörde çalışır.
@@ -21,7 +22,8 @@ npm run simulate -- --round 2   # 2. tur: yeni varsayılanlar ve karşılaştır
 1. **Yeni oyun:** oyuncu sayısı, ad, renk, İnsan/Bot; harita boyutu ve seed (önizlemeli); kural ayarları.
 2. **Kurulum:** herkes sırayla başkentini seçer, sonra başkentine bitişik 9 toprak seçer. Bu aşamada maden
    kareleri seçilemez (haritada kırmızı taranır); madenler oyun başladıktan sonra alınır.
-   Haritada her maden türünden (altın, petrol, demir, çelik) oyuncu sayısı kadar maden vardır.
+   Haritada her maden türünden (altın, petrol, demir, çelik) oyuncu sayısı kadar maden vardır ve madenler
+   dengeli yayılır: yerleşilebilir her kareden her türün en yakın madeni en fazla 10 kare uzaktadır.
 3. **Her tur:** madenler 1'er kaynak verir → gemi, uçak ve askeri üsler için **bakım** ödenir →
    sekizgen topacı çevir (sayı × 100 akçe) → istediğin kadar eylem yap → **Turu bitir**.
 
@@ -38,7 +40,7 @@ haritada vurgulanır; karelerin üzerine gelince bilgi ve neden yapılamadığı
 | Gemi / Uçak üret | 2 demir + 100 akçe / 2 çelik + 200 akçe. Birimler kalıcıdır |
 | Altın bozdur | 1 altın = 200 akçe |
 | **Turda tek savaş** | Kara savaşı, gemi/uçakla dolu toprağa saldırı, başkent ve üs savaşı — hepsinden turda yalnızca 1 tane |
-| **Savaş masrafı** | Başlatırken ödenir, sonuçtan bağımsız: normal savaş 100 akçe · üs savaşı 200 akçe + 1 demir · başkent savaşı 600 akçe + 2 demir + 2 çelik. Yetmiyorsa savaş başlatılamaz |
+| **Savaş masrafı** | Başlatırken ödenir, sonuçtan bağımsız: normal savaş 100 akçe · üs savaşı 200 akçe + 1 demir · başkent savaşı 600 akçe + 2 demir. Yetmiyorsa savaş başlatılamaz |
 | **Bakım** | Her tur başında, topaçtan önce: gemi ve uçak başına 50 akçe (askeri üs varsayılan olarak bakımsız). Akçe yetmezse oyuncu dağıtacaklarını seçer; ödenemeyen kadar birim dağıtılır, bakımlı üs yıkılır (toprak kalır) |
 | Kara savaşı | Sınır komşuluğu. İki taraf topaç çevirir. A > D: saldıran A − D toprak seçer. A < D: savunan karşı saldırıyla ⌈(D − A)/2⌉ toprak seçer (saldıranın kendisine komşu topraklarından). A = D: sonuçsuz |
 | Başkent savaşı | Yalnızca karadan (sınır komşuluğu). Art arda 3 kez yüksek at (eşitlik tekrar). Kazanırsan rakip elenir, her şeyi sana geçer. Kaybedersen toprak kaybı yok |

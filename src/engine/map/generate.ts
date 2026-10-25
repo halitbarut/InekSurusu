@@ -12,6 +12,10 @@ export interface MapGenOptions {
   startTerritoryCount: number;
   /** Başkentler arası en az mesafe (yerleşim kontrolü için, varsayılan 5) */
   minCapitalDistance?: number;
+  /** Maden düzeni (varsayılan 'spread') */
+  mineLayout?: 'spread' | 'random';
+  /** 'spread' düzeninde her türün en yakın madenine en fazla uzaklık (varsayılan 10) */
+  maxMineDistance?: number;
 }
 
 /** Bu büyüklüğe kadar, haritanın kenarına değmeyen su kütleleri göl sayılır */
@@ -25,16 +29,25 @@ const MAX_ATTEMPTS = 25;
  */
 export function generateMap(opts: MapGenOptions): GameMap {
   let best: GameMap | null = null;
+  let bestProblems = Infinity;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const map = tryGenerate(opts, mixSeed(opts.seed, attempt));
-    if (mapProblems(map, opts).length === 0) return map;
-    if (!best || map.straits.length > best.straits.length) best = map;
+    const problems = mapProblems(map, opts).length;
+    if (problems === 0) return map;
+    // Hiçbiri tam uymazsa en az sorunlu (eşitlikte en çok boğazlı) haritayı kullan
+    if (problems < bestProblems || (problems === bestProblems && map.straits.length > best!.straits.length)) {
+      best = map;
+      bestProblems = problems;
+    }
   }
   return best!;
 }
 
 /** Harita gereksinimlerini kontrol eder; sorun yoksa boş dizi döner. */
-export function mapProblems(map: GameMap, opts: Pick<MapGenOptions, 'players' | 'startTerritoryCount' | 'minCapitalDistance'>): string[] {
+export function mapProblems(
+  map: GameMap,
+  opts: Pick<MapGenOptions, 'players' | 'startTerritoryCount' | 'minCapitalDistance' | 'mineLayout' | 'maxMineDistance'>,
+): string[] {
   const problems: string[] = [];
   const land = map.terrain.filter((t) => t === 'land').length;
   const perPlayer = opts.startTerritoryCount + 1;
@@ -46,6 +59,11 @@ export function mapProblems(map: GameMap, opts: Pick<MapGenOptions, 'players' | 
     problems.push('Her oyuncuya madensiz başlangıç alanı ayrılamıyor');
   }
   if (map.straits.length < 3) problems.push('Yeterli boğaz yok');
+  if ((opts.mineLayout ?? 'spread') === 'spread') {
+    const far = farthestFromMine(map, opts.startTerritoryCount + 1);
+    const limit = opts.maxMineDistance ?? 10;
+    for (const t of MINE_TYPES) if (far[t] > limit) problems.push(`${t} madenine ${far[t]} kare uzak kara var (sınır ${limit})`);
+  }
   if (!map.terrain.includes('lake')) problems.push('Göl yok');
   return problems;
 }
@@ -160,7 +178,11 @@ function tryGenerate(opts: MapGenOptions, seed: number): GameMap {
   }
 
   const straits = detectStraits(d, terrain);
-  const mines = placeMines(d, terrain, opts.players * opts.minesPerTypePerPlayer, rng);
+  const perType = opts.players * opts.minesPerTypePerPlayer;
+  const mines =
+    (opts.mineLayout ?? 'spread') === 'spread'
+      ? placeMinesSpread(d, terrain, perType, opts.startTerritoryCount + 1, rng)
+      : placeMinesRandom(d, terrain, perType, rng);
   return { width, height, seed: opts.seed, terrain, mines, straits, straitOf: buildStraitIndex(n, straits) };
 }
 
@@ -203,7 +225,142 @@ function findStraitCandidate(d: Dims, water: Uint8Array, carved: number[], rng: 
   return best ? (best as { tiles: number[] }).tiles : null;
 }
 
-function placeMines(d: Dims, terrain: Terrain[], perType: number, rng: Rng): (MineType | null)[] {
+/** Yerleşmeye uygun (en az minSize karelik) kara parçalarının kareleri; hiç yoksa tüm kara */
+function settleableLand(d: Dims, terrain: Terrain[], minSize: number): number[] {
+  const comp = labelComponents(d, (i) => terrain[i] === 'land');
+  const big: number[] = [];
+  const all: number[] = [];
+  for (let i = 0; i < terrain.length; i++) {
+    if (terrain[i] !== 'land') continue;
+    all.push(i);
+    if (comp.sizes[comp.labels[i]] >= minSize) big.push(i);
+  }
+  return big.length ? big : all;
+}
+
+const cheb = (w: number, a: number, b: number) => Math.max(Math.abs((a % w) - (b % w)), Math.abs(Math.floor(a / w) - Math.floor(b / w)));
+
+/**
+ * Dengeli yerleşim: her maden türü için önce açgözlü "en uzak nokta" (k-merkez) seçimi yapılır
+ * (ilk maden rastgele, sonrakiler o türün madenlerine en uzak yerleşilebilir kareye), ardından
+ * her maden kendisine en yakın karelerin en kötü uzaklığını küçültecek kareye kaydırılır.
+ * Uzaklık Chebyshev'dir (başkent mesafesi ve üs yarıçapıyla aynı ölçü). Madenler birbirine bitişik olmaz.
+ */
+function placeMinesSpread(d: Dims, terrain: Terrain[], perType: number, minSize: number, rng: Rng): (MineType | null)[] {
+  const n = d.width * d.height;
+  const mines: (MineType | null)[] = new Array(n).fill(null);
+  const land = shuffle(settleableLand(d, terrain, minSize), rng);
+  for (const type of MINE_TYPES) {
+    // Birkaç farklı başlangıç dene, en kötü uzaklığı en küçük olanı tut
+    let best: number[] = [];
+    let bestWorst = Infinity;
+    for (let attempt = 0; attempt < SPREAD_RESTARTS; attempt++) {
+      const start = land[rng.int(0, land.length - 1)];
+      const placed = spreadType(d, land, mines, perType, start);
+      const worst = land.reduce((a, t) => Math.max(a, placed.reduce((b, m) => Math.min(b, cheb(d.width, t, m)), Infinity)), 0);
+      if (worst < bestWorst) {
+        bestWorst = worst;
+        best = placed;
+      }
+    }
+    for (const m of best) mines[m] = type;
+  }
+  return mines;
+}
+
+const SPREAD_RESTARTS = 6;
+
+/** Tek bir maden türü için k-merkez + 1-merkez iyileştirmesi; mines dizisini değiştirmez, yerleri döner. */
+function spreadType(d: Dims, land: number[], mines: (MineType | null)[], perType: number, start: number): number[] {
+  const n = d.width * d.height;
+  const w = d.width;
+  const taken = new Set<number>();
+  const isMine = (t: number) => mines[t] !== null || taken.has(t);
+  // Başka bir madene bitişik olmayan boş kare (ignore: yeri değiştirilen madenin kendisi)
+  const free = (t: number, ignore = -1) => !isMine(t) && !neighbors8(d, t).some((nb) => nb !== ignore && isMine(nb));
+  const placed: number[] = [];
+  const dist = new Float64Array(n).fill(Infinity);
+  for (let k = 0; k < perType; k++) {
+    let pick = -1;
+    if (k === 0 && free(start)) pick = start;
+    else {
+      let best = -1;
+      for (const t of land) {
+        if (!free(t)) continue;
+        if (dist[t] > best) {
+          best = dist[t];
+          pick = t;
+        }
+      }
+    }
+    if (pick < 0) pick = land.find((t) => !isMine(t)) ?? -1;
+    if (pick < 0) break;
+    taken.add(pick);
+    placed.push(pick);
+    for (const t of land) dist[t] = Math.min(dist[t], cheb(w, t, pick));
+  }
+  // İyileştirme: her madeni kendi bölgesinin "1-merkezine" kaydır
+  for (let iter = 0; iter < 6; iter++) {
+    const owner = new Map<number, number[]>(placed.map((m) => [m, []]));
+    for (const t of land) {
+      let bm = placed[0];
+      let bd = Infinity;
+      for (const m of placed) {
+        const dd = cheb(w, t, m);
+        if (dd < bd) {
+          bd = dd;
+          bm = m;
+        }
+      }
+      owner.get(bm)!.push(t);
+    }
+    let moved = false;
+    for (let i = 0; i < placed.length; i++) {
+      const m = placed[i];
+      const region = owner.get(m)!;
+      const radius = (c: number) => region.reduce((a, t) => Math.max(a, cheb(w, t, c)), 0);
+      let bestC = m;
+      let bestR = radius(m);
+      for (const c of region) {
+        if (c !== m && !free(c, m)) continue;
+        const r = radius(c);
+        if (r < bestR) {
+          bestR = r;
+          bestC = c;
+        }
+      }
+      if (bestC !== m) {
+        taken.delete(m);
+        taken.add(bestC);
+        placed[i] = bestC;
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+  return placed;
+}
+
+/** Yerleşilebilir karelerden her türün en yakın madenine olan en büyük uzaklık (Chebyshev) */
+export function farthestFromMine(map: GameMap, minSize: number): Record<MineType, number> {
+  const land = settleableLand(map, map.terrain, minSize);
+  const out = {} as Record<MineType, number>;
+  for (const type of MINE_TYPES) {
+    const ms: number[] = [];
+    for (let i = 0; i < map.mines.length; i++) if (map.mines[i] === type) ms.push(i);
+    let worst = 0;
+    for (const t of land) {
+      let best = Infinity;
+      for (const m of ms) best = Math.min(best, cheb(map.width, t, m));
+      worst = Math.max(worst, best);
+    }
+    out[type] = worst;
+  }
+  return out;
+}
+
+/** Eski düzen: madenler karışık kara listesine sırayla, mümkünse birbirine bitişik olmadan konur. */
+function placeMinesRandom(d: Dims, terrain: Terrain[], perType: number, rng: Rng): (MineType | null)[] {
   const n = d.width * d.height;
   const mines: (MineType | null)[] = new Array(n).fill(null);
   const land = shuffle(range(n).filter((i) => terrain[i] === 'land'), rng);
