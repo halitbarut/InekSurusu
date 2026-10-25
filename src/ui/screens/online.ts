@@ -1,3 +1,4 @@
+import { BOT_LEVEL_NAME } from '../../bot';
 import type { GameState } from '../../engine';
 import { ClientRoom } from '../../net/clientRoom';
 import { HostRoom } from '../../net/hostRoom';
@@ -205,7 +206,7 @@ function renderJoinLobby(host: HTMLElement, cb: OnlineCallbacks, room: ClientRoo
     clear(seatsEl);
     lobby.seats.forEach((x, i) => {
       const mine = seat === i;
-      const label = x.kind === 'host' ? 'Oda sahibi' : x.kind === 'bot' ? '🤖 Bot' : x.claimedBy ? (mine ? 'Sen' : 'Dolu') : 'Boş';
+      const label = x.kind === 'host' ? 'Oda sahibi' : x.kind === 'bot' ? `🤖 Bot (${BOT_LEVEL_NAME[x.botLevel ?? 'medium'].toLocaleLowerCase('tr')})` : x.claimedBy ? (mine ? 'Sen' : 'Dolu') : 'Boş';
       seatsEl.appendChild(
         h(
           'div',

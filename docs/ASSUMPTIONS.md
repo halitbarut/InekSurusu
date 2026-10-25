@@ -182,3 +182,23 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
     kullanılamaz. Kayıtlı ayar seçildikten sonra bir değer değiştirilirse yine **Özel**e geçilir.
 57. Görev metninde "online yok" deniyor, ama proje önceki oturumda çevrimiçi oyun kazandı. Çevrimiçi oyun korunup
     yeni özelliklerle uyumlu tutuldu (ör. oda lobisinde seçili kural takımının adı görünür).
+
+## Bot zorluk seviyeleri
+
+58. Her bot koltuğu için Kolay, Orta ya da Zor seçilir (varsayılan Orta). Çevrimiçide oda sahibi bot koltuklarının
+    seviyesini seçer; boş kalan davetli koltuklar ve bağlantısı kopan oyuncunun yerine geçen bot Orta oynar.
+    Seviye kayda girer. Kod: `src/bot/easy.ts`, `medium.ts`, `hard.ts`.
+59. **Kolay** bot, orta botun değerlendirmesine rastgelelik katar: toprak seçimine büyük gürültü ekler, fetihte çoğu
+    zaman rastgele kare seçer, savaş hakkını sık sık rastgele bir sınır karesine harcar (beklenen değeri eksi olsa da),
+    bakımı az düşünür, başkent savaşı için birikim yapmaz, %12 olasılıkla turu erken bitirir. İttifak ve barış
+    tekliflerini hep, kendi aleyhine takasları da çoğu zaman kabul eder.
+60. **Zor** bot, en yakın saldırılabilir rakip başkentini hedef seçer: toprak alımını ve kara savaşını oraya yöneltir,
+    3 kare yaklaşınca başkent savaşı masrafını (akçe ve bir turluk bakım) biriktirir ve demiri gemiye harcamaz.
+    Başkent savaşına hedefin büyüklüğüne bakmadan, beklenen değer artıysa girer. Kendi başkentine komşu düşman
+    toprağını tehdit sayar, savaş hakkını önce onu geri itmeye harcar ve fetihte o kareleri önce alır. Teklifte
+    başkentinin 2 kare çevresini ve maden karelerini vermez, kendisinden zayıflarla ittifak kurmaz (zafer
+    paylaşılmasın), hedef aldığı rakiple barış yapmaz.
+61. Botların "rastgeleliği" oyunun RNG'sini kullanmaz: oyun durumundan (tur, akçe, toprak sayısı…) türetilen
+    deterministik bir karışımdır. Böylece bot gelecekteki topaç sonuçlarını göremez ve değiştiremez, aynı seed'le
+    aynı oyun yeniden oynanabilir. Hiçbir seviye ek kaynak almaz.
+62. Seviye farkı `npm run simulate -- --round zorluk` ile ölçülür (BALANCE_REPORT.md, "Bot zorluk seviyeleri").

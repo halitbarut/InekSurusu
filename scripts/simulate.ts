@@ -6,6 +6,7 @@
  *   npm run simulate -- --round 2         # 2. tur: B2, RB2 ve karşılaştırma için 1. tur ayarlarıyla B, RB (100'er oyun)
  *   npm run simulate -- --round 3         # 3. tur: B3, RB3 ve karşılaştırma için B, RB, B2, RB2 (100'er oyun)
  *   npm run simulate -- --round onayar    # yeni oyun ekranındaki hazır kural takımları (60'ar oyun)
+ *   npm run simulate -- --round zorluk    # bot seviyeleri: Zor 1 + Orta 4, Orta 1 + Kolay 4 (100'er oyun)
  *   npm run simulate -- --games 20        # hızlı deneme
  *   npm run simulate -- --scenarios B,C   # yalnızca seçilen senaryolar
  *   npm run simulate -- --round 3 --scenarios RB,RB2 --reuse   # yalnızca seçilenleri oynat, diğerlerini önbellekten al
@@ -17,8 +18,8 @@ import { availableParallelism } from 'node:os';
 import { resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Worker, isMainThread, parentPort } from 'node:worker_threads';
-import type { BotTuning } from '../src/bot';
-import { BUILTIN_PRESETS, DEFAULT_CONFIG, presetMapSize, type GameConfig } from '../src/engine';
+import { BOT_LEVEL_NAME, type BotTuning } from '../src/bot';
+import { BUILTIN_PRESETS, DEFAULT_CONFIG, presetMapSize, type BotLevel, type GameConfig } from '../src/engine';
 import { playGame, SNAPSHOT_ROUNDS, type GameMetrics, type GameSpec, type SpendKey } from './sim/game';
 
 interface Scenario {
@@ -30,6 +31,8 @@ interface Scenario {
   tuning?: Partial<BotTuning>;
   /** Harita boyutu (verilmezse varsayılan) */
   size?: { width: number; height: number };
+  /** Zorluk testi: bir koltukta focus, diğerlerinde others seviyesi (koltuk oyundan oyuna döner) */
+  levels?: { focus: BotLevel; others: BotLevel };
 }
 
 /** 3. turdan önceki harita: 5 oyuncuda 50×36, madenler eski rastgele düzende */
@@ -85,6 +88,8 @@ const SCENARIOS: Scenario[] = [
   },
   { id: 'RB3', title: 'B3 + 1 acele eden bot', config: {}, rusher: true },
   // Hazır kural takımları (5 oyuncu)
+  { id: 'Z-hard', title: 'Zor 1 + Orta 4 (varsayılan kurallar)', config: {}, rusher: false, levels: { focus: 'hard', others: 'medium' } },
+  { id: 'Z-medium', title: 'Orta 1 + Kolay 4 (varsayılan kurallar)', config: {}, rusher: false, levels: { focus: 'medium', others: 'easy' } },
   ...BUILTIN_PRESETS.map((p) => ({ id: `P-${p.id}`, title: `${p.name}: ${p.description}`, config: p.config, size: presetMapSize(p, 5), rusher: false })),
 ];
 
@@ -92,6 +97,7 @@ const ROUNDS: Record<string, { scenarios: string[]; games: number }> = {
   '1': { scenarios: ['A', 'B', 'C', 'D', 'RA', 'RB'], games: 150 },
   '2': { scenarios: ['B', 'RB', 'B2', 'RB2'], games: 100 },
   '3': { scenarios: ['B', 'RB', 'B2', 'RB2', 'B3', 'RB3'], games: 100 },
+  zorluk: { scenarios: ['Z-hard', 'Z-medium'], games: 100 },
   onayar: { scenarios: BUILTIN_PRESETS.map((p) => `P-${p.id}`), games: 60 },
 };
 
@@ -136,7 +142,7 @@ async function main() {
     for (let g = 0; g < games; g++) {
       // Aynı seed'ler tüm senaryolarda kullanılır: haritalar aynı, yalnızca kurallar farklı
       const seed = 10_000 + g;
-      jobs.push({ scenario: sc.id, spec: { seed, players, maxRounds, config: sc.config, tuning: sc.tuning, size: sc.size, rusherSeat: sc.rusher ? g % players : null } });
+      jobs.push({ scenario: sc.id, spec: { seed, players, maxRounds, config: sc.config, tuning: sc.tuning, size: sc.size, rusherSeat: sc.rusher ? g % players : null, levels: sc.levels ? { ...sc.levels, focusSeat: g % players } : undefined } });
     }
   }
   const results = new Map<string, GameMetrics[]>(scenarios.map((s) => [s.id, []]));
@@ -183,6 +189,7 @@ async function main() {
   if (round === '1') writeReport(out, buildReport(shown, results, opt));
   else if (round === '2') writeSection(out, 'tur2', buildRound2(shown, results, opt));
   else if (round === '3') writeSection(out, 'tur3', buildRound3(shown, results, opt));
+  else if (round === 'zorluk') writeSection(out, 'zorluk', buildLevels(shown, results, opt), 'Bot zorluk seviyeleri');
   else writeSection(out, 'onayar', buildPresets(shown, results, opt), 'Hazır kural takımları');
   console.log(`Rapor yazıldı: ${out}`);
 }
@@ -604,6 +611,47 @@ function buildRound3(scenarios: Scenario[], results: Map<string, GameMetrics[]>,
     L.push('');
   }
   L.push(...tables(scenarios.filter((s) => s.id === 'B3' || s.id === 'RB3'), results, opt, '###'));
+  return L.join('\n');
+}
+
+// ------------------------------------------------------------------
+// Bot zorluk seviyeleri
+// ------------------------------------------------------------------
+
+function buildLevels(scenarios: Scenario[], results: Map<string, GameMetrics[]>, opt: Opt): string {
+  const L: string[] = [];
+  L.push('## Bot zorluk seviyeleri');
+  L.push('');
+  L.push(
+    `\`npm run simulate -- --round zorluk\` ile üretilir (son çalıştırma: ${new Date().toISOString().slice(0, 10)}). ` +
+      `Her düzen için ${opt.games} oyun, ${opt.players} oyuncu, varsayılan kurallar, ${opt.maxRounds} tur sınırı, seed'ler 10000–${10_000 + opt.games - 1}. ` +
+      `Üst seviyedeki tek botun koltuğu oyundan oyuna döner. Adil pay: 1/${opt.players} = ${pct(1 / opt.players, 0)}.`,
+  );
+  L.push('');
+  L.push('| Düzen | Üst seviyenin kazanma payı (ittifak zaferi paylaştırılır) | %95 güven aralığı | Tek başına kazandığı oyun | Elendiği oyun | Oyun başına elediği rakip | Tur sınırına takılan | Değerlendirme |');
+  L.push('|---|---|---|---|---|---|---|---|');
+  for (const s of scenarios) {
+    const ms = results.get(s.id)!;
+    let share = 0;
+    let solo = 0;
+    for (const m of ms) {
+      if (m.focusSeat === null || !m.winners.includes(m.focusSeat)) continue;
+      share += 1 / m.winners.length;
+      if (m.winners.length === 1) solo++;
+    }
+    const [lo, hi] = wilson(Math.round(share), ms.length);
+    const fair = 1 / opt.players;
+    const verdict = lo > fair ? '**Belirgin şekilde üstte**' : hi < fair ? 'Adil payın altında' : 'Adil paydan belirgin farkı yok';
+    const died = ms.filter((m) => m.eliminations.some((e) => e.player === m.focusSeat)).length;
+    const kills = ms.reduce((a, m) => a + m.eliminations.filter((e) => e.by === m.focusSeat).length, 0);
+    const name = s.levels ? `${BOT_LEVEL_NAME[s.levels.focus]} 1 + ${BOT_LEVEL_NAME[s.levels.others]} ${opt.players - 1}` : s.id;
+    L.push(
+      `| ${name} | ${pct(share / ms.length)} | ${pct(lo)}–${pct(hi)} | ${solo}/${ms.length} | ${pct(died / ms.length, 0)} | ${f(kills / ms.length, 2)} | ${pct(ms.filter((m) => m.hitLimit).length / ms.length, 0)} | ${verdict} |`,
+    );
+  }
+  L.push('');
+  L.push('"Belirgin şekilde üstte": %95 güven aralığının (Wilson) alt sınırı adil payın üstünde.');
+  L.push('');
   return L.join('\n');
 }
 

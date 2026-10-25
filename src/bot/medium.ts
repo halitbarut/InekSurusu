@@ -59,6 +59,8 @@ export interface BotTuning {
   maxShipsBase: number;
   maxPlanesBase: number;
   diplomacyEvery: number;
+  /** Kara savaşında rakip başkentine doğru ilerlemenin alınan toprak başına ek değeri */
+  pushBonus: number;
 }
 
 export const MEDIUM_TUNING: BotTuning = {
@@ -72,6 +74,7 @@ export const MEDIUM_TUNING: BotTuning = {
   maxShipsBase: 2,
   maxPlanesBase: 2,
   diplomacyEvery: 3,
+  pushBonus: 0.5,
 };
 
 export class MediumBot implements BotBrain {
@@ -145,10 +148,7 @@ export class MediumBot implements BotBrain {
         // Seçen taraf: saldıran ya da karşı saldırıdaki savunan
         const c = conquestCandidates(state);
         if (c.length === 0) return { type: 'END_CONQUEST', player: ph.taker };
-        // Saldıran rakip başkentine doğru koridor açar; karşı saldırıda savunan kendi başkentine yakın cepheyi geri iter
-        const focus = ph.counter ? state.players[ph.taker].capital : state.players[ph.victim].capital;
-        const score = (t: number) => conquestScore(state, ph.taker, t) - (focus === null ? 0 : CORRIDOR_WEIGHT * manhattan(state.map, t, focus));
-        return { type: 'CONQUER_TILE', player: ph.taker, tile: best(c, score) };
+        return { type: 'CONQUER_TILE', player: ph.taker, tile: this.pickConquest(state, ph.taker, ph.victim, ph.counter, c) };
       }
       case 'vote':
         return { type: 'CAST_VOTE', player: p, accept: true };
@@ -159,6 +159,18 @@ export class MediumBot implements BotBrain {
       case 'gameover':
         return { type: 'END_TURN', player: p };
     }
+  }
+
+  /** Fetihte alınacak toprak */
+  protected pickConquest(state: GameState, taker: number, victim: number, counter: boolean, cands: number[]): number {
+    // Saldıran rakip başkentine doğru koridor açar; karşı saldırıda savunan kendi başkentine yakın cepheyi geri iter
+    const focus = counter ? state.players[taker].capital : state.players[victim].capital;
+    return best(cands, (t) => conquestScore(state, taker, t) - (focus === null ? 0 : CORRIDOR_WEIGHT * manhattan(state.map, t, focus)));
+  }
+
+  /** Gemi üretiminde demir harcanabilir mi? (zor bot başkent savaşı için demir saklar) */
+  protected canSpendIron(_state: GameState, _p: number, _amount: number): boolean {
+    return true;
   }
 
   protected pickCapital(state: GameState, p: number): Action {
@@ -236,7 +248,7 @@ export class MediumBot implements BotBrain {
     // 4) Üretim
     const maxShips = this.tuning.maxShipsBase + Math.floor(stats.tiles / 30);
     const maxPlanes = this.tuning.maxPlanesBase + Math.floor(stats.tiles / 30);
-    if (stats.ships < maxShips && res.akce >= cfg.shipAkceCost + reserve && this.upkeepRoom(state, p, cfg.shipUpkeep)) {
+    if (stats.ships < maxShips && res.akce >= cfg.shipAkceCost + reserve && this.upkeepRoom(state, p, cfg.shipUpkeep) && this.canSpendIron(state, p, cfg.shipIronCost)) {
       const t = producibleTiles(state, p, 'ship');
       if (t.length) return { type: 'PRODUCE', player: p, tile: t[0], unit: 'ship' };
     }
@@ -416,7 +428,7 @@ export class MediumBot implements BotBrain {
         if (normalBorder.length) {
           const gainPool = poolValues(state, normalBorder, qNormal.length);
           // Başkent yalnızca karadan alınabildiği için başkente doğru ilerlemek ayrıca değerli
-          const push = border.includes(state.players[q].capital ?? -1) ? 0 : PUSH_BONUS * expectedGain(outcomes, gainPool.length);
+          const push = border.includes(state.players[q].capital ?? -1) ? 0 : this.tuning.pushBonus * expectedGain(outcomes, gainPool.length);
           options.push({ action: { type: 'ATTACK', player: p, target: nearestToCapital(state, normalBorder, q) }, value: landValue(outcomes, gainPool, lossPool) + push });
         }
         const cap = state.players[q].capital;
@@ -514,7 +526,7 @@ function fallbackAction(state: GameState, p: number): Action {
   }
 }
 
-function eventsThisTurn(state: GameState): GameEvent[] {
+export function eventsThisTurn(state: GameState): GameEvent[] {
   const r: GameEvent[] = [];
   for (let i = state.log.length - 1; i >= 0; i--) {
     const e = state.log[i];
@@ -524,7 +536,7 @@ function eventsThisTurn(state: GameState): GameEvent[] {
   return r;
 }
 
-function strongestOther(state: GameState, p: number): number | null {
+export function strongestOther(state: GameState, p: number): number | null {
   let bestId: number | null = null;
   let bestTiles = -1;
   for (const pl of state.players) {
@@ -546,7 +558,7 @@ function hasStructureSpot(state: GameState, p: number, s: BuildableStructure): b
   return false;
 }
 
-function tileScore(state: GameState, p: number, t: number): number {
+export function tileScore(state: GameState, p: number, t: number): number {
   const map = state.map;
   let s = 1;
   const m = map.mines[t];
@@ -563,7 +575,7 @@ function tileScore(state: GameState, p: number, t: number): number {
   return s;
 }
 
-function conquestScore(state: GameState, p: number, t: number): number {
+export function conquestScore(state: GameState, p: number, t: number): number {
   let s = tileScore(state, p, t);
   // Kendi bölgesini birleştiren kareler değerli
   s += neighbors4(state.map, t).filter((n) => state.owner[n] === p).length * 0.8;
@@ -580,7 +592,7 @@ function ownedStructures(state: GameState, p: number, s: BuildableStructure): nu
   return r;
 }
 
-function unownedMinesAround(state: GameState, t: number): number {
+export function unownedMinesAround(state: GameState, t: number): number {
   return neighbors4(state.map, t).filter((n) => state.map.mines[n] && state.owner[n] === null).length;
 }
 
@@ -600,7 +612,7 @@ function touchesPlayer(state: GameState, q: number, t: number): boolean {
 }
 
 /** Savaşta el değiştirebilecek bir toprağın kabaca değeri */
-function tileValue(state: GameState, t: number): number {
+export function tileValue(state: GameState, t: number): number {
   let v = 1;
   if (state.map.mines[t]) v += 2;
   if (state.structure[t]) v += 2;
@@ -608,7 +620,7 @@ function tileValue(state: GameState, t: number): number {
   return v;
 }
 
-function ownedValue(state: GameState, p: number): number {
+export function ownedValue(state: GameState, p: number): number {
   let v = 0;
   for (let i = 0; i < state.owner.length; i++) if (state.owner[i] === p) v += tileValue(state, i);
   return v;
@@ -626,9 +638,6 @@ function poolValues(state: GameState, frontier: number[], total: number): number
 
 /** Fetihte başkente uzaklığın kare başına ceza ağırlığı */
 const CORRIDOR_WEIGHT = 1.5;
-
-/** Kara savaşında, rakip başkentine doğru ilerlemenin alınan toprak başına ek değeri */
-const PUSH_BONUS = 0.5;
 
 function expectedGain(outcomes: { gain: number }[], cap: number): number {
   return outcomes.reduce((sum, o) => sum + Math.min(o.gain, cap), 0) / outcomes.length;
@@ -654,7 +663,7 @@ function landValue(outcomes: { gain: number; loss: number }[], gainPool: number[
   return sum / outcomes.length;
 }
 
-function best<T>(items: T[], score: (x: T) => number): T {
+export function best<T>(items: T[], score: (x: T) => number): T {
   let bi = items[0];
   let bs = -Infinity;
   for (const it of items) {

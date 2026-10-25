@@ -10,7 +10,8 @@ export type Resources = Record<ResourceKey, number>;
 export type StructureType = 'capital' | 'shipyard' | 'factory' | 'base';
 export type BuildableStructure = Exclude<StructureType, 'capital'>;
 export type UnitKind = 'ship' | 'plane';
-export type BotLevel = 'medium';
+export type BotLevel = 'easy' | 'medium' | 'hard';
+export const BOT_LEVELS: readonly BotLevel[] = ['easy', 'medium', 'hard'];
 
 export interface Strait {
   id: number;

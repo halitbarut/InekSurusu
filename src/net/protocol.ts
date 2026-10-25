@@ -1,4 +1,4 @@
-import type { Action, GameEvent, GameState } from '../engine';
+import type { Action, BotLevel, GameEvent, GameState } from '../engine';
 
 /** Mesaj biçimi değişirse artırılır; farklı sürümler aynı odaya bağlanamaz. */
 export const PROTOCOL_VERSION = 1;
@@ -15,6 +15,8 @@ export interface LobbySeat {
   name: string;
   color: string;
   kind: SeatKind;
+  /** Bot koltuğunun seviyesi */
+  botLevel?: BotLevel;
   /** Koltuğa oturan katılımcının kalıcı kimliği (remote koltuklar için) */
   claimedBy: string | null;
 }

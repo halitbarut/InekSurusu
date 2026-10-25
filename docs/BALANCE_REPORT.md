@@ -491,3 +491,30 @@ oynatılan RB/RB2 değerleri 2. tur raporundaki değerlerle birebir aynı (%14,4
   sayısı %33 daha fazla. Kâğıt oyundaki hissi verir ama başkente koşmak yine güçlü (1. turdaki A/RA senaryoları).
 - **Sakin açılış** Dengeli'den pek ayrışmıyor; botlar ilk turlarda zaten saldırmıyor. Kural insan oyuncuların erken
   baskınını frenlemek için var.
+
+<!-- bölüm:zorluk — bu işaretle kapanış işareti arası simülasyon tarafından yazılır -->
+
+## Bot zorluk seviyeleri
+
+`npm run simulate -- --round zorluk` ile üretilir (son çalıştırma: 2026-10-25). Her düzen için 100 oyun, 5 oyuncu, varsayılan kurallar, 300 tur sınırı, seed'ler 10000–10099. Üst seviyedeki tek botun koltuğu oyundan oyuna döner. Adil pay: 1/5 = %20.
+
+| Düzen | Üst seviyenin kazanma payı (ittifak zaferi paylaştırılır) | %95 güven aralığı | Tek başına kazandığı oyun | Elendiği oyun | Oyun başına elediği rakip | Tur sınırına takılan | Değerlendirme |
+|---|---|---|---|---|---|---|---|
+| Zor 1 + Orta 4 | %34,6 | %26,4–%44,7 | 12/100 | %27 | 1,19 | %7 | **Belirgin şekilde üstte** |
+| Orta 1 + Kolay 4 | %47,6 | %38,5–%57,7 | 37/100 | %23 | 2,20 | %15 | **Belirgin şekilde üstte** |
+
+"Belirgin şekilde üstte": %95 güven aralığının (Wilson) alt sınırı adil payın üstünde.
+
+<!-- /bölüm:zorluk -->
+
+### Değerlendirme (Bot zorluk seviyeleri)
+
+- Her iki düzende de üst seviyedeki bot adil payın (%20) belirgin şekilde üstünde kazanıyor: güven aralıklarının
+  alt sınırları %26,4 ve %38,5.
+- **Zor** bot farkı başkent savaşlarından alıyor: 4 orta botun arasında oyun başına 1,19 rakip eliyor, kendisi
+  oyunların yalnızca %27'sinde eleniyor. Hedef başkente yönelen genişleme, yaklaşınca akçe ve demir saklama ve
+  kendi başkentine komşu düşmanı önce geri itme bunu sağlıyor. Acele eden bottan (RB3, %26) farkı, ekonomiyi bırakmaması.
+- **Kolay** botlar arasında orta bot oyunların yarısına yakınını alıyor; kolay botlar beklenen değeri eksi savaşlara
+  giriyor, toprağı gelişigüzel seçiyor ve turu bazen erken bitiriyor.
+- Hiçbir seviye hile yapmaz: botlar yalnızca herkesin gördüğü durumu okur. Kolay botun rastgeleliği oyunun RNG'sini
+  kullanmaz; durumdan türetilen bir karışımdır (aynı durumda aynı karar, simülasyonlar tekrarlanabilir).

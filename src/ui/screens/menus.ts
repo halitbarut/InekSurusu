@@ -1,4 +1,5 @@
 import {
+  BOT_LEVELS,
   configProblems,
   MAX_PLAYERS,
   MIN_PLAYERS,
@@ -6,9 +7,11 @@ import {
   generateMap,
   toSeed,
   type GameMap,
+  type BotLevel,
   type GameState,
   type PlayerSetup,
 } from '../../engine';
+import { BOT_LEVEL_NAME } from '../../bot';
 import { clear, h, openModal, pickFile, toast } from '../dom';
 import { MINE_COLOR } from '../format';
 import { getPrefs, setPrefs } from '../prefs';
@@ -27,6 +30,11 @@ export interface MenuCallbacks {
   online(code?: string): void;
   /** Oda sahibi olarak çevrimiçi oyunu başlat */
   startHost(state: GameState, room: HostRoom, mySeat: number): void;
+}
+
+/** Bot seviyesi seçenekleri (değer: "bot:<seviye>") */
+function botOptions(selected: BotLevel | null) {
+  return BOT_LEVELS.map((lv) => h('option', { value: `bot:${lv}`, selected: selected === lv }, `🤖 Bot (${BOT_LEVEL_NAME[lv].toLocaleLowerCase('tr')})`));
 }
 
 const NAMES = ['Ayşe', 'Mehmet', 'Zeynep', 'Ali', 'Elif', 'Mustafa', 'Fatma', 'Hasan'];
@@ -162,12 +170,13 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
   const players: PlayerSetup[] = NAMES.map((name, i) => ({ name, color: COLORS[i], kind: i === 0 ? 'human' : 'bot' }));
   // Çevrimiçi: 1. koltuk oda sahibi, diğerleri davetli ya da bot
   const seatKinds: SeatKind[] = NAMES.map((_, i) => (i === 0 ? 'host' : i <= 2 ? 'remote' : 'bot'));
+  const seatBotLevels: BotLevel[] = NAMES.map(() => 'medium');
   let lobby: LobbyInfo | null = null;
   const claimSig = () => (lobby ? lobby.seats.map((x) => x.claimedBy ?? '').join('|') : '');
   const syncLobby = () => {
     if (!room) return;
     room.setLobby(
-      players.slice(0, count).map((p, i) => ({ name: p.name, color: p.color, kind: seatKinds[i] })),
+      players.slice(0, count).map((p, i) => ({ name: p.name, color: p.color, kind: seatKinds[i], botLevel: seatKinds[i] === 'bot' ? seatBotLevels[i] : undefined })),
       { width: clampInt(wIn.value, 20, 120), height: clampInt(hIn.value, 16, 90), seed: seedText, rules: rules.label() },
     );
   };
@@ -208,19 +217,29 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
           : h(
               'select',
               {
+                title: 'Koltuk',
                 onChange: (e: Event) => {
-                  seatKinds[i] = (e.target as HTMLSelectElement).value as SeatKind;
+                  const v = (e.target as HTMLSelectElement).value;
+                  seatKinds[i] = v === 'remote' ? 'remote' : 'bot';
+                  if (v !== 'remote') seatBotLevels[i] = v.slice(4) as BotLevel;
                   syncLobby();
                 },
               },
               h('option', { value: 'remote', selected: seatKinds[i] === 'remote' }, '🌐 Davetli oyuncu'),
-              h('option', { value: 'bot', selected: seatKinds[i] === 'bot' }, '🤖 Bot (orta)'),
+              botOptions(seatKinds[i] === 'bot' ? seatBotLevels[i] : null),
             )
         : h(
             'select',
-            { onChange: (e: Event) => (p.kind = (e.target as HTMLSelectElement).value as 'human' | 'bot') },
+            {
+              title: 'Oyuncu türü',
+              onChange: (e: Event) => {
+                const v = (e.target as HTMLSelectElement).value;
+                p.kind = v === 'human' ? 'human' : 'bot';
+                if (v !== 'human') p.botLevel = v.slice(4) as BotLevel;
+              },
+            },
             h('option', { value: 'human', selected: p.kind === 'human' }, '🧑 İnsan'),
-            h('option', { value: 'bot', selected: p.kind === 'bot' }, '🤖 Bot (orta)'),
+            botOptions(p.kind === 'bot' ? (p.botLevel ?? 'medium') : null),
           );
       const status =
         room && seatKinds[i] === 'remote' ? h('span', { class: 'muted small' }, claimed ? '✔ oturdu' : '⏳ boş') : null;
@@ -327,6 +346,8 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
         name: (x.claimedBy ? x.name : ps[i].name).trim() || `Oyuncu ${i + 1}`,
         color: x.claimedBy ? x.color : ps[i].color,
         kind: x.kind === 'host' || x.claimedBy ? ('human' as const) : ('bot' as const),
+        // Boş kalan davetli koltuklarda orta seviye bot oynar
+        botLevel: x.kind === 'bot' ? (x.botLevel ?? 'medium') : ('medium' as const),
       }));
     }
     if (new Set(ps.map((p) => p.name)).size !== ps.length) return toast('Oyuncu adları farklı olmalı', 'error');

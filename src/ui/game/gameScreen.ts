@@ -1,4 +1,4 @@
-import { getBot } from '../../bot';
+import { BOT_LEVEL_NAME, getBot } from '../../bot';
 import {
   RESOURCE_KEYS,
   BATTLE_USED,
@@ -812,7 +812,7 @@ export class GameScreen {
         'div',
         { class: 'who' },
         h('span', { class: 'dot big', style: { background: p.color } }),
-        h('div', {}, h('div', { class: 'who-name' }, p.name, p.kind === 'bot' ? h('span', { class: 'tag' }, 'Bot') : null), h('div', { class: 'who-phase' }, this.phaseText())),
+        h('div', {}, h('div', { class: 'who-name' }, p.name, p.kind === 'bot' ? h('span', { class: 'tag', title: 'Bot seviyesi' }, `Bot · ${BOT_LEVEL_NAME[p.botLevel].toLocaleLowerCase('tr')}`) : null), h('div', { class: 'who-phase' }, this.phaseText())),
       ),
       h(
         'div',
@@ -851,7 +851,7 @@ export class GameScreen {
           h(
             'div',
             { class: 'pr-main' },
-            h('div', { class: 'pr-name' }, p.id === cur ? '▶ ' : '', p.name, p.kind === 'bot' ? h('span', { class: 'tag' }, 'Bot') : null, this.seatBadge(p.id), ' ', rel),
+            h('div', { class: 'pr-name' }, p.id === cur ? '▶ ' : '', p.name, p.kind === 'bot' ? h('span', { class: 'tag', title: 'Bot seviyesi' }, `Bot · ${BOT_LEVEL_NAME[p.botLevel].toLocaleLowerCase('tr')}`) : null, this.seatBadge(p.id), ' ', rel),
             p.alive
               ? h('div', { class: 'pr-stats' }, `🟩 ${st.tiles} · 🪙 ${fmtNum(p.resources.akce)} · 🚢 ${st.ships} · ✈️ ${st.planes}${s.config.upkeepEnabled ? ` · 🧾 ${fmtNum(upkeepDue(s, p.id))}` : ''}`)
               : h('div', { class: 'pr-stats' }, `☠️ Elendi${p.eliminatedBy !== null ? ` (${pname(s, p.eliminatedBy)})` : ''}`),
@@ -1431,7 +1431,7 @@ export class GameScreen {
       return h(
         'tr',
         { class: p.alive ? '' : 'dead' },
-        h('td', {}, h('span', { class: 'dot', style: { background: p.color } }), ' ', p.name, p.kind === 'bot' ? h('span', { class: 'tag' }, 'Bot') : null),
+        h('td', {}, h('span', { class: 'dot', style: { background: p.color } }), ' ', p.name, p.kind === 'bot' ? h('span', { class: 'tag', title: 'Bot seviyesi' }, `Bot · ${BOT_LEVEL_NAME[p.botLevel].toLocaleLowerCase('tr')}`) : null),
         h('td', {}, status.join(' · ')),
         h(
           'td',

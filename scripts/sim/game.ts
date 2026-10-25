@@ -1,5 +1,5 @@
-import { MediumBot, MEDIUM_TUNING, RusherBot, type BotBrain, type BotTuning } from '../../src/bot';
-import { battleCost, createGame, defaultMapSize, dispatch, neighbors4, structureCost, type GameConfig, type GameState } from '../../src/engine';
+import { EasyBot, HardBot, MediumBot, MEDIUM_TUNING, RusherBot, type BotBrain, type BotTuning } from '../../src/bot';
+import { battleCost, createGame, defaultMapSize, dispatch, neighbors4, structureCost, type BotLevel, type GameConfig, type GameState } from '../../src/engine';
 
 export const SNAPSHOT_ROUNDS = [10, 25, 50, 100] as const;
 
@@ -23,6 +23,8 @@ export interface GameMetrics {
   income: number;
   battles: { land: number; base: number; capital: number; capitalWon: number; baseWon: number };
   rusherSeat: number | null;
+  /** Zorluk testinde farklı seviyedeki botun koltuğu */
+  focusSeat: number | null;
   /** Elenme sırası */
   eliminations: { player: number; by: number; round: number }[];
   /** Darboğaz ölçümleri: ilk kez olduğu tur (olmadıysa null) */
@@ -50,6 +52,8 @@ export interface GameSpec {
   tuning?: Partial<BotTuning>;
   /** Harita boyutu (verilmezse oyuncu sayısına göre varsayılan) */
   size?: { width: number; height: number };
+  /** Zorluk testi: focusSeat koltuğunda focus, diğerlerinde others seviyesi oynar */
+  levels?: { focus: BotLevel; others: BotLevel; focusSeat: number };
 }
 
 /** Arayüz olmadan, yalnızca kural motoru ve botlarla bir oyun oynatır. */
@@ -65,7 +69,9 @@ export function playGame(spec: GameSpec): GameMetrics {
   const medium = new MediumBot({ ...MEDIUM_TUNING, ...spec.tuning });
   // Acele eden bot, koşu dışındaki ayarları (bakım politikası vb.) diğer botlarla paylaşır
   const rusher = new RusherBot(spec.tuning);
-  const brain = (p: number): BotBrain => (p === spec.rusherSeat ? rusher : medium);
+  const byLevel: Record<BotLevel, BotBrain> = { easy: new EasyBot(spec.tuning), medium, hard: new HardBot(spec.tuning) };
+  const lv = spec.levels;
+  const brain = (p: number): BotBrain => (lv ? byLevel[p === lv.focusSeat ? lv.focus : lv.others] : p === spec.rusherSeat ? rusher : medium);
   const m: GameMetrics = {
     seed: spec.seed,
     endRound: 0,
@@ -80,6 +86,7 @@ export function playGame(spec: GameSpec): GameMetrics {
     income: 0,
     battles: { land: 0, base: 0, capital: 0, capitalWon: 0, baseWon: 0 },
     rusherSeat: spec.rusherSeat,
+    focusSeat: lv?.focusSeat ?? null,
     eliminations: [],
     milestones: { adjCapital: null, afford: null, adjAndAfford: null, firstCapitalBattle: null },
     noIronAt60: null,
