@@ -135,3 +135,69 @@ export function deletePreset(name: string) {
     // yoksay
   }
 }
+
+// ------------------------------------------------------------------
+// Elle çizilen haritalar
+// ------------------------------------------------------------------
+
+const MAP_KEY = 'inek-surusu-maps';
+
+export interface SavedMap {
+  id: string;
+  name: string;
+  date: number;
+  /** Harita metni (draftToRows biçimi) */
+  rows: string[];
+}
+
+export function listMaps(): SavedMap[] {
+  try {
+    const raw = localStorage.getItem(MAP_KEY);
+    const arr = raw ? (JSON.parse(raw) as SavedMap[]) : [];
+    return Array.isArray(arr) ? arr.filter((m) => m && Array.isArray(m.rows)).sort((a, b) => b.date - a.date) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function getMap(id: string): SavedMap | null {
+  return listMaps().find((m) => m.id === id) ?? null;
+}
+
+/** Kaydeder (aynı kimlik varsa üzerine yazar); depolama doluysa hata fırlatır. */
+export function saveMap(m: Omit<SavedMap, 'date'>): SavedMap {
+  const slot = { ...m, date: Date.now() };
+  const all = listMaps().filter((x) => x.id !== m.id);
+  all.push(slot);
+  try {
+    localStorage.setItem(MAP_KEY, JSON.stringify(all));
+  } catch {
+    throw new Error('Tarayıcı depolama alanı dolu. Eski kayıtları silip tekrar deneyin.');
+  }
+  return slot;
+}
+
+export function deleteMap(id: string) {
+  try {
+    localStorage.setItem(MAP_KEY, JSON.stringify(listMaps().filter((m) => m.id !== id)));
+  } catch {
+    // yoksay
+  }
+}
+
+export function exportMap(m: Pick<SavedMap, 'name' | 'rows'>): string {
+  return JSON.stringify({ app: 'inek-surusu-map', name: m.name, rows: m.rows }, null, 1);
+}
+
+/** JSON metninden harita okur (biçim kontrolü draftFromRows ile ayrıca yapılmalı). */
+export function importMap(text: string): { name: string; rows: string[] } {
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error('Dosya geçerli bir JSON değil');
+  }
+  const o = data as { app?: string; name?: string; rows?: string[] };
+  if (!o || !Array.isArray(o.rows)) throw new Error('Bu dosya bir İnek Sürüsü haritası değil');
+  return { name: String(o.name ?? 'İçe aktarılan harita').slice(0, 40), rows: o.rows };
+}

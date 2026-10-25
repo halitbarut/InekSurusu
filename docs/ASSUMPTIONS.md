@@ -217,3 +217,22 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
 66. Geçmiş oyun durumunda değil, oyunu yürüten tarafta (yerel oyunda bu cihaz, çevrimiçide oda sahibi) tutulur;
     kayda girmez. Tur bitince, kayıt yüklenince ve bir koltuk bota geçince temizlenir. Çevrimiçide katılan
     oyuncu "Geri al"a basınca oda sahibinden ister (protokol sürümü 2'ye çıktı).
+
+## Harita editörü
+
+67. Editörde yalnızca kara/su ve madenler çizilir. Göller ve boğazlar her çizimden sonra oyunun mevcut kurallarıyla
+    bulunur: haritanın kenarına değmeyen ve en fazla 14 karelik su kütlesi **göl** (#22), daha büyük kapalı sular
+    iç **deniz**dir. Görevdeki "denize bağlı olmayan su kütleleri göl sayılsın" tanımı, rastgele haritalarla aynı
+    kalsın diye bu boyut sınırıyla uygulandı: büyük bir iç deniz çizen oyuncu orada gemi yüzdürebilir.
+68. Uygunluk: varsayılan kurallarla (madensiz başkent + 9 bitişik madensiz toprak, başkentler arası 5 kare)
+    kaç oyuncuya ayrık başlangıç alanı ayrılabildiği, rastgele haritalardaki açgözlü yerleştirmeyle hesaplanır.
+    3'ten az oyuncuya uygunsa hata, boğaz/göl/deniz yoksa ya da bir maden türü hiç yoksa yalnızca uyarıdır.
+    Yeni oyun ekranında seçili kurallarla yeniden hesaplanır; harita oyuncu sayısına yetmiyorsa uyarı gösterilir
+    ve oyun başlatılmaz (kurulumda başkent yeri kalmayıp oyun kilitlenmesin diye).
+69. "Madenleri otomatik yerleştir" rastgele haritalardaki dengeli düzeni kullanır (seçilen oyuncu sayısı kadar her türden).
+    Var olan madenler silinir; işlem geri alınabilir.
+70. Haritalar `localStorage` içinde (`inek-surusu-maps`) satır metni olarak saklanır: `.` su, `#` kara, `G/O/I/S`
+    altın/petrol/demir/çelik. JSON dışa/içe aktarma aynı biçimi kullanır. Boyut 12–90 kare.
+71. Kayıtlı oyunlar haritanın tamamını (`GameState.map`, adıyla) zaten içerir; harita silinse de oyun açılır.
+    Kayıtlı haritayla kurulan oyunda topaç sonuçlarını yeni oyun ekranındaki seed belirler (haritanın kendisi değil),
+    böylece aynı harita her oyunda farklı oynar.

@@ -3,6 +3,7 @@ import type { GameState } from './engine';
 import { clear } from './ui/dom';
 import { GameScreen, type NetMode } from './ui/game/gameScreen';
 import { renderLoadScreen, renderMainMenu, renderNewGame, type MenuCallbacks } from './ui/screens/menus';
+import { renderMapList } from './ui/screens/mapEditor';
 import { renderOnlineMenu } from './ui/screens/online';
 
 const host = document.getElementById('app')!;
@@ -21,9 +22,13 @@ function startGame(state: GameState, net: NetMode = null) {
 
 const cb: MenuCallbacks = {
   start: (state) => startGame(state),
-  newGame() {
+  newGame(mapId) {
     leaveGame();
-    renderNewGame(host, cb);
+    renderNewGame(host, cb, undefined, mapId);
+  },
+  editor() {
+    leaveGame();
+    renderMapList(host, { menu: () => cb.menu(), playMap: (id) => cb.newGame(id) });
   },
   load() {
     leaveGame();

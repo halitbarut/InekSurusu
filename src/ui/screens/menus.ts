@@ -1,29 +1,35 @@
 import {
   BOT_LEVELS,
+  DEFAULT_CONFIG,
+  checkMap,
   configProblems,
+  createGameFromMap,
   MAX_PLAYERS,
   MIN_PLAYERS,
   createGame,
   generateMap,
   toSeed,
-  type GameMap,
   type BotLevel,
   type GameState,
   type PlayerSetup,
 } from '../../engine';
 import { BOT_LEVEL_NAME } from '../../bot';
 import { clear, h, openModal, pickFile, toast } from '../dom';
-import { MINE_COLOR } from '../format';
+import { paintThumb } from '../mapPaint';
+import { mapFromSaved } from './mapEditor';
 import { getPrefs, setPrefs } from '../prefs';
 import type { HostRoom } from '../../net/hostRoom';
 import type { LobbyInfo, SeatKind } from '../../net/protocol';
-import { AUTOSAVE_ID, deleteSave, getSave, importState, listSaves } from '../storage';
+import { AUTOSAVE_ID, deleteSave, getSave, importState, listMaps, listSaves } from '../storage';
 import { inviteBox } from './online';
 import { clampInt, createRulesPanel } from './rulesPanel';
 
 export interface MenuCallbacks {
   start(state: GameState): void;
-  newGame(): void;
+  /** mapId verilirse kayıtlı harita seçili açılır */
+  newGame(mapId?: string): void;
+  /** Harita editörü (kayıtlı haritalar listesi) */
+  editor(): void;
   load(): void;
   menu(): void;
   /** Çevrimiçi oyun menüsü (oda kur / katıl); code verilirse katılma ekranı açılır */
@@ -62,6 +68,7 @@ export function renderMainMenu(host: HTMLElement, cb: MenuCallbacks) {
           h('button', { class: `btn btn-big ${auto ? '' : 'btn-primary'}`, onClick: () => cb.newGame() }, '✏️ Yeni oyun'),
           h('button', { class: 'btn btn-big', onClick: () => cb.online() }, '🌐 Çevrimiçi oyun'),
           h('button', { class: 'btn btn-big', onClick: () => cb.load() }, '📂 Kayıtlı oyunu yükle'),
+          h('button', { class: 'btn btn-big', onClick: () => cb.editor() }, '🗺️ Harita Editörü'),
           h('button', { class: 'btn btn-big', onClick: () => openSettings() }, '⚙️ Ayarlar'),
         ),
         h('p', { class: 'muted small' }, 'Aynı ekranda sırayla (hot-seat), çevrimiçi ya da botlarla 3–8 oyuncu.'),
@@ -164,7 +171,7 @@ export function renderLoadScreen(host: HTMLElement, cb: MenuCallbacks) {
 // ------------------------------------------------------------------
 
 /** Yeni oyun ekranı. room verilirse çevrimiçi oda sahibi lobisi olarak çalışır. */
-export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostRoom) {
+export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostRoom, mapId?: string) {
   clear(host);
   let count = 4;
   const players: PlayerSetup[] = NAMES.map((name, i) => ({ name, color: COLORS[i], kind: i === 0 ? 'human' : 'bot' }));
@@ -177,7 +184,7 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
     if (!room) return;
     room.setLobby(
       players.slice(0, count).map((p, i) => ({ name: p.name, color: p.color, kind: seatKinds[i], botLevel: seatKinds[i] === 'bot' ? seatBotLevels[i] : undefined })),
-      { width: clampInt(wIn.value, 20, 120), height: clampInt(hIn.value, 16, 90), seed: seedText, rules: rules.label() },
+      { width: clampInt(wIn.value, 20, 120), height: clampInt(hIn.value, 16, 90), seed: seedText, rules: rules.label(), mapName: savedMap()?.name },
     );
   };
   let seedText = String(Math.floor(Math.random() * 1_000_000));
@@ -191,6 +198,30 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
     schedulePreview();
   });
   const size = rules.mapSize(count);
+
+  // Harita kaynağı: rastgele (seed) ya da harita editöründe kaydedilmiş harita
+  const maps = listMaps();
+  let savedId: string | null = mapId && maps.some((m) => m.id === mapId) ? mapId : null;
+  const savedMap = () => (savedId ? (maps.find((m) => m.id === savedId) ?? null) : null);
+  const mapWarn = h('div', { class: 'map-warn hidden' });
+  const randomRows = h('div', {});
+  const sourceSel = h(
+    'select',
+    {
+      'aria-label': 'Harita kaynağı',
+      onChange: (e: Event) => {
+        const v = (e.target as HTMLSelectElement).value;
+        savedId = v === 'random' ? null : v;
+        randomRows.classList.toggle('hidden', savedId !== null);
+        syncLobby();
+        schedulePreview();
+      },
+    },
+    h('option', { value: 'random', selected: !savedId }, 'Rastgele harita'),
+    maps.length ? h('optgroup', { label: 'Kayıtlı haritalar' }, maps.map((m) => h('option', { value: m.id, selected: m.id === savedId }, m.name))) : null,
+  );
+  if (savedId) randomRows.classList.add('hidden');
+  const sizeRow = () => randomRows.append(h('div', { class: 'row' }, 'Genişlik ', wIn, ' Yükseklik ', hIn));
 
   const rowsEl = h('div', { class: 'player-rows' });
   const peopleEl = h('div', { class: 'people muted' }, 'Henüz kimse katılmadı.');
@@ -281,6 +312,24 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
     previewTimer = window.setTimeout(drawPreview, 120);
   };
   const drawPreview = () => {
+    const saved = savedMap();
+    mapWarn.classList.add('hidden');
+    if (saved) {
+      const config = rules.config();
+      try {
+        const map = mapFromSaved(saved);
+        paintThumb(preview, map);
+        const chk = checkMap(map, config);
+        previewInfo.textContent = `${saved.name} · ${map.width}×${map.height} · ${chk.land} kara karesi · ${chk.straits} boğaz · ${chk.lakes} göl · en fazla ${chk.maxPlayers} oyuncu`;
+        if (chk.maxPlayers < count) {
+          mapWarn.textContent = `⚠ Bu harita ${count} oyuncuya uygun değil: en fazla ${chk.maxPlayers} oyuncuya başlangıç alanı ayrılabiliyor. Oyuncu sayısını azalt ya da başka harita seç.`;
+          mapWarn.classList.remove('hidden');
+        }
+      } catch (e) {
+        previewInfo.textContent = (e as Error).message;
+      }
+      return;
+    }
     const width = clampInt(wIn.value, 20, 120);
     const height = clampInt(hIn.value, 16, 90);
     const seed = toSeed(seedIn.value);
@@ -296,7 +345,7 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
       mineLayout: config.mineLayout,
       maxMineDistance: config.maxMineDistance,
     });
-    paintPreview(preview, map);
+    paintThumb(preview, map);
     const land = map.terrain.filter((t) => t === 'land').length;
     previewInfo.textContent = `Seed ${seed} · ${width}×${height} · ${land} kara karesi · ${map.straits.length} boğaz · ${map.terrain.filter((t) => t === 'lake').length} göl karesi`;
   };
@@ -352,13 +401,22 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
     }
     if (new Set(ps.map((p) => p.name)).size !== ps.length) return toast('Oyuncu adları farklı olmalı', 'error');
     try {
-      const state = createGame({
-        players: ps,
-        width: clampInt(wIn.value, 20, 120),
-        height: clampInt(hIn.value, 16, 90),
-        seed: toSeed(seedText),
-        config,
-      });
+      const saved = savedMap();
+      let state: GameState;
+      if (saved) {
+        const map = mapFromSaved(saved);
+        const chk = checkMap(map, config);
+        if (chk.maxPlayers < ps.length) return toast(`"${saved.name}" haritası ${ps.length} oyuncuya uygun değil (en fazla ${chk.maxPlayers}).`, 'error', 6000);
+        state = createGameFromMap(map, ps, { ...DEFAULT_CONFIG, ...config }, toSeed(seedText));
+      } else {
+        state = createGame({
+          players: ps,
+          width: clampInt(wIn.value, 20, 120),
+          height: clampInt(hIn.value, 16, 90),
+          seed: toSeed(seedText),
+          config,
+        });
+      }
       if (room) cb.startHost(state, room, 0);
       else cb.start(state);
     } catch (e) {
@@ -366,6 +424,7 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
     }
   };
 
+  sizeRow();
   host.appendChild(
     h(
       'div',
@@ -383,11 +442,12 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
             'div',
             {},
             h('h3', {}, 'Harita'),
-            h('div', { class: 'row' }, 'Genişlik ', wIn, ' Yükseklik ', hIn),
+            h('div', { class: 'row' }, sourceSel),
+            randomRows,
             h(
               'div',
               { class: 'row' },
-              'Seed ',
+              h('span', { title: 'Rastgele haritayı ve oyundaki topaç sonuçlarını belirler' }, 'Seed '),
               seedIn,
               h(
                 'button',
@@ -404,6 +464,7 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
             ),
             preview,
             previewInfo,
+            mapWarn,
           ),
         ),
         rules.el,
@@ -448,29 +509,4 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
     };
     syncLobby();
   }
-}
-
-function paintPreview(canvas: HTMLCanvasElement, map: GameMap) {
-  const ctx = canvas.getContext('2d')!;
-  const s = Math.min(canvas.width / map.width, canvas.height / map.height);
-  const ox = (canvas.width - map.width * s) / 2;
-  const oy = (canvas.height - map.height * s) / 2;
-  ctx.fillStyle = '#fbf8ef';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  for (let i = 0; i < map.terrain.length; i++) {
-    const x = i % map.width;
-    const y = Math.floor(i / map.width);
-    const t = map.terrain[i];
-    ctx.fillStyle = map.straitOf[i] >= 0 ? '#c0392b' : t === 'sea' ? '#bcd6ee' : t === 'lake' ? '#9fd6c9' : '#fffdf6';
-    ctx.fillRect(ox + x * s, oy + y * s, s, s);
-    const m = map.mines[i];
-    if (m) {
-      ctx.fillStyle = MINE_COLOR[m];
-      ctx.beginPath();
-      ctx.arc(ox + (x + 0.5) * s, oy + (y + 0.5) * s, s * 0.3, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-  ctx.strokeStyle = '#3b3a36';
-  ctx.strokeRect(ox, oy, map.width * s, map.height * s);
 }

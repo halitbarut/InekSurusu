@@ -27,6 +27,8 @@ export interface GameMap {
   width: number;
   height: number;
   seed: number;
+  /** Elle çizilmiş haritanın adı (rastgele haritada yok) */
+  name?: string;
   terrain: Terrain[];
   mines: (MineType | null)[];
   straits: Strait[];

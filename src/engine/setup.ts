@@ -39,7 +39,8 @@ export function createGame(settings: NewGameSettings): GameState {
 }
 
 /** Hazır bir harita ile oyun durumu oluşturur (testler ve özel haritalar için). */
-export function createGameFromMap(map: GameMap, players: PlayerSetup[], config: GameConfig = DEFAULT_CONFIG): GameState {
+/** rngSeed: oyunun topaç tohumu (verilmezse haritanın tohumundan türetilir) */
+export function createGameFromMap(map: GameMap, players: PlayerSetup[], config: GameConfig = DEFAULT_CONFIG, rngSeed = map.seed): GameState {
   const size = map.width * map.height;
   const ps: Player[] = players.map((p, id) => ({
     id,
@@ -70,7 +71,7 @@ export function createGameFromMap(map: GameMap, players: PlayerSetup[], config: 
     turnCounter: 0,
     round: 0,
     phase: { kind: 'setup_capital' },
-    rngState: mixSeed(map.seed, 0x5eed),
+    rngState: mixSeed(rngSeed, 0x5eed),
     log: [],
     winners: null,
   };

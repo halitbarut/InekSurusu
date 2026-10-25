@@ -492,3 +492,8 @@ function range(n: number): number[] {
 function rangeFrom(n: number, f: (k: number) => number): number[] {
   return Array.from({ length: n }, (_, k) => f(k));
 }
+
+/** Elle çizilen haritaya madenleri dengeli düzenle yerleştirir (var olan madenler silinir). */
+export function autoPlaceMines(d: Dims, terrain: Terrain[], players: number, perTypePerPlayer: number, startTerritoryCount: number, seed: number): (MineType | null)[] {
+  return placeMinesSpread(d, terrain, players * perTypePerPlayer, startTerritoryCount + 1, createRng(seed));
+}

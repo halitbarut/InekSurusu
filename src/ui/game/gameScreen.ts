@@ -810,7 +810,7 @@ export class GameScreen {
       h('div', { class: 'trophy' }, '🏆'),
       h('h1', {}, winners.length > 1 ? 'İttifak kazandı!' : `${pname(s, winners[0])} kazandı!`),
       h('p', {}, winners.length > 1 ? winners.map((w) => pname(s, w)).join(', ') : 'Dünyada tek bir devlet kaldı.'),
-      h('p', { class: 'muted' }, `${s.round} tur sürdü · Seed ${s.map.seed}`),
+      h('p', { class: 'muted' }, `${s.round} tur sürdü · ${s.map.name ? `Harita: ${s.map.name}` : `Seed ${s.map.seed}`}`),
       h(
         'div',
         { class: 'row-buttons' },
@@ -880,7 +880,7 @@ export class GameScreen {
         h('span', { class: 'stat', title: 'Toprak' }, '🟩 ', h('b', {}, st.tiles)),
         s.config.upkeepEnabled ? h('span', { class: 'stat', title: 'Her tur başında gemi, uçak ve askeri üsler için ödenir' }, '🧾 Tur başı bakım: ', h('b', {}, `${fmtNum(upkeepDue(s, p.id))} akçe`)) : null,
       ),
-      h('div', { class: 'meta' }, s.round > 0 ? `${s.round}. tur` : 'Kurulum', h('br'), h('span', { class: 'muted', title: 'Harita seed değeri' }, `Seed ${s.map.seed}`)),
+      h('div', { class: 'meta' }, s.round > 0 ? `${s.round}. tur` : 'Kurulum', h('br'), s.map.name ? h('span', { class: 'muted', title: 'Kayıtlı harita' }, s.map.name) : h('span', { class: 'muted', title: 'Harita seed değeri' }, `Seed ${s.map.seed}`)),
     );
   }
 
