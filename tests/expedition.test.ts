@@ -109,6 +109,26 @@ describe('gemi seferi', () => {
   });
 });
 
+describe('başkente sefer', () => {
+  it('başkente gemiyle saldırılamaz', () => {
+    const s = seaWorld();
+    s.structure[at(s, 12, 4)] = null;
+    setCapital(s, 2, 10, 4); // kıyıda
+    expect(validateAction(s, ship(s, 10, 4))).toEqual({ ok: false, reason: 'Başkente gemi veya uçakla saldırılamaz' });
+    expect(expeditionTargets(s, 0, 1).has(at(s, 10, 4))).toBe(false);
+    // Yanındaki sıradan kıyı toprağına saldırı serbest
+    expect(validateAction(s, ship(s, 10, 3)).ok).toBe(true);
+  });
+
+  it('başkente uçakla saldırılamaz; seferle kazanılan savaşta başkent seçilemez', () => {
+    let s = airField(9, 4);
+    expect(validateAction(s, plane(s, 12, 0))).toEqual({ ok: false, reason: 'Başkente gemi veya uçakla saldırılamaz' });
+    own(s, 2, [[11, 0]]);
+    s = act(s, plane(s, 11, 0), [8, 1]);
+    expect(conquestCandidates(s)).toEqual([at(s, 11, 0)]);
+  });
+});
+
 describe('seferle savaşta karşı saldırı', () => {
   it('savunanla sınır yoksa saldıran toprak kaybetmez', () => {
     let s = seaWorld();

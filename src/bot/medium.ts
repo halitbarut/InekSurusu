@@ -320,8 +320,7 @@ export class MediumBot implements BotBrain {
         const type = kind === 'ship' ? ('SHIP_EXPEDITION' as const) : ('PLANE_EXPEDITION' as const);
         const action: Action = { type, player: p, unitId: unit.id, target: t.tile };
         let value: number;
-        if (t.kind === 'capital') value = seriesWinProbability(cfg.capitalStreak) * ownedValue(state, q);
-        else if (t.kind === 'base') value = seriesWinProbability(cfg.baseStreak) * (tileValue(state, t.tile) + 2);
+        if (t.kind === 'base') value = seriesWinProbability(cfg.baseStreak) * (tileValue(state, t.tile) + 2);
         else {
           const around = [t.tile, ...neighbors4(state.map, t.tile)].filter((x) => state.owner[x] === q && isNormal(state, x));
           const gainPool = poolValues(state, around, around.length);

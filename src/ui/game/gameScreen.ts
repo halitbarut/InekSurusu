@@ -1470,7 +1470,7 @@ export class GameScreen {
           h('li', {}, `Başkent savaşı: ${c.capitalStreak} kez art arda yüksek at (eşitlik tekrar). Başkent düşerse oyuncu elenir, her şeyi saldırana geçer.`),
           h('li', {}, `Askeri üs savaşı: ${c.baseStreak} kez art arda yüksek at. Başkent/üs savaşını kaybetmenin toprak bedeli yok.`),
           h('li', {}, `Gemi seferi: ${c.shipOilCost} petrol, deniz yoluyla kıyı topraklarına. Uçak seferi: ${c.planeOilCost} petrol, her yere — düşman üslerinin ${c.baseBlockRadius} kare çevresi hariç.`),
-          h('li', {}, `Sefer hedefi sahipsizse ${c.expeditionClaimCost} akçeyle alınır, sahipliyse savaş olur. Maden kareleri seferle doğrudan alınamaz.`),
+          h('li', {}, `Sefer hedefi sahipsizse ${c.expeditionClaimCost} akçeyle alınır, sahipliyse savaş olur. Maden kareleri seferle doğrudan alınamaz; başkente gemi ya da uçakla saldırılamaz (yalnızca karadan).`),
           h('li', {}, 'Boğazın iki yakası da senin ise boğazı idare edersin: her oyuncu için geçiş izni ve vergi belirleyebilirsin.'),
           h('li', {}, 'Müttefiklere ve barış yapılanlara saldırılamaz. İttifak kendi turunda bozulabilir; o tur eski müttefike saldırılamaz.'),
           h('li', {}, 'Kazanma: tek devlet kalırsa ya da kalan herkes müttefikse ve oybirliğiyle bitirmeye karar verirse.'),

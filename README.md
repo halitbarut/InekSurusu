@@ -35,11 +35,11 @@ haritada vurgulanır; karelerin üzerine gelince bilgi ve neden yapılamadığı
 | Altın bozdur | 1 altın = 200 akçe |
 | **Turda tek savaş** | Kara savaşı, gemi/uçakla dolu toprağa saldırı, başkent ve üs savaşı — hepsinden turda yalnızca 1 tane |
 | Kara savaşı | Sınır komşuluğu. İki taraf topaç çevirir. A > D: saldıran A − D toprak seçer. A < D: savunan karşı saldırıyla ⌈(D − A)/2⌉ toprak seçer (saldıranın kendisine komşu topraklarından). A = D: sonuçsuz |
-| Başkent savaşı | Art arda 3 kez yüksek at (eşitlik tekrar). Kazanırsan rakip elenir, her şeyi sana geçer. Kaybedersen toprak kaybı yok |
+| Başkent savaşı | Yalnızca karadan (sınır komşuluğu). Art arda 3 kez yüksek at (eşitlik tekrar). Kazanırsan rakip elenir, her şeyi sana geçer. Kaybedersen toprak kaybı yok |
 | Askeri üs savaşı | Art arda 2 kez yüksek at. Kaybedersen toprak kaybı yok |
 | Gemi seferi | 1 petrol; deniz yoluyla kıyı topraklarına. Kapalı/vergili boğazlara dikkat |
 | Uçak seferi | 2 petrol; her yere — düşman üslerinin 3 kare çevresi hariç |
-| Sefer hedefi | Sahipsizse 100 akçeyle alınır (savaş sayılmaz), sahipliyse savaş. Maden kareleri seferle doğrudan alınamaz. Seferle saldırıda kaybedersen savunan yalnızca kendisiyle sınırın olan topraklarından alabilir |
+| Sefer hedefi | Sahipsizse 100 akçeyle alınır (savaş sayılmaz), sahipliyse savaş. Maden kareleri seferle doğrudan alınamaz. **Başkente gemi ya da uçakla saldırılamaz** (başkent savaşı yalnızca karadan). Seferle saldırıda kaybedersen savunan yalnızca kendisiyle sınırın olan topraklarından alabilir |
 
 Fetihte başkent ve askeri üs toprakları seçilemez; her seçilen toprak seçim anında seçenin toprağına komşu
 olmalıdır (seferle kazanılan savaşta hedef kare ve komşuları). Seçilecek toprak kalmazsa seçilebildiği kadar

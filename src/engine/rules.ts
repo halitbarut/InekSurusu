@@ -225,6 +225,7 @@ export function expeditionCheck(
   if (state.map.terrain[t] !== 'land') return bad('Hedef kara olmalı');
   if (isShip && !isCoastal(state.map, t)) return bad('Gemi yalnızca denize kıyısı olan topraklara gidebilir');
   if (state.map.mines[t]) return bad('Maden kareleri gemi veya uçakla doğrudan alınamaz');
+  if (state.structure[t] === 'capital') return bad('Başkente gemi veya uçakla saldırılamaz');
   const o = state.owner[t];
   if (o === action.player) return bad('Bu toprak zaten sizin');
   if (o !== null) {

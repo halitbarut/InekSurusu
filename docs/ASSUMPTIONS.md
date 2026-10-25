@@ -60,7 +60,9 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
 17. **Gemi rotası** tersanenin komşu deniz karelerinden başlar ve yalnızca deniz karelerinden geçer
     (göller hariç). Hedef, denize (göle değil) komşu bir kara karesidir. İç denize açılan bir tersane
     yalnızca o iç denize ve boğazlarla bağlı denizlere ulaşır.
-18. Sefer hedefi kendi toprağı, müttefik ya da barış yapılan oyuncunun toprağı olamaz.
+18. Sefer hedefi kendi toprağı, müttefik ya da barış yapılan oyuncunun toprağı olamaz. Başkent de
+    sefer hedefi olamaz (kural): başkent savaşı yalnızca karadan, sınır komşuluğuyla yapılır. Başkente
+    komşu sıradan bir toprağa seferle saldırıp kazanan, başkenti fetihte seçemez.
 19. **Uçak rotası** 8 yönlüdür (çapraz geçebilir). Engel alanı varsayılan Chebyshev yarıçapı 3'tür
     (`baseBlockRadius`, `baseBlockMetric`). Fabrikası engel alanında kalan uçak kalkamaz. Askeri üs
     kendi engel alanının içinde olduğu için üslere uçakla saldırılamaz (gemi ya da karadan saldırılır).
