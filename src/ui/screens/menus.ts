@@ -1,15 +1,10 @@
 import {
-  AKCE_FIELDS,
-  AKCE_STEP,
-  DEFAULT_CONFIG,
   configProblems,
   MAX_PLAYERS,
   MIN_PLAYERS,
   createGame,
-  defaultMapSize,
   generateMap,
   toSeed,
-  type GameConfig,
   type GameMap,
   type GameState,
   type PlayerSetup,
@@ -21,6 +16,7 @@ import type { HostRoom } from '../../net/hostRoom';
 import type { LobbyInfo, SeatKind } from '../../net/protocol';
 import { AUTOSAVE_ID, deleteSave, getSave, importState, listSaves } from '../storage';
 import { inviteBox } from './online';
+import { clampInt, createRulesPanel } from './rulesPanel';
 
 export interface MenuCallbacks {
   start(state: GameState): void;
@@ -159,57 +155,6 @@ export function renderLoadScreen(host: HTMLElement, cb: MenuCallbacks) {
 
 // ------------------------------------------------------------------
 
-interface ConfigField {
-  key: keyof GameConfig;
-  label: string;
-  min: number;
-  max: number;
-}
-
-const CONFIG_FIELDS: ConfigField[] = [
-  { key: 'startAkce', label: 'Başlangıç akçesi', min: 0, max: 100000 },
-  { key: 'startTerritoryCount', label: 'Başlangıç toprağı (başkent hariç)', min: 0, max: 30 },
-  { key: 'minCapitalDistance', label: 'Başkentler arası en az mesafe', min: 1, max: 20 },
-  { key: 'claimCost', label: 'Toprak ele geçirme masrafı', min: 0, max: 10000 },
-  { key: 'expeditionClaimCost', label: 'Seferle toprak alma masrafı', min: 0, max: 10000 },
-  { key: 'goldToAkce', label: '1 altın = ? akçe', min: 0, max: 10000 },
-  { key: 'spinMultiplier', label: 'Topaç çarpanı (sayı × ? akçe)', min: 0, max: 10000 },
-  { key: 'shipyardCost', label: 'Tersane maliyeti', min: 0, max: 10000 },
-  { key: 'factoryCost', label: 'Uçak fabrikası maliyeti', min: 0, max: 10000 },
-  { key: 'baseCost', label: 'Askeri üs maliyeti', min: 0, max: 10000 },
-  { key: 'shipAkceCost', label: 'Gemi: akçe', min: 0, max: 10000 },
-  { key: 'shipIronCost', label: 'Gemi: demir', min: 0, max: 100 },
-  { key: 'planeAkceCost', label: 'Uçak: akçe', min: 0, max: 10000 },
-  { key: 'planeSteelCost', label: 'Uçak: çelik', min: 0, max: 100 },
-  { key: 'shipOilCost', label: 'Gemi seferi: petrol', min: 0, max: 100 },
-  { key: 'planeOilCost', label: 'Uçak seferi: petrol', min: 0, max: 100 },
-  { key: 'capitalStreak', label: 'Başkent savaşı: art arda galibiyet', min: 1, max: 10 },
-  { key: 'baseStreak', label: 'Üs savaşı: art arda galibiyet', min: 1, max: 10 },
-  { key: 'baseBlockRadius', label: 'Üs uçak engeli yarıçapı', min: 0, max: 20 },
-  { key: 'maxSortiesPerUnitPerTurn', label: 'Birim başına tur içi sefer (0 = sınırsız)', min: 0, max: 100 },
-  { key: 'minesPerTypePerPlayer', label: 'Oyuncu başına maden (her türden)', min: 0, max: 20 },
-  { key: 'maxMineDistance', label: 'Her türün en yakın madenine en fazla uzaklık (dengeli düzen)', min: 1, max: 50 },
-  { key: 'maxPeaceRounds', label: 'En uzun barış süresi (tur)', min: 1, max: 200 },
-  { key: 'landBattleAkce', label: 'Normal savaş masrafı (akçe)', min: 0, max: 10000 },
-  { key: 'baseBattleAkce', label: 'Üs savaşı masrafı (akçe)', min: 0, max: 10000 },
-  { key: 'baseBattleIron', label: 'Üs savaşı masrafı (demir)', min: 0, max: 100 },
-  { key: 'capitalBattleAkce', label: 'Başkent savaşı masrafı (akçe)', min: 0, max: 100000 },
-  { key: 'capitalBattleIron', label: 'Başkent savaşı masrafı (demir)', min: 0, max: 100 },
-  { key: 'capitalBattleSteel', label: 'Başkent savaşı masrafı (çelik)', min: 0, max: 100 },
-  { key: 'shipUpkeep', label: 'Gemi bakımı (akçe/tur)', min: 0, max: 10000 },
-  { key: 'planeUpkeep', label: 'Uçak bakımı (akçe/tur)', min: 0, max: 10000 },
-  { key: 'baseUpkeep', label: 'Askeri üs bakımı (akçe/tur)', min: 0, max: 10000 },
-  { key: 'openingPeaceRounds', label: 'Açılış barışı süresi (tur)', min: 0, max: 100 },
-];
-
-/** Aç/kapa kurallar */
-const CONFIG_TOGGLES: { key: keyof GameConfig; label: string }[] = [
-  { key: 'battleCostsEnabled', label: 'Savaş masrafları' },
-  { key: 'upkeepEnabled', label: 'Tur başı bakım' },
-  { key: 'weaknessRule', label: 'Zayıflık şartı (başkente yalnızca toprağı senin yarından az olana saldırılır)' },
-  { key: 'openingPeace', label: 'Açılış barışı (ilk N tur oyuncu topraklarına saldırı yok)' },
-];
-
 /** Yeni oyun ekranı. room verilirse çevrimiçi oda sahibi lobisi olarak çalışır. */
 export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostRoom) {
   clear(host);
@@ -223,13 +168,20 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
     if (!room) return;
     room.setLobby(
       players.slice(0, count).map((p, i) => ({ name: p.name, color: p.color, kind: seatKinds[i] })),
-      { width: clampInt(wIn.value, 20, 120), height: clampInt(hIn.value, 16, 90), seed: seedText },
+      { width: clampInt(wIn.value, 20, 120), height: clampInt(hIn.value, 16, 90), seed: seedText, rules: rules.label() },
     );
   };
-  let size = defaultMapSize(count);
-  let sizeEdited = false;
   let seedText = String(Math.floor(Math.random() * 1_000_000));
-  const config: GameConfig = { ...DEFAULT_CONFIG };
+  const rules = createRulesPanel((what) => {
+    if (what === 'size') {
+      const size = rules.mapSize(count);
+      wIn.value = String(size.width);
+      hIn.value = String(size.height);
+    }
+    syncLobby();
+    schedulePreview();
+  });
+  const size = rules.mapSize(count);
 
   const rowsEl = h('div', { class: 'player-rows' });
   const peopleEl = h('div', { class: 'people muted' }, 'Henüz kimse katılmadı.');
@@ -313,6 +265,7 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
     const width = clampInt(wIn.value, 20, 120);
     const height = clampInt(hIn.value, 16, 90);
     const seed = toSeed(seedIn.value);
+    const config = rules.config();
     const map = generateMap({
       width,
       height,
@@ -331,18 +284,16 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
 
   countSel.addEventListener('change', () => {
     count = Number(countSel.value);
-    if (!sizeEdited) {
-      size = defaultMapSize(count);
-      wIn.value = String(size.width);
-      hIn.value = String(size.height);
-    }
+    const size = rules.mapSize(count);
+    wIn.value = String(size.width);
+    hIn.value = String(size.height);
     renderRows();
     syncLobby();
     schedulePreview();
   });
   for (const el of [wIn, hIn]) {
     el.addEventListener('input', () => {
-      sizeEdited = true;
+      rules.sizeEdited(clampInt(wIn.value, 20, 120), clampInt(hIn.value, 16, 90));
       syncLobby();
       schedulePreview();
     });
@@ -353,59 +304,8 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
     schedulePreview();
   });
 
-  const configGrid = h(
-    'div',
-    { class: 'form-grid config-grid' },
-    CONFIG_FIELDS.map((f) => {
-      // Akçe değerleri 100'er artıp azalır
-      const akce = AKCE_FIELDS.includes(f.key);
-      return [
-        h('label', {}, f.label),
-        h('input', {
-          type: 'number',
-          class: 'num',
-          min: f.min,
-          max: f.max,
-          // Okla 50'şer değişir; elle yazılan her tam sayı geçerlidir
-          step: akce ? AKCE_STEP : 1,
-          value: config[f.key] as number,
-          onInput: (e: Event) => {
-            (config as unknown as Record<string, number>)[f.key] = clampInt((e.target as HTMLInputElement).value, f.min, f.max);
-            if (f.key === 'minesPerTypePerPlayer' || f.key === 'startTerritoryCount' || f.key === 'maxMineDistance') schedulePreview();
-          },
-        }),
-      ];
-    }),
-    CONFIG_TOGGLES.map((t) => [
-      h('label', {}, t.label),
-      h('input', {
-        type: 'checkbox',
-        checked: config[t.key] as boolean,
-        onChange: (e: Event) => ((config as unknown as Record<string, boolean>)[t.key] = (e.target as HTMLInputElement).checked),
-      }),
-    ]),
-    h('label', {}, 'Maden yerleşimi'),
-    h(
-      'select',
-      {
-        onChange: (e: Event) => {
-          config.mineLayout = (e.target as HTMLSelectElement).value as 'spread' | 'random';
-          schedulePreview();
-        },
-      },
-      h('option', { value: 'spread', selected: true }, 'Dengeli'),
-      h('option', { value: 'random' }, 'Rastgele (eski)'),
-    ),
-    h('label', {}, 'Üs engeli mesafe ölçüsü'),
-    h(
-      'select',
-      { onChange: (e: Event) => (config.baseBlockMetric = (e.target as HTMLSelectElement).value as 'chebyshev' | 'manhattan') },
-      h('option', { value: 'chebyshev', selected: true }, 'Chebyshev (kare)'),
-      h('option', { value: 'manhattan' }, 'Manhattan (elmas)'),
-    ),
-  );
-
   const start = async () => {
+    const config = rules.config();
     const problems = configProblems(config);
     if (problems.length) return toast(`Kural ayarları geçersiz: ${problems.join('; ')}`, 'error', 6000);
     let ps = players.slice(0, count).map((p, i) => ({ ...p, name: p.name.trim() || `Oyuncu ${i + 1}` }));
@@ -485,7 +385,7 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
             previewInfo,
           ),
         ),
-        h('details', { class: 'rules-config' }, h('summary', {}, '⚙️ Kural ayarları'), configGrid),
+        rules.el,
         h(
           'div',
           { class: 'row-buttons' },
@@ -527,12 +427,6 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
     };
     syncLobby();
   }
-}
-
-function clampInt(v: string, min: number, max: number): number {
-  const n = Math.floor(Number(v));
-  if (!Number.isFinite(n)) return min;
-  return Math.max(min, Math.min(max, n));
 }
 
 function paintPreview(canvas: HTMLCanvasElement, map: GameMap) {

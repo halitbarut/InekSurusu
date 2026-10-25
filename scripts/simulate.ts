@@ -5,6 +5,7 @@
  *   npm run simulate                      # 1. tur: A, B, C, D, RA, RB (150'şer oyun)
  *   npm run simulate -- --round 2         # 2. tur: B2, RB2 ve karşılaştırma için 1. tur ayarlarıyla B, RB (100'er oyun)
  *   npm run simulate -- --round 3         # 3. tur: B3, RB3 ve karşılaştırma için B, RB, B2, RB2 (100'er oyun)
+ *   npm run simulate -- --round onayar    # yeni oyun ekranındaki hazır kural takımları (60'ar oyun)
  *   npm run simulate -- --games 20        # hızlı deneme
  *   npm run simulate -- --scenarios B,C   # yalnızca seçilen senaryolar
  *   npm run simulate -- --round 3 --scenarios RB,RB2 --reuse   # yalnızca seçilenleri oynat, diğerlerini önbellekten al
@@ -17,7 +18,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Worker, isMainThread, parentPort } from 'node:worker_threads';
 import type { BotTuning } from '../src/bot';
-import { DEFAULT_CONFIG, type GameConfig } from '../src/engine';
+import { BUILTIN_PRESETS, DEFAULT_CONFIG, presetMapSize, type GameConfig } from '../src/engine';
 import { playGame, SNAPSHOT_ROUNDS, type GameMetrics, type GameSpec, type SpendKey } from './sim/game';
 
 interface Scenario {
@@ -83,12 +84,15 @@ const SCENARIOS: Scenario[] = [
     rusher: false,
   },
   { id: 'RB3', title: 'B3 + 1 acele eden bot', config: {}, rusher: true },
+  // Hazır kural takımları (5 oyuncu)
+  ...BUILTIN_PRESETS.map((p) => ({ id: `P-${p.id}`, title: `${p.name}: ${p.description}`, config: p.config, size: presetMapSize(p, 5), rusher: false })),
 ];
 
 const ROUNDS: Record<string, { scenarios: string[]; games: number }> = {
   '1': { scenarios: ['A', 'B', 'C', 'D', 'RA', 'RB'], games: 150 },
   '2': { scenarios: ['B', 'RB', 'B2', 'RB2'], games: 100 },
   '3': { scenarios: ['B', 'RB', 'B2', 'RB2', 'B3', 'RB3'], games: 100 },
+  onayar: { scenarios: BUILTIN_PRESETS.map((p) => `P-${p.id}`), games: 60 },
 };
 
 // ------------------------------------------------------------------
@@ -178,7 +182,8 @@ async function main() {
   const shown = reuse ? all : scenarios;
   if (round === '1') writeReport(out, buildReport(shown, results, opt));
   else if (round === '2') writeSection(out, 'tur2', buildRound2(shown, results, opt));
-  else writeSection(out, 'tur3', buildRound3(shown, results, opt));
+  else if (round === '3') writeSection(out, 'tur3', buildRound3(shown, results, opt));
+  else writeSection(out, 'onayar', buildPresets(shown, results, opt), 'Hazır kural takımları');
   console.log(`Rapor yazıldı: ${out}`);
 }
 
@@ -602,20 +607,48 @@ function buildRound3(scenarios: Scenario[], results: Map<string, GameMetrics[]>,
   return L.join('\n');
 }
 
+// ------------------------------------------------------------------
+// Hazır kural takımları
+// ------------------------------------------------------------------
+
+function buildPresets(scenarios: Scenario[], results: Map<string, GameMetrics[]>, opt: Opt): string {
+  const L: string[] = [];
+  L.push('## Hazır kural takımları');
+  L.push('');
+  L.push(
+    `\`npm run simulate -- --round onayar\` ile üretilir (son çalıştırma: ${new Date().toISOString().slice(0, 10)}). ` +
+      `Yeni oyun ekranındaki her önayar için ${opt.games} oyun, ${opt.players} oyuncu (orta seviye botlar), ${opt.maxRounds} tur sınırı, seed'ler 10000–${10_000 + opt.games - 1}.`,
+  );
+  L.push('');
+  L.push('| Önayar | Harita | İlk başkent fethi, medyan tur | Hiç başkent düşmeyen | Biten oyunların bitiş turu, medyan | Tur sınırına takılan | Oyun başına savaş | Bakım / harcama |');
+  L.push('|---|---|---|---|---|---|---|---|');
+  for (const s of scenarios) {
+    const ms = results.get(s.id)!;
+    const x = summarize(ms, undefined);
+    const size = s.size ? `${s.size.width}×${s.size.height}` : '—';
+    L.push(
+      `| ${s.title.split(':')[0]} | ${size} | ${f(x.firstFallMedian === 999 ? NaN : x.firstFallMedian)} | ${pct(x.neverFell, 0)} | ${f(x.endMedian)} | ${pct(x.limitShare, 0)} | ${f(x.battlesPerGame, 0)} | ${pct(x.upkeepShare, 0)} |`,
+    );
+  }
+  L.push('');
+  L.push('İlk başkent fethi medyanında hiç başkent düşmeyen oyunlar tur sınırı olarak sayıldı.');
+  L.push('');
+  return L.join('\n');
+}
+
 const MARKER = '<!-- öneriler: bu satırın altı simülasyon tarafından değiştirilmez -->';
 
 /**
  * Rapora adlandırılmış bir bölüm yazar: işaretler arasındaki kısım değiştirilir, yoksa dosyanın sonuna eklenir.
  * Bölümün altına elle yazılan değerlendirme (kapanış işaretinden sonrası) korunur.
  */
-function writeSection(path: string, name: string, generated: string) {
+function writeSection(path: string, name: string, generated: string, title = name.replace('tur', '') + '. tur') {
   const open = `<!-- bölüm:${name} — bu işaretle kapanış işareti arası simülasyon tarafından yazılır -->`;
   const close = `<!-- /bölüm:${name} -->`;
   const block = `${open}\n\n${generated}\n${close}`;
   const old = existsSync(path) ? readFileSync(path, 'utf8') : '# Denge raporu\n';
   const i = old.indexOf(open);
   const j = old.indexOf(close);
-  const title = name.replace('tur', '') + '. tur';
   const next =
     i >= 0 && j > i ? old.slice(0, i) + block + old.slice(j + close.length) : `${old.trimEnd()}\n\n${block}\n\n### Değerlendirme ve öneriler (${title})\n\n_Henüz yazılmadı._\n`;
   writeFileSync(path, next);

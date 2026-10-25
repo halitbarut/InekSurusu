@@ -9,6 +9,7 @@ export * from './diplomacy';
 export * from './rules';
 export * from './setup';
 export * from './queries';
+export * from './presets';
 export { farthestFromMine, fitsStartAreas, generateMap, mapProblems } from './map/generate';
 export { detectStraits } from './map/straits';
 export { mapFromAscii } from './map/ascii';

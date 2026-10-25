@@ -1,4 +1,4 @@
-import type { GameState } from '../engine';
+import type { GameConfig, GameState } from '../engine';
 
 const KEY = 'inek-surusu-saves';
 export const AUTOSAVE_ID = 'auto';
@@ -89,4 +89,49 @@ export function importState(text: string): GameState {
   }
   if (state.owner.length !== state.map.width * state.map.height) throw new Error('Kayıt bozuk: harita boyutu tutarsız');
   return state;
+}
+
+// ------------------------------------------------------------------
+// Kullanıcının kaydettiği kural ayarları (özel önayarlar)
+// ------------------------------------------------------------------
+
+const PRESET_KEY = 'inek-surusu-presets';
+
+export interface SavedPreset {
+  name: string;
+  config: GameConfig;
+  /** Harita boyutu çarpanı; size verilmişse kullanılmaz */
+  mapScale: number;
+  /** Elle girilmiş harita boyutu (yoksa oyuncu sayısına göre) */
+  size: { width: number; height: number } | null;
+}
+
+export function listPresets(): SavedPreset[] {
+  try {
+    const raw = localStorage.getItem(PRESET_KEY);
+    const arr = raw ? (JSON.parse(raw) as SavedPreset[]) : [];
+    return Array.isArray(arr) ? arr.filter((p) => p && typeof p.name === 'string' && p.config) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Aynı adlı kayıt varsa üzerine yazar. */
+export function savePreset(p: SavedPreset) {
+  const all = listPresets().filter((x) => x.name !== p.name);
+  all.push(p);
+  all.sort((a, b) => a.name.localeCompare(b.name, 'tr'));
+  try {
+    localStorage.setItem(PRESET_KEY, JSON.stringify(all));
+  } catch {
+    throw new Error('Ayar kaydedilemedi: tarayıcı depolama alanı kullanılamıyor.');
+  }
+}
+
+export function deletePreset(name: string) {
+  try {
+    localStorage.setItem(PRESET_KEY, JSON.stringify(listPresets().filter((x) => x.name !== name)));
+  } catch {
+    // yoksay
+  }
 }

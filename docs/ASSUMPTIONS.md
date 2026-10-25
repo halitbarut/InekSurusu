@@ -157,3 +157,28 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
     kendiliğinden dağıtır (bot ayarları `maxUpkeepShare`, `upkeepCap`, `upkeepExcessShare`). Başkent savaşına
     masraf ile bir sonraki turun bakımını karşılayabiliyorsa ve hedefin toprağı kendisininkinden fazla değilse
     girer (bot ayarları: `capitalCostCushion` = 1, `capitalReserveUpkeep` = açık, `capitalWeakRatio` = 1).
+
+## Hazır kural takımları (önayarlar)
+
+53. Yeni oyun ekranında dört hazır kural takımı vardır; varsayılan **Dengeli**dir. Değerler `src/engine/presets.ts`
+    içindedir; listelenmeyen her ayar varsayılan değerindedir.
+
+    | Önayar | Farkı | Harita |
+    |---|---|---|
+    | Klasik | Savaş masrafı ve bakım kapalı (kâğıt oyundaki gibi) | önerilen boyut |
+    | Dengeli | Varsayılanlar (3. denge turu) | önerilen boyut |
+    | Hızlı | Başlangıç akçesi 300 | önerilen boyutun %80'i (5 oyuncuda 35×26) |
+    | Sakin açılış | Dengeli + açılış barışı (5 tur) | önerilen boyut |
+
+54. **Hızlı** önayar başkent savaşı kurallarına ve masraflarına dokunmaz (bu oturumda başkent kuralları değişmiyor).
+    Oyunu kısaltan iki şey vardır: küçük harita (komşular ve başkentler daha erken karşılaşır) ve ilk turlarda daha
+    hızlı genişleme için 300 akçelik başlangıç. Etkisi `npm run simulate -- --round onayar` ile ölçülür
+    (BALANCE_REPORT.md, "Hazır kural takımları").
+55. Harita boyutu önayarın parçasıdır: önayar oyuncu sayısına göre önerilen boyutu bir çarpanla küçültüp büyütür.
+    Genişlik ya da yükseklik elle değiştirilirse seçim **Özel**e geçer. Kural değerlerinden biri değiştirildiğinde de
+    aynısı olur. Önayar seçiliyken ayar grupları kapalı ama açılabilir durumdadır; **Özel** seçilince hepsi açılır.
+56. Kaydedilen özel ayarlar `localStorage` içinde (`inek-surusu-presets`) ad, tüm kural değerleri, harita çarpanı ve
+    (elle girildiyse) harita boyutuyla saklanır. Aynı adla kaydetmek eskisinin üzerine yazar; hazır önayar adları
+    kullanılamaz. Kayıtlı ayar seçildikten sonra bir değer değiştirilirse yine **Özel**e geçilir.
+57. Görev metninde "online yok" deniyor, ama proje önceki oturumda çevrimiçi oyun kazandı. Çevrimiçi oyun korunup
+    yeni özelliklerle uyumlu tutuldu (ör. oda lobisinde seçili kural takımının adı görünür).

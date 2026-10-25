@@ -39,11 +39,13 @@ export interface HostRoomEvents {
  * bağlantı durumu ve bot devralma. Oyun durumunu kendisi tutmaz; hamleleri olay olarak
  * dışarı (oyun ekranına) verir, oyun ekranı da sonucu broadcastUpdate ile yayınlar.
  */
+type LobbySettings = Pick<LobbyInfo, 'width' | 'height' | 'seed' | 'rules' | 'mapName'>;
+
 export class HostRoom {
   readonly events: HostRoomEvents = {};
   private clients = new Map<string, RemoteClient>();
   private seats: LobbySeat[] = [];
-  private settings = { width: 40, height: 30, seed: '' };
+  private settings: LobbySettings = { width: 40, height: 30, seed: '' };
   private inGame = false;
   private presence: Presence = {};
   private takeoverTimers = new Map<number, ReturnType<typeof setTimeout>>();
@@ -64,7 +66,7 @@ export class HostRoom {
   // ------------------------------------------------------------------
 
   /** Oda sahibinin ayarladığı koltuklar; daha önce oturmuş katılımcılar korunur. */
-  setLobby(seats: Omit<LobbySeat, 'claimedBy'>[], settings: { width: number; height: number; seed: string }) {
+  setLobby(seats: Omit<LobbySeat, 'claimedBy'>[], settings: LobbySettings) {
     const prev = this.seats;
     this.seats = seats.map((s, i) => {
       const claimedBy = s.kind === 'remote' ? (prev[i]?.claimedBy ?? null) : null;

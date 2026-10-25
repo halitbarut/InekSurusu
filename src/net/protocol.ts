@@ -25,6 +25,10 @@ export interface LobbyInfo {
   width: number;
   height: number;
   seed: string;
+  /** Seçili kural takımının adı (ör. "Dengeli") */
+  rules?: string;
+  /** Kayıtlı harita kullanılıyorsa adı */
+  mapName?: string;
 }
 
 /** Oyun sırasında insan koltuklarının bağlantı durumu */

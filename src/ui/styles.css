@@ -277,9 +277,79 @@ input[type='color'] {
   border-top: 2px dashed var(--ink-soft);
   padding-top: 10px;
 }
-.rules-config summary {
+.preset-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 10px;
+  margin: 6px 0 8px;
+}
+.preset-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+  min-height: 84px;
+  padding: 8px 12px;
+  border: 2px solid var(--pencil);
+  border-radius: 10px 13px 9px 12px / 12px 9px 13px 10px;
+  background: var(--paper-2);
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.15);
   cursor: pointer;
+}
+.preset-card:hover {
+  background: #fff6cf;
+}
+.preset-card.selected {
+  background: #ffe9a0;
+  outline: 3px solid var(--accent);
+  outline-offset: 1px;
+}
+.preset-name {
+  font-weight: bold;
   font-size: 1.1em;
+}
+.preset-desc {
+  font-size: 0.85em;
+  color: var(--ink-soft);
+  line-height: 1.25;
+}
+.preset-del {
+  position: absolute;
+  top: 2px;
+  right: 6px;
+  font-size: 1.2em;
+  line-height: 1;
+  padding: 4px;
+  color: var(--danger);
+}
+.preset-summary {
+  margin: 4px 0;
+}
+.preset-save input.text {
+  flex: 1;
+  min-width: 180px;
+}
+.cfg-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+.cfg-group {
+  border: 1.5px solid rgba(0, 0, 0, 0.25);
+  border-radius: 10px;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.55);
+}
+.cfg-group summary {
+  cursor: pointer;
+  font-weight: bold;
+  padding: 2px 0;
+}
+.cfg-group .form-grid {
+  margin: 8px 0 6px;
 }
 .form-grid {
   display: grid;

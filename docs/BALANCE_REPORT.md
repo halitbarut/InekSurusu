@@ -465,3 +465,29 @@ Not: Bu turda acele eden botun yalnızca güncel varsayılan bot ayarlarını ku
 senaryonun bot ayarlarını (bakım politikası vb.) diğer botlarla paylaşıyor. Bu yüzden 1. ve 2. turun yeniden
 oynatılan RB/RB2 değerleri 2. tur raporundaki değerlerle birebir aynı (%14,4 ve %16,9).
 
+<!-- bölüm:onayar — bu işaretle kapanış işareti arası simülasyon tarafından yazılır -->
+
+## Hazır kural takımları
+
+`npm run simulate -- --round onayar` ile üretilir (son çalıştırma: 2026-10-25). Yeni oyun ekranındaki her önayar için 60 oyun, 5 oyuncu (orta seviye botlar), 300 tur sınırı, seed'ler 10000–10059.
+
+| Önayar | Harita | İlk başkent fethi, medyan tur | Hiç başkent düşmeyen | Biten oyunların bitiş turu, medyan | Tur sınırına takılan | Oyun başına savaş | Bakım / harcama |
+|---|---|---|---|---|---|---|---|
+| Klasik | 44×32 | 13 | %0 | 71 | %17 | 302 | %0 |
+| Dengeli | 44×32 | 43 | %0 | 95 | %17 | 227 | %56 |
+| Hızlı | 35×26 | 35 | %0 | 74 | %8 | 218 | %57 |
+| Sakin açılış | 44×32 | 43 | %0 | 102 | %15 | 233 | %56 |
+
+İlk başkent fethi medyanında hiç başkent düşmeyen oyunlar tur sınırı olarak sayıldı.
+
+<!-- /bölüm:onayar -->
+
+### Değerlendirme (Hazır kural takımları)
+
+- **Hızlı** amacına ulaşıyor: biten oyunların medyanı 95 turdan 74 tura iniyor, tur sınırına takılan oyunlar
+  %17'den %8'e düşüyor ve ilk başkent 43. yerine 35. turda düşüyor. Başkent kurallarına dokunmadan, yalnızca
+  küçük harita ve 300 akçelik başlangıçla.
+- **Klasik** (savaş masrafı ve bakım yok) beklendiği gibi çok daha sert: ilk başkent 13. turda düşüyor, savaş
+  sayısı %33 daha fazla. Kâğıt oyundaki hissi verir ama başkente koşmak yine güçlü (1. turdaki A/RA senaryoları).
+- **Sakin açılış** Dengeli'den pek ayrışmıyor; botlar ilk turlarda zaten saldırmıyor. Kural insan oyuncuların erken
+  baskınını frenlemek için var.
