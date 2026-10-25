@@ -28,6 +28,8 @@ export interface HostRoomEvents {
   onLobbyChange?(lobby: LobbyInfo): void;
   /** Uzaktaki bir oyuncu hamle gönderdi; koltuk sahipliği doğrulanmıştır. */
   onAction?(seat: number, action: Action, origin: { clientId: string; reqId: number }): void;
+  /** Katılan kendi son eylemini geri almak istiyor */
+  onUndo?(seat: number, origin: { clientId: string; reqId: number }): void;
   /** Kopan oyuncu süresinde dönmedi (toBot=true) ya da bot devraldıktan sonra geri döndü (false). */
   onTakeover?(seat: number, toBot: boolean): void;
   onPresence?(presence: Presence): void;
@@ -117,10 +119,10 @@ export class HostRoom {
   // Oyun
   // ------------------------------------------------------------------
 
-  broadcastUpdate(state: GameState, events: GameEvent[], origin?: { clientId: string; reqId: number }) {
+  broadcastUpdate(state: GameState, events: GameEvent[], origin?: { clientId: string; reqId: number }, undo = 0) {
     const pub = publicState(state);
     for (const c of this.clients.values()) {
-      c.conn?.send({ t: 'update', state: pub, events, reqId: origin && origin.clientId === c.clientId ? origin.reqId : undefined });
+      c.conn?.send({ t: 'update', state: pub, events, reqId: origin && origin.clientId === c.clientId ? origin.reqId : undefined, undo });
     }
   }
 
@@ -242,6 +244,13 @@ export class HostRoom {
         if (msg.action.player !== c.seat) return this.reject(origin, 'Yalnızca kendi devletin adına oynayabilirsin');
         if (this.presence[c.seat]?.status !== 'online') return this.reject(origin, 'Koltuğun şu an botta');
         this.events.onAction?.(c.seat, msg.action, origin);
+        return;
+      }
+      case 'undo': {
+        const origin = { clientId: c.clientId, reqId: msg.reqId };
+        if (!this.inGame || c.seat === null) return this.reject(origin, 'Geri alınacak eylem yok');
+        if (this.presence[c.seat]?.status !== 'online') return this.reject(origin, 'Koltuğun şu an botta');
+        this.events.onUndo?.(c.seat, origin);
         return;
       }
       case 'hello':

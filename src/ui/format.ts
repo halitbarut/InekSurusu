@@ -1,4 +1,4 @@
-import type { BuildableStructure, GameEvent, GameState, Offer, OfferItem, ResourceKey, StructureType, UnitKind } from '../engine';
+import type { Action, BuildableStructure, GameEvent, GameState, Offer, OfferItem, ResourceKey, StructureType, UnitKind } from '../engine';
 
 export const RES_NAME: Record<ResourceKey, string> = { akce: 'Akçe', gold: 'Altın', oil: 'Petrol', iron: 'Demir', steel: 'Çelik' };
 export const RES_ICON: Record<ResourceKey, string> = { akce: '🪙', gold: '🥇', oil: '🛢️', iron: '⛓️', steel: '🔩' };
@@ -189,5 +189,31 @@ export function formatEvent(state: GameState, e: GameEvent): string | null {
     }
     case 'game_over':
       return `🏆 Oyun bitti! Kazanan: ${e.winners.map(N).join(', ')}`;
+  }
+}
+
+/** Geri alınan eylemin kısa adı */
+export function actionLabel(state: GameState, a: Action): string {
+  switch (a.type) {
+    case 'CLAIM_TILE':
+      return `${tileLabel(state, a.tile)} toprağını alma`;
+    case 'BUILD':
+      return `${STRUCT_NAME[a.structure].toLocaleLowerCase('tr')} inşası`;
+    case 'PRODUCE':
+      return `${UNIT_NAME[a.unit]} üretimi`;
+    case 'EXCHANGE_GOLD':
+      return `${a.amount} altın bozdurma`;
+    case 'SET_STRAIT_POLICY':
+      return `${straitLabel(a.straitId)} boğaz ayarı`;
+    case 'SHIP_EXPEDITION':
+      return 'gemi seferi';
+    case 'PLANE_EXPEDITION':
+      return 'uçak seferi';
+    case 'DISBAND_UNIT':
+      return 'birim dağıtma';
+    case 'DEMOLISH_BASE':
+      return 'üs yıkma';
+    default:
+      return 'eylem';
   }
 }

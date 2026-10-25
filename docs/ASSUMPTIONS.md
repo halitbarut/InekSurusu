@@ -202,3 +202,18 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
     deterministik bir karışımdır. Böylece bot gelecekteki topaç sonuçlarını göremez ve değiştiremez, aynı seed'le
     aynı oyun yeniden oynanabilir. Hiçbir seviye ek kaynak almaz.
 62. Seviye farkı `npm run simulate -- --round zorluk` ile ölçülür (BALANCE_REPORT.md, "Bot zorluk seviyeleri").
+
+## Geri alma
+
+63. Geri alınabilen eylemler: sahipsiz toprak alma, inşa, üretim, altın bozdurma, boğaz ayarı, sahipsiz toprağa
+    gemi/uçak seferi. Görev listesinde olmasa da **birim dağıtma ve üs yıkma** da geri alınabilir: rastgelelik
+    içermezler ve başka oyuncuyu ilgilendirmezler.
+64. Geçmişi temizleyen eylemler: topaç, her savaş (sefer sonunda savaşa dönüşen dahil), fetih seçimleri, tüm
+    diplomasi eylemleri (teklif yapma, yanıtlama, geri çekme, ittifak bozma, zafer önerisi ve oyu) ve başka bir
+    oyuncunun yaptığı herhangi bir eylem (ör. botun teklife yanıtı, çevrimiçide başkasının boğaz ayarı).
+    Teklif yapmak da temizler: teklif karşı tarafa ulaşmış bir bilgidir.
+65. Geri alma, eylemden önceki durumu olduğu gibi geri yükler (RNG durumu dahil). Geri alınan eylemlerin olay
+    günlüğü satırları da böylece silinir. Kurulum (başkent ve başlangıç toprağı seçimi) geri alınamaz.
+66. Geçmiş oyun durumunda değil, oyunu yürüten tarafta (yerel oyunda bu cihaz, çevrimiçide oda sahibi) tutulur;
+    kayda girmez. Tur bitince, kayıt yüklenince ve bir koltuk bota geçince temizlenir. Çevrimiçide katılan
+    oyuncu "Geri al"a basınca oda sahibinden ister (protokol sürümü 2'ye çıktı).

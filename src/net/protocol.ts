@@ -1,7 +1,7 @@
 import type { Action, BotLevel, GameEvent, GameState } from '../engine';
 
 /** Mesaj biçimi değişirse artırılır; farklı sürümler aynı odaya bağlanamaz. */
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 /** Kopan oyuncunun dönmesi için beklenen süre; sonra bot devralır. */
 export const RECONNECT_GRACE_MS = 60_000;
@@ -49,6 +49,8 @@ export type ClientMessage =
   | { t: 'profile'; name: string; color: string }
   | { t: 'claim'; seat: number | null }
   | { t: 'action'; reqId: number; action: Action }
+  /** Kendi turunda son eylemini geri al */
+  | { t: 'undo'; reqId: number }
   | { t: 'ping' };
 
 export type HostMessage =
@@ -56,7 +58,8 @@ export type HostMessage =
   | { t: 'refused'; reason: string }
   | { t: 'lobby'; lobby: LobbyInfo; seat: number | null }
   | { t: 'start'; state: GameState; seat: number | null; presence: Presence }
-  | { t: 'update'; state: GameState; events: GameEvent[]; reqId?: number; by?: string }
+  /** undo: sıradaki oyuncunun geri alabileceği eylem sayısı */
+  | { t: 'update'; state: GameState; events: GameEvent[]; reqId?: number; by?: string; undo?: number }
   | { t: 'reject'; reqId: number; reason: string }
   | { t: 'presence'; presence: Presence }
   | { t: 'notice'; text: string }

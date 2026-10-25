@@ -28,6 +28,7 @@ import {
   structureCost,
   unitsAt,
   validateAction,
+  UndoHistory,
   type Action,
   type BuildableStructure,
   type GameEvent,
@@ -44,6 +45,7 @@ import {
   STRUCT_ICON,
   STRUCT_NAME,
   UNIT_ICON,
+  actionLabel,
   fmtNum,
   formatEvent,
   gen,
@@ -109,6 +111,8 @@ export class GameScreen {
   /** Çevrimiçi: koltukların bağlantı durumu */
   private presence: Presence = {};
   private presenceTimer: ReturnType<typeof setInterval> | null = null;
+  /** Sıradaki oyuncunun bu turdaki geri alınabilir eylemleri (oda sahibinde/yerelde tutulur) */
+  private history = new UndoHistory();
   /** Aynı teklif/oylama için ikinci kez soru açılmasın */
   private prompted = new Set<string>();
 
@@ -337,6 +341,49 @@ export class GameScreen {
     }
   }
 
+  /** Sıradaki oyuncunun geri alabileceği eylem sayısı */
+  private undoCount(s: GameState): number {
+    return this.history.canUndo(s, s.currentPlayer) ? this.history.size() : 0;
+  }
+
+  /** Bu cihazdaki oyuncu şu an geri alabilir mi? */
+  private canUndoNow(): boolean {
+    if (!this.isHumanTurn() || this.busy) return false;
+    if (this.net?.kind === 'client') return this.net.room.undoCount > 0 && this.state.currentPlayer === this.actor();
+    return this.history.canUndo(this.state, this.actor());
+  }
+
+  /** Son eylemi geri alır (Ctrl+Z). Çevrimiçi katılımcıda oda sahibinden istenir. */
+  async undoLast() {
+    if (!this.canUndoNow()) return;
+    const net = this.net;
+    if (net?.kind === 'client') {
+      this.busy = true;
+      try {
+        const r = await net.room.sendUndo();
+        if (!r.ok) toast(r.reason, 'error');
+        await this.chain;
+      } finally {
+        this.busy = false;
+      }
+      this.render();
+      return;
+    }
+    await this.enqueue(async () => this.applyUndo());
+  }
+
+  /** Geçmişteki son durumu geri yükler; oda sahibiyse herkese yayınlar. */
+  private applyUndo(origin?: { clientId: string; reqId: number }) {
+    const entry = this.history.undo();
+    if (!entry) return;
+    this.state = entry.state;
+    this.targetCache = null;
+    if (this.mode.kind === 'offerTiles') this.mode = { kind: 'none' };
+    if (this.net?.kind === 'host') this.net.room.broadcastUpdate(this.state, [], origin, this.undoCount(this.state));
+    toast(`↶ Geri alındı: ${actionLabel(this.state, entry.action)}`, 'info', 2200);
+    this.render();
+  }
+
   private turnNotice(p: number, counter: boolean) {
     if (this.net) toast(counter ? '🛡️ Karşı saldırıyı kazandın! Alacağın toprakları seç.' : '🎡 Sıra sende!', 'good', 3000);
     const incoming = this.state.offers.filter((o) => o.to === p).length;
@@ -378,7 +425,10 @@ export class GameScreen {
       return false;
     }
     const r = dispatch(this.state, action);
-    if (this.net?.kind === 'host') this.net.room.broadcastUpdate(r.state, r.events, origin);
+    // Botlar geri almayı kullanmaz; diğer eylemler geri alınabilir mi kendisi karar verir
+    if (byBot) this.history.clear();
+    else this.history.record(this.state, action, r.state);
+    if (this.net?.kind === 'host') this.net.room.broadcastUpdate(r.state, r.events, origin, this.undoCount(r.state));
     // Animasyonlar (topaç, savaş, sefer) eski durum üzerinde oynar, sonuç sonra görünür
     await this.animate(r.events, byBot, r.state);
     this.state = r.state;
@@ -490,9 +540,16 @@ export class GameScreen {
           const st = structuredClone(this.state);
           st.players[seat].kind = toBot ? 'bot' : 'human';
           this.state = st;
+          this.history.clear();
           room.broadcastUpdate(st, []);
           this.render();
         }).then(() => this.pump());
+      };
+      room.events.onUndo = (seat, origin) => {
+        void this.enqueue(async () => {
+          if (!this.history.canUndo(this.state, seat)) room.reject(origin, 'Geri alınacak eylem yok');
+          else this.applyUndo(origin);
+        });
       };
       room.events.onPresence = (p) => {
         this.presence = { ...p };
@@ -931,6 +988,10 @@ export class GameScreen {
       btn('🥇', 'Altın bozdur', () => this.openGoldDialog(), { enabled: human && (s.phase.kind === 'actions' || s.phase.kind === 'spin') }),
       btn('📜', 'Diplomasi', () => this.openDiplomacy(), { badge: incoming }),
       btn('⚓', 'Boğazlarım', () => this.openStraits(), { enabled: human && s.phase.kind !== 'setup_capital' && s.phase.kind !== 'setup_territory' }),
+      btn('↶', 'Geri al', () => void this.undoLast(), {
+        enabled: this.canUndoNow(),
+        title: 'Bu turdaki son eylemini geri al (Ctrl+Z). Topaç, savaş ve diplomasiden sonra geri alınamaz.',
+      }),
       btn('⏭️', 'Turu bitir', () => void this.endTurn(), { cls: 'end-turn' }),
     );
   }
@@ -1153,6 +1214,11 @@ export class GameScreen {
     if (document.querySelector('.modal-backdrop, .overlay')) return;
     if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
     if (e.key === 'Escape' && this.mode.kind !== 'none') this.setMode({ kind: 'none' });
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
+      e.preventDefault();
+      void this.undoLast();
+      return;
+    }
     if ((e.key === ' ' || e.key === 'Enter') && this.isHumanTurn() && this.state.phase.kind === 'spin') {
       e.preventDefault();
       void this.act({ type: 'SPIN', player: this.state.currentPlayer });

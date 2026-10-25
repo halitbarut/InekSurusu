@@ -64,6 +64,19 @@ export class ClientRoom {
     this.conn?.send({ t: 'profile', name, color });
   }
 
+  /** Sıradaki oyuncunun geri alabileceği eylem sayısı (oda sahibinin son bildirdiği) */
+  undoCount = 0;
+
+  /** Son eylemi geri almasını oda sahibinden ister. */
+  sendUndo(): Promise<{ ok: true } | { ok: false; reason: string }> {
+    if (!this.conn || this.status !== 'online') return Promise.resolve({ ok: false, reason: 'Oda sahibiyle bağlantı yok' });
+    const reqId = this.nextReq++;
+    return new Promise((resolve) => {
+      this.pending.set(reqId, resolve);
+      this.conn!.send({ t: 'undo', reqId });
+    });
+  }
+
   /** Hamleyi oda sahibine gönderir; uygulanınca ya da reddedilince çözülür. */
   sendAction(action: Action): Promise<{ ok: true } | { ok: false; reason: string }> {
     if (!this.conn || this.status !== 'online') return Promise.resolve({ ok: false, reason: 'Oda sahibiyle bağlantı yok' });
@@ -128,6 +141,7 @@ export class ClientRoom {
         this.events.onGameState?.(m.state, m.seat, m.presence);
         return;
       case 'update': {
+        this.undoCount = m.undo ?? 0;
         this.events.onUpdate?.(m.state, m.events);
         if (m.reqId !== undefined) this.resolve(m.reqId, { ok: true });
         return;
