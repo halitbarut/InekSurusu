@@ -62,6 +62,7 @@ import type { HostRoom } from '../../net/hostRoom';
 import type { Presence } from '../../net/protocol';
 import { MapView, type Highlight } from './mapView';
 import { Spinner } from './spinner';
+import { renderSummary } from './summary';
 
 type Mode =
   | { kind: 'none' }
@@ -811,6 +812,7 @@ export class GameScreen {
       h('h1', {}, winners.length > 1 ? 'İttifak kazandı!' : `${pname(s, winners[0])} kazandı!`),
       h('p', {}, winners.length > 1 ? winners.map((w) => pname(s, w)).join(', ') : 'Dünyada tek bir devlet kaldı.'),
       h('p', { class: 'muted' }, `${s.round} tur sürdü · ${s.map.name ? `Harita: ${s.map.name}` : `Seed ${s.map.seed}`}`),
+      renderSummary(s),
       h(
         'div',
         { class: 'row-buttons' },

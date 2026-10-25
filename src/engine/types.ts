@@ -1,4 +1,5 @@
 import type { GameConfig } from './config';
+import type { GameStats } from './stats';
 
 export type Terrain = 'land' | 'sea' | 'lake';
 export type MineType = 'gold' | 'oil' | 'iron' | 'steel';
@@ -218,6 +219,8 @@ export interface GameState {
   rngState: number;
   log: LogEntry[];
   winners: number[] | null;
+  /** Tur sonu istatistikleri ve toplam harcamalar (eski kayıtlarda yok) */
+  stats?: GameStats;
 }
 
 export type Action =

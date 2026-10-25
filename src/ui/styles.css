@@ -1238,3 +1238,108 @@ footer {
     border-top: 2px solid var(--pencil);
   }
 }
+
+/* ---------- oyun sonu özeti ---------- */
+.victory .overlay-card {
+  width: 100%;
+  max-width: 860px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+.summary {
+  width: 100%;
+  text-align: left;
+}
+.tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 2px solid var(--pencil);
+  margin-top: 6px;
+}
+.tab {
+  border: 2px solid var(--pencil);
+  border-bottom: none;
+  border-radius: 10px 10px 0 0;
+  background: var(--paper);
+  padding: 4px 14px;
+  cursor: pointer;
+  margin-bottom: -2px;
+}
+.tab.active {
+  background: var(--paper-2);
+  font-weight: bold;
+  border-bottom: 2px solid var(--paper-2);
+}
+.summary-body {
+  padding: 8px 0;
+  min-height: 200px;
+}
+.chart-wrap {
+  position: relative;
+}
+.chart-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  font-family: var(--hand);
+}
+.chart-grid {
+  stroke: rgba(86, 140, 200, 0.25);
+  stroke-width: 1;
+}
+.chart-tick,
+.chart-axis-label {
+  fill: var(--ink-soft);
+  font-size: 12px;
+}
+.chart-label {
+  fill: var(--ink);
+  font-size: 13px;
+}
+.chart-line {
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.chart-elim {
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+.chart-cross {
+  stroke: var(--ink-soft);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+.chart-tip {
+  position: absolute;
+  top: 8px;
+  pointer-events: none;
+  background: rgba(255, 253, 247, 0.97);
+  border: 1.5px solid var(--pencil);
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 0.85em;
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.15);
+  white-space: nowrap;
+}
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 0.9em;
+}
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.table-scroll {
+  overflow-x: auto;
+}
+.summary-table {
+  font-size: 0.88em;
+}
+.summary-table .num-col {
+  text-align: right;
+}

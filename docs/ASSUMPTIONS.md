@@ -236,3 +236,15 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
 71. Kayıtlı oyunlar haritanın tamamını (`GameState.map`, adıyla) zaten içerir; harita silinse de oyun açılır.
     Kayıtlı haritayla kurulan oyunda topaç sonuçlarını yeni oyun ekranındaki seed belirler (haritanın kendisi değil),
     böylece aynı harita her oyunda farklı oynar.
+
+## Oyun sonu özeti
+
+72. İstatistikler oyun durumunun içinde (`GameState.stats`) tutulur, böylece kayda girer ve geri almayla birlikte
+    geri alınır. Her tam turun sonunda (sıra başa sarınca), kurulum bitince ("0. tur") ve oyun bitince her oyuncunun
+    toprak, akçe, maden kaynakları, gemi ve uçak sayısı kaydedilir. Eski kayıtlarda geçmiş yoksa grafikler eksik çizilir.
+73. Harcama kalemleri denge simülasyonuyla aynıdır: toprak (karadan ve seferle alma), inşa, üretim (akçe kısmı),
+    savaş masrafı (akçe kısmı), bakım, boğaz vergisi. Teklifle verilen akçe harcama sayılmaz.
+74. Savaş sonucu: kara savaşında saldıran toprak alırsa saldıran, karşı saldırı olursa savunan kazanmış sayılır;
+    eşitlik ikisine de sayılmaz. Başkent ve üs savaşında başarı saldıranın, başarısızlık savunanın galibiyetidir.
+    "Başkent savaşı denemesi" saldıranın başlattığı başkent savaşlarıdır.
+75. Grafiklerde oyuncular renge ek olarak çizgi deseniyle ayrılır; elenen oyuncunun çizgisi elendiği turda × ile biter.

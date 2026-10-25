@@ -19,6 +19,7 @@ import {
 } from './helpers';
 import { planeRoutes, shipRoutes, type Route, type RouteMap } from './movement';
 import { createRng, type Rng } from './rng';
+import { recordStats, snapshotRound } from './stats';
 import {
   MINE_TYPES,
   type Action,
@@ -474,6 +475,7 @@ export function applyAction(state: GameState, action: Action, rng: Rng): ApplyRe
   }
 
   refreshStraits(s, ev);
+  recordStats(s, ev);
   for (const e of ev) s.log.push({ turn: s.turnCounter, round: s.round, event: e });
   if (s.log.length > MAX_LOG) s.log.splice(0, s.log.length - MAX_LOG);
   return { state: s, events: ev };
@@ -551,6 +553,7 @@ function eliminate(s: GameState, loser: number, winner: number, ev: GameEvent[])
 }
 
 function endGame(s: GameState, winners: number[], ev: GameEvent[]) {
+  snapshotRound(s, s.round);
   s.phase = { kind: 'gameover' };
   s.winners = winners;
   ev.push({ type: 'game_over', winners });
@@ -601,6 +604,7 @@ function finishSetupFor(s: GameState, ev: GameEvent[]) {
     s.currentPlayer = 0;
     s.round = 1;
     s.turnCounter = 1;
+    snapshotRound(s, 0);
     ev.push({ type: 'game_started' });
     beginTurn(s, ev);
   }
@@ -656,7 +660,10 @@ function advanceTurn(s: GameState, ev: GameEvent[]) {
     if (s.players[next].alive) break;
   }
   // Sıra başa sardıysa yeni tam tur başlar
-  if (next <= s.currentPlayer) s.round++;
+  if (next <= s.currentPlayer) {
+    snapshotRound(s, s.round);
+    s.round++;
+  }
   s.currentPlayer = next;
   s.turnCounter++;
   beginTurn(s, ev);

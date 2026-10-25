@@ -1,6 +1,7 @@
 import { DEFAULT_CONFIG, MAX_PLAYERS, MIN_PLAYERS, configProblems, type GameConfig } from './config';
 import { generateMap } from './map/generate';
 import { mixSeed } from './rng';
+import { emptyStats } from './stats';
 import type { BotLevel, GameMap, GameState, Player } from './types';
 
 export interface PlayerSetup {
@@ -74,5 +75,6 @@ export function createGameFromMap(map: GameMap, players: PlayerSetup[], config: 
     rngState: mixSeed(rngSeed, 0x5eed),
     log: [],
     winners: null,
+    stats: emptyStats(players.length),
   };
 }
