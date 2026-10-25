@@ -55,6 +55,27 @@ verin"), seçimden sonra sıra saldırana döner.
 
 Belirsiz kural noktalarında verilen kararlar: [docs/ASSUMPTIONS.md](docs/ASSUMPTIONS.md).
 
+## Çevrimiçi oyun
+
+Herkes kendi cihazından oynar; ayrı bir sunucu gerekmez. Oyun **oda sahibinin tarayıcısında** çalışır
+(kurallar, zarlar ve botlar orada), diğerleri tarayıcıdan tarayıcıya (WebRTC, PeerJS) bağlanır.
+
+1. Oda sahibi: **🌐 Çevrimiçi oyun → Oda kur**. Bir oda kodu ve davet linki çıkar
+   (`http://…/?oda=KOD`). Koltukları "Davetli oyuncu" ya da "Bot" yapar, harita ve kuralları ayarlar.
+2. Katılanlar: linke tıklar (ya da kodu girer), adını ve rengini yazar, boş bir koltuğa oturur.
+   Oturmayanlar **izleyici** olur; oyun başladıktan sonra gelenler de izleyici olarak girer.
+3. Oda sahibi **Oyunu başlat** der; boş kalan davetli koltuklarda bot oynar.
+
+- **Bağlantısı kopan oyuncu** 1 dakika beklenir (herkes geri sayımı görür). Dönmezse yerine bot oynar.
+  Aynı tarayıcıdan aynı davet linkiyle döndüğünde koltuğunu geri alır.
+- Oda sahibi sekmeyi kapatırsa oyun durur. Oyun oda sahibinde her tur sonunda otomatik kaydedilir;
+  kayıt sonradan yerel (hot-seat) oyun olarak açılabilir.
+- İlk bağlantı için PeerJS'in ücretsiz eşleşme sunucusu kullanılır; bağlantı kurulduktan sonra veriler
+  doğrudan tarayıcılar arasında gider. Çok sıkı kurumsal ağlarda doğrudan bağlantı kurulamayabilir.
+- Yerelde denemek için `npm run dev -- --host` yeterli; internetten katılacaklar için sayfanın onlara da
+  açık olması gerekir (ör. `npm run build` çıktısını herhangi bir statik barındırmaya koymak ya da
+  bir tünel servisi kullanmak).
+
 ## Kaydet / yükle
 
 Oyun her tur sonunda otomatik kaydedilir (ana menüde **Devam et**). 💾 düğmesiyle adlandırılmış kayıt
@@ -76,7 +97,8 @@ src/
     queries.ts     Arayüz/bot için geçerli hedef sorguları
     map/           Harita üretici (gürültü, iç deniz, göl, boğaz, maden) ve boğaz tespiti
   bot/             BotBrain arayüzü ve orta seviye bot
-  ui/              Canvas harita, topaç animasyonu, paneller, diyaloglar, kayıt
+  net/             Çevrimiçi oda: protokol, PeerJS taşıyıcı, oda sahibi (HostRoom) ve katılan (ClientRoom)
+  ui/              Canvas harita, topaç animasyonu, paneller, diyaloglar, lobi, kayıt
 tests/             Vitest birim testleri
 ```
 

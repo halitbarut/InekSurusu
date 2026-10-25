@@ -14,13 +14,20 @@ import {
 import { clear, h, openModal, pickFile, toast } from '../dom';
 import { MINE_COLOR } from '../format';
 import { getPrefs, setPrefs } from '../prefs';
+import type { HostRoom } from '../../net/hostRoom';
+import type { LobbyInfo, SeatKind } from '../../net/protocol';
 import { AUTOSAVE_ID, deleteSave, getSave, importState, listSaves } from '../storage';
+import { inviteBox } from './online';
 
 export interface MenuCallbacks {
   start(state: GameState): void;
   newGame(): void;
   load(): void;
   menu(): void;
+  /** Çevrimiçi oyun menüsü (oda kur / katıl); code verilirse katılma ekranı açılır */
+  online(code?: string): void;
+  /** Oda sahibi olarak çevrimiçi oyunu başlat */
+  startHost(state: GameState, room: HostRoom, mySeat: number): void;
 }
 
 const NAMES = ['Ayşe', 'Mehmet', 'Zeynep', 'Ali', 'Elif', 'Mustafa', 'Fatma', 'Hasan'];
@@ -46,10 +53,11 @@ export function renderMainMenu(host: HTMLElement, cb: MenuCallbacks) {
             ? h('button', { class: 'btn btn-primary btn-big', onClick: () => cb.start(auto.state) }, `▶ Devam et (${auto.round > 0 ? `${auto.round}. tur` : 'kurulum'})`)
             : null,
           h('button', { class: `btn btn-big ${auto ? '' : 'btn-primary'}`, onClick: () => cb.newGame() }, '✏️ Yeni oyun'),
+          h('button', { class: 'btn btn-big', onClick: () => cb.online() }, '🌐 Çevrimiçi oyun'),
           h('button', { class: 'btn btn-big', onClick: () => cb.load() }, '📂 Kayıtlı oyunu yükle'),
           h('button', { class: 'btn btn-big', onClick: () => openSettings() }, '⚙️ Ayarlar'),
         ),
-        h('p', { class: 'muted small' }, 'Aynı ekranda sırayla (hot-seat) ve botlarla 3–8 oyuncu.'),
+        h('p', { class: 'muted small' }, 'Aynı ekranda sırayla (hot-seat), çevrimiçi ya da botlarla 3–8 oyuncu.'),
       ),
     ),
   );
@@ -180,16 +188,29 @@ const CONFIG_FIELDS: ConfigField[] = [
   { key: 'maxPeaceRounds', label: 'En uzun barış süresi (tur)', min: 1, max: 200 },
 ];
 
-export function renderNewGame(host: HTMLElement, cb: MenuCallbacks) {
+/** Yeni oyun ekranı. room verilirse çevrimiçi oda sahibi lobisi olarak çalışır. */
+export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostRoom) {
   clear(host);
   let count = 4;
   const players: PlayerSetup[] = NAMES.map((name, i) => ({ name, color: COLORS[i], kind: i === 0 ? 'human' : 'bot' }));
+  // Çevrimiçi: 1. koltuk oda sahibi, diğerleri davetli ya da bot
+  const seatKinds: SeatKind[] = NAMES.map((_, i) => (i === 0 ? 'host' : i <= 2 ? 'remote' : 'bot'));
+  let lobby: LobbyInfo | null = null;
+  const claimSig = () => (lobby ? lobby.seats.map((x) => x.claimedBy ?? '').join('|') : '');
+  const syncLobby = () => {
+    if (!room) return;
+    room.setLobby(
+      players.slice(0, count).map((p, i) => ({ name: p.name, color: p.color, kind: seatKinds[i] })),
+      { width: clampInt(wIn.value, 20, 120), height: clampInt(hIn.value, 16, 90), seed: seedText },
+    );
+  };
   let size = defaultMapSize(count);
   let sizeEdited = false;
   let seedText = String(Math.floor(Math.random() * 1_000_000));
   const config: GameConfig = { ...DEFAULT_CONFIG };
 
   const rowsEl = h('div', { class: 'player-rows' });
+  const peopleEl = h('div', { class: 'people muted' }, 'Henüz kimse katılmadı.');
   const countSel = h('select', {}, ...Array.from({ length: MAX_PLAYERS - MIN_PLAYERS + 1 }, (_, k) => {
     const n = k + MIN_PLAYERS;
     return h('option', { value: n, selected: n === count }, `${n} oyuncu`);
@@ -204,19 +225,58 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks) {
     clear(rowsEl);
     for (let i = 0; i < count; i++) {
       const p = players[i];
+      const claimed = room ? lobby?.seats[i]?.claimedBy : null;
+      const locked = !!claimed;
+      const shown = locked ? lobby!.seats[i] : p;
+      const kindSel = room
+        ? i === 0
+          ? h('span', { class: 'tag tag-me' }, '🧑 Sen (oda sahibi)')
+          : h(
+              'select',
+              {
+                onChange: (e: Event) => {
+                  seatKinds[i] = (e.target as HTMLSelectElement).value as SeatKind;
+                  syncLobby();
+                },
+              },
+              h('option', { value: 'remote', selected: seatKinds[i] === 'remote' }, '🌐 Davetli oyuncu'),
+              h('option', { value: 'bot', selected: seatKinds[i] === 'bot' }, '🤖 Bot (orta)'),
+            )
+        : h(
+            'select',
+            { onChange: (e: Event) => (p.kind = (e.target as HTMLSelectElement).value as 'human' | 'bot') },
+            h('option', { value: 'human', selected: p.kind === 'human' }, '🧑 İnsan'),
+            h('option', { value: 'bot', selected: p.kind === 'bot' }, '🤖 Bot (orta)'),
+          );
+      const status =
+        room && seatKinds[i] === 'remote' ? h('span', { class: 'muted small' }, claimed ? '✔ oturdu' : '⏳ boş') : null;
       rowsEl.appendChild(
         h(
           'div',
           { class: 'player-setup' },
           h('span', { class: 'num-badge' }, i + 1),
-          h('input', { type: 'color', value: p.color, onInput: (e: Event) => (p.color = (e.target as HTMLInputElement).value) }),
-          h('input', { type: 'text', class: 'text', value: p.name, maxLength: 16, onInput: (e: Event) => (p.name = (e.target as HTMLInputElement).value) }),
-          h(
-            'select',
-            { onChange: (e: Event) => (p.kind = (e.target as HTMLSelectElement).value as 'human' | 'bot') },
-            h('option', { value: 'human', selected: p.kind === 'human' }, '🧑 İnsan'),
-            h('option', { value: 'bot', selected: p.kind === 'bot' }, '🤖 Bot (orta)'),
-          ),
+          h('input', {
+            type: 'color',
+            value: shown.color,
+            disabled: locked,
+            onInput: (e: Event) => {
+              p.color = (e.target as HTMLInputElement).value;
+              syncLobby();
+            },
+          }),
+          h('input', {
+            type: 'text',
+            class: 'text',
+            value: shown.name,
+            maxLength: 16,
+            disabled: locked,
+            onInput: (e: Event) => {
+              p.name = (e.target as HTMLInputElement).value;
+              syncLobby();
+            },
+          }),
+          kindSel,
+          status,
         ),
       );
     }
@@ -245,16 +305,19 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks) {
       hIn.value = String(size.height);
     }
     renderRows();
+    syncLobby();
     schedulePreview();
   });
   for (const el of [wIn, hIn]) {
     el.addEventListener('input', () => {
       sizeEdited = true;
+      syncLobby();
       schedulePreview();
     });
   }
   seedIn.addEventListener('input', () => {
     seedText = seedIn.value;
+    syncLobby();
     schedulePreview();
   });
 
@@ -284,8 +347,28 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks) {
     ),
   );
 
-  const start = () => {
-    const ps = players.slice(0, count).map((p, i) => ({ ...p, name: p.name.trim() || `Oyuncu ${i + 1}` }));
+  const start = async () => {
+    let ps = players.slice(0, count).map((p, i) => ({ ...p, name: p.name.trim() || `Oyuncu ${i + 1}` }));
+    if (room) {
+      const seats = room.lobby().seats;
+      const empty = seats.filter((x) => x.kind === 'remote' && !x.claimedBy).length;
+      if (empty > 0) {
+        const m = openModal({
+          title: 'Boş koltuklar',
+          body: h('p', {}, `${empty} davetli koltuğu hâlâ boş. Bu koltuklarda bot oynasın mı?`),
+          buttons: [
+            { label: 'Bekle', value: 'no' },
+            { label: 'Botla başlat', value: 'yes', primary: true },
+          ],
+        });
+        if ((await m.result) !== 'yes') return;
+      }
+      ps = seats.map((x, i) => ({
+        name: (x.claimedBy ? x.name : ps[i].name).trim() || `Oyuncu ${i + 1}`,
+        color: x.claimedBy ? x.color : ps[i].color,
+        kind: x.kind === 'host' || x.claimedBy ? ('human' as const) : ('bot' as const),
+      }));
+    }
     if (new Set(ps.map((p) => p.name)).size !== ps.length) return toast('Oyuncu adları farklı olmalı', 'error');
     try {
       const state = createGame({
@@ -295,7 +378,8 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks) {
         seed: toSeed(seedText),
         config,
       });
-      cb.start(state);
+      if (room) cb.startHost(state, room, 0);
+      else cb.start(state);
     } catch (e) {
       toast((e as Error).message, 'error');
     }
@@ -308,7 +392,8 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks) {
       h(
         'div',
         { class: 'paper-card wide-card' },
-        h('h1', { class: 'title small-title' }, '✏️ Yeni oyun'),
+        h('h1', { class: 'title small-title' }, room ? '🌐 Çevrimiçi oda' : '✏️ Yeni oyun'),
+        room ? inviteBox(room.code, peopleEl) : null,
         h(
           'div',
           { class: 'newgame-grid' },
@@ -341,12 +426,47 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks) {
           ),
         ),
         h('details', { class: 'rules-config' }, h('summary', {}, '⚙️ Kural ayarları'), configGrid),
-        h('div', { class: 'row-buttons' }, h('button', { class: 'btn', onClick: () => cb.menu() }, '← Geri'), h('button', { class: 'btn btn-primary btn-big', onClick: start }, '▶ Oyunu başlat')),
+        h(
+          'div',
+          { class: 'row-buttons' },
+          h(
+            'button',
+            {
+              class: 'btn',
+              onClick: () => {
+                room?.close();
+                cb.menu();
+              },
+            },
+            room ? '← Odayı kapat' : '← Geri',
+          ),
+          h('button', { class: 'btn btn-primary btn-big', onClick: () => void start() }, '▶ Oyunu başlat'),
+        ),
       ),
     ),
   );
   renderRows();
   drawPreview();
+  if (room) {
+    room.events.onLobbyChange = (l) => {
+      const before = claimSig();
+      lobby = l;
+      // Yazarken odak kaybolmasın: satırları yalnızca koltuk sahipliği değişince yeniden çiz
+      if (claimSig() !== before) renderRows();
+      else
+        l.seats.forEach((x, i) => {
+          if (!x.claimedBy) return;
+          const row = rowsEl.children[i];
+          const name = row?.querySelector('input.text') as HTMLInputElement | null;
+          if (name) name.value = x.name;
+          const color = row?.querySelector('input[type=color]') as HTMLInputElement | null;
+          if (color) color.value = x.color;
+        });
+      const seated = l.seats.filter((x) => x.claimedBy).map((x) => x.name);
+      peopleEl.textContent = `Oturanlar: ${seated.length ? seated.join(', ') : '—'} · İzleyiciler: ${l.spectators.length ? l.spectators.join(', ') : '—'}`;
+    };
+    syncLobby();
+  }
 }
 
 function clampInt(v: string, min: number, max: number): number {

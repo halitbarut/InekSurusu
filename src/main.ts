@@ -1,8 +1,9 @@
 import './ui/styles.css';
 import type { GameState } from './engine';
 import { clear } from './ui/dom';
-import { GameScreen } from './ui/game/gameScreen';
+import { GameScreen, type NetMode } from './ui/game/gameScreen';
 import { renderLoadScreen, renderMainMenu, renderNewGame, type MenuCallbacks } from './ui/screens/menus';
+import { renderOnlineMenu } from './ui/screens/online';
 
 const host = document.getElementById('app')!;
 let game: GameScreen | null = null;
@@ -13,11 +14,13 @@ function leaveGame() {
   clear(host);
 }
 
+function startGame(state: GameState, net: NetMode = null) {
+  leaveGame();
+  game = new GameScreen(host, state, { toMenu: () => cb.menu(), newGame: () => cb.newGame() }, net);
+}
+
 const cb: MenuCallbacks = {
-  start(state: GameState) {
-    leaveGame();
-    game = new GameScreen(host, state, { toMenu: () => cb.menu(), newGame: () => cb.newGame() });
-  },
+  start: (state) => startGame(state),
   newGame() {
     leaveGame();
     renderNewGame(host, cb);
@@ -28,11 +31,37 @@ const cb: MenuCallbacks = {
   },
   menu() {
     leaveGame();
+    // Davet linkinden gelindiyse adres çubuğunu temizle
+    if (location.search) history.replaceState(null, '', location.pathname);
     renderMainMenu(host, cb);
+  },
+  online(code) {
+    leaveGame();
+    renderOnlineMenu(
+      host,
+      {
+        menu: () => cb.menu(),
+        hostLobby: (room) => {
+          clear(host);
+          renderNewGame(host, cb, room);
+        },
+        startClient: (state, room) => startGame(state, { kind: 'client', room }),
+      },
+      code,
+    );
+  },
+  startHost(state, room, mySeat) {
+    leaveGame();
+    game = new GameScreen(host, state, { toMenu: () => cb.menu(), newGame: () => cb.newGame() }, { kind: 'host', room, mySeat });
+    const g = game;
+    room.startGame(state, () => g.state);
   },
 };
 
-cb.menu();
+// Davet linki: ?oda=KOD
+const invite = new URLSearchParams(location.search).get('oda');
+if (invite) cb.online(invite);
+else cb.menu();
 
 // Geliştirme sırasında konsoldan inceleme için
 if (import.meta.env.DEV) (window as unknown as { __inek: unknown }).__inek = { get game() { return game; } };

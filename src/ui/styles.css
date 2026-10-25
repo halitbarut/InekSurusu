@@ -957,3 +957,70 @@ footer {
     font-size: 38px;
   }
 }
+
+/* ---------- çevrimiçi ---------- */
+.tag-me {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.net-dot {
+  font-size: 0.75em;
+  margin-left: 6px;
+}
+.net-dot.online {
+  color: var(--good);
+}
+.net-dot.away {
+  color: #d27b00;
+}
+.net-dot.bot {
+  color: var(--ink-soft);
+}
+.conn-banner {
+  position: fixed;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #ffe1d6;
+  border: 2px solid var(--danger);
+  border-radius: 10px;
+  padding: 6px 14px;
+  z-index: 120;
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.15);
+  max-width: calc(100% - 32px);
+}
+.room-code {
+  font-family: var(--title);
+  font-size: 44px;
+  letter-spacing: 6px;
+  color: #2a3d8f;
+}
+.invite-box {
+  border: 2px dashed var(--ink-soft);
+  border-radius: 12px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 20px;
+  align-items: center;
+}
+.invite-box input.text {
+  flex: 1;
+  min-width: 180px;
+}
+.people {
+  font-size: 0.9em;
+}
+.seat-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px dashed rgba(0, 0, 0, 0.18);
+  flex-wrap: wrap;
+}
+.seat-row .grow {
+  flex: 1;
+  min-width: 0;
+}

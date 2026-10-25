@@ -105,3 +105,17 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
 34. Hot-seat'te bilgiler gizli değildir: herkesin kaynakları kâğıt oyundaki gibi görünür.
 35. Arayüzde insan → insan teklifinde cihaz hemen alıcıya geçer; bot → insan teklifleri insanın kendi
     turunda Diplomasi panelinde yanıtlanır. Botlar kendilerine gelen teklifleri anında yanıtlar.
+
+## Çevrimiçi oyun
+
+36. Oda sahibinin tarayıcısı hakemdir: eylemleri doğrular ve uygular, botları oynatır, sonucu herkese
+    yayınlar. Katılanlar yalnızca kendi koltukları adına eylem gönderebilir; izleyiciler hiç gönderemez.
+    Arkadaşlar arası bir oyun olduğu için oda sahibinin hilesine karşı önlem yoktur.
+37. İstemcilere giden durumda RNG durumu sıfırlanır, böylece sonraki topaç sonucu önceden hesaplanamaz.
+38. Kopan oyuncu için 60 saniye beklenir (bağlantı 12 saniye sessiz kalırsa kopmuş sayılır). Süre dolunca
+    koltuk bota geçer; oyuncu aynı tarayıcıdan döndüğünde (oda başına saklanan kimlikle) koltuğu hemen
+    insana döner, bot o anki hamlesini bitirmiş olabilir.
+39. Oyun başladıktan sonra gelen yeni katılımcılar izleyici olur; bota geçmiş bir koltuğa başkası oturamaz.
+40. Çevrimiçide "Cihazı X'e verin" ekranları yoktur: teklifler, oylama ve karşı saldırıda toprak seçimi
+    ilgili oyuncunun kendi ekranında sorulur. Teklif "Sonra yanıtla" ile Diplomasi paneline bırakılabilir.
+41. Oda sahibi çıkarsa oyun biter; katılanlara "oda kapandı" bildirilir. Oyunu yalnızca oda sahibi kaydeder.
