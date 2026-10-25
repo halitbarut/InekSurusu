@@ -1,4 +1,6 @@
 import { BOT_LEVEL_NAME } from '../../bot';
+import { icon } from '../icons';
+import { PLAYER_COLORS } from '../playerStyle';
 import type { GameState } from '../../engine';
 import { ClientRoom } from '../../net/clientRoom';
 import { HostRoom } from '../../net/hostRoom';
@@ -28,7 +30,7 @@ function loadProfile(): Profile {
   } catch {
     // varsayılan
   }
-  return { name: '', color: '#2a7de1' };
+  return { name: '', color: PLAYER_COLORS[0] };
 }
 
 function saveProfile(p: Profile) {
@@ -87,7 +89,8 @@ export function inviteBox(code: string, people: HTMLElement): HTMLElement {
               }
             },
           },
-          '📋 Kopyala',
+          icon('copy'),
+          'Kopyala',
         ),
       ),
       people,
@@ -170,14 +173,14 @@ export function renderOnlineMenu(host: HTMLElement, cb: OnlineCallbacks, presetC
       h(
         'div',
         { class: 'paper-card' },
-        h('h1', { class: 'title small-title' }, '🌐 Çevrimiçi oyun'),
+        h('h1', { class: 'title small-title' }, icon('online', { cls: 'title-icon' }), 'Çevrimiçi oyun'),
         h('p', {}, 'Herkes kendi cihazından oynar. Oyun oda sahibinin tarayıcısında çalışır; sunucu kurmaya gerek yok.'),
         h('h3', {}, 'Oda kur'),
         h('p', { class: 'muted small' }, 'Bir oda kodu ve davet linki alırsın, ayarları sen yaparsın.'),
-        h('button', { class: 'btn btn-primary', onClick: () => void create() }, '🏠 Oda kur'),
+        h('button', { class: 'btn btn-primary', onClick: () => void create() }, icon('home'), 'Oda kur'),
         h('h3', { style: { marginTop: '18px' } }, 'Odaya katıl'),
         h('div', { class: 'row' }, 'Ad ', nameIn, colorIn),
-        h('div', { class: 'row' }, 'Oda kodu ', codeIn, h('button', { class: 'btn btn-primary', onClick: () => void join() }, '🚪 Katıl')),
+        h('div', { class: 'row' }, 'Oda kodu ', codeIn, h('button', { class: 'btn btn-primary', onClick: () => void join() }, icon('door'), 'Katıl')),
         status,
         h('div', { class: 'row-buttons' }, h('button', { class: 'btn', onClick: () => cb.menu() }, '← Geri')),
       ),
@@ -206,7 +209,7 @@ function renderJoinLobby(host: HTMLElement, cb: OnlineCallbacks, room: ClientRoo
     clear(seatsEl);
     lobby.seats.forEach((x, i) => {
       const mine = seat === i;
-      const label = x.kind === 'host' ? 'Oda sahibi' : x.kind === 'bot' ? `🤖 Bot (${BOT_LEVEL_NAME[x.botLevel ?? 'medium'].toLocaleLowerCase('tr')})` : x.claimedBy ? (mine ? 'Sen' : 'Dolu') : 'Boş';
+      const label = x.kind === 'host' ? 'Oda sahibi' : x.kind === 'bot' ? `Bot (${BOT_LEVEL_NAME[x.botLevel ?? 'medium'].toLocaleLowerCase('tr')})` : x.claimedBy ? (mine ? 'Sen' : 'Dolu') : 'Boş';
       seatsEl.appendChild(
         h(
           'div',
@@ -220,13 +223,13 @@ function renderJoinLobby(host: HTMLElement, cb: OnlineCallbacks, room: ClientRoo
       );
     });
     infoEl.textContent = `${lobby.mapName ? `Harita: ${lobby.mapName}` : `Harita ${lobby.width}×${lobby.height} · seed ${lobby.seed}`}${lobby.rules ? ` · Kurallar: ${lobby.rules}` : ''} · İzleyiciler: ${lobby.spectators.length ? lobby.spectators.join(', ') : '—'}`;
-    statusEl.textContent = seat === null ? '👀 Şu an izleyicisin. Oynamak için boş bir koltuğa otur.' : `✔ ${seat + 1}. koltuktasın. Oda sahibinin başlatması bekleniyor…`;
+    statusEl.textContent = seat === null ? 'Şu an izleyicisin. Oynamak için boş bir koltuğa otur.' : `${seat + 1}. koltuktasın. Oda sahibinin başlatması bekleniyor…`;
   };
   room.events.onLobby = (lobby, seat) => draw(lobby, seat);
   room.events.onGameState = (state) => cb.startClient(state, room);
   room.events.onNotice = (t) => toast(t, 'info');
   room.events.onStatus = (s, reason) => {
-    if (s === 'reconnecting') statusEl.textContent = '📡 Bağlantı koptu, yeniden bağlanılıyor…';
+    if (s === 'reconnecting') statusEl.textContent = 'Bağlantı koptu, yeniden bağlanılıyor…';
     if (s === 'closed') {
       toast(reason ?? 'Oda kapandı', 'error', 5000);
       cb.menu();
@@ -240,7 +243,7 @@ function renderJoinLobby(host: HTMLElement, cb: OnlineCallbacks, room: ClientRoo
       h(
         'div',
         { class: 'paper-card wide-card' },
-        h('h1', { class: 'title small-title' }, '🌐 Oda ', h('span', { class: 'room-code' }, room.code)),
+        h('h1', { class: 'title small-title' }, icon('online', { cls: 'title-icon' }), 'Oda ', h('span', { class: 'room-code' }, room.code)),
         h('div', { class: 'row' }, 'Adın ', nameIn, colorIn),
         h('h3', {}, 'Koltuklar'),
         seatsEl,
@@ -260,7 +263,7 @@ function renderJoinLobby(host: HTMLElement, cb: OnlineCallbacks, room: ClientRoo
             },
             '← Odadan çık',
           ),
-          h('button', { class: 'btn', onClick: () => room.claim(null) }, '👀 İzleyici ol'),
+          h('button', { class: 'btn', onClick: () => room.claim(null) }, icon('eye'), 'İzleyici ol'),
         ),
       ),
     ),

@@ -22,7 +22,8 @@ import {
   type MineType,
 } from '../../engine';
 import { append, clear, download, h, pickFile, toast } from '../dom';
-import { MINE_COLOR, MINE_LETTER, RES_NAME } from '../format';
+import { MINE_COLOR, MINE_LETTER, RES_ICON, RES_NAME } from '../format';
+import { icon, iconImage, type IconName } from '../icons';
 import { PAINT, paintThumb } from '../mapPaint';
 import { deleteMap, exportMap, importMap, listMaps, saveMap, type SavedMap } from '../storage';
 import { clampInt } from './rulesPanel';
@@ -119,7 +120,7 @@ export function renderMapList(host: HTMLElement, cb: EditorCallbacks) {
       h(
         'div',
         { class: 'paper-card wide-card' },
-        h('h1', { class: 'title small-title' }, 'Harita Editörü'),
+        h('h1', { class: 'title small-title' }, icon('map', { cls: 'title-icon' }), 'Harita Editörü'),
         h(
           'div',
           { class: 'map-new' },
@@ -197,12 +198,12 @@ interface Snapshot {
   mines: (MineType | null)[];
 }
 
-const TOOLS: { id: Tool; label: string; tip: string }[] = [
-  { id: 'land', label: 'Kara', tip: 'Kara fırçası (K)' },
-  { id: 'sea', label: 'Deniz', tip: 'Deniz fırçası (D)' },
-  { id: 'fill', label: 'Kova', tip: 'Tıklanan bölgeyi seçili zemin rengiyle doldur (B)' },
-  { id: 'mine', label: 'Maden', tip: 'Maden yerleştir (M)' },
-  { id: 'erase', label: 'Silgi', tip: 'Madeni sil (E)' },
+const TOOLS: { id: Tool; label: string; tip: string; icon: IconName }[] = [
+  { id: 'land', label: 'Kara', tip: 'Kara fırçası (K)', icon: 'brushLand' },
+  { id: 'sea', label: 'Deniz', tip: 'Deniz fırçası (D)', icon: 'brushSea' },
+  { id: 'fill', label: 'Kova', tip: 'Tıklanan bölgeyi son seçilen zeminle (kara/deniz) doldur (B)', icon: 'fill' },
+  { id: 'mine', label: 'Maden', tip: 'Maden yerleştir (M)', icon: 'mine' },
+  { id: 'erase', label: 'Silgi', tip: 'Madeni sil (E)', icon: 'eraser' },
 ];
 
 function openEditor(host: HTMLElement, cb: EditorCallbacks, draft: MapDraft, saved: SavedMap | null) {
@@ -227,8 +228,8 @@ function openEditor(host: HTMLElement, cb: EditorCallbacks, draft: MapDraft, sav
   const toolsEl = h('div', { class: 'editor-tools' });
   const minesEl = h('div', { class: 'editor-mines' });
   const checkEl = h('div', { class: 'editor-check' });
-  const undoBtn = h('button', { class: 'btn btn-small', title: 'Geri al (Ctrl+Z)', onClick: () => undo() }, '↶ Geri al');
-  const redoBtn = h('button', { class: 'btn btn-small', title: 'Yinele (Ctrl+Y)', onClick: () => redo() }, '↷ Yinele');
+  const undoBtn = h('button', { class: 'btn btn-small', title: 'Geri al (Ctrl+Z)', onClick: () => undo() }, icon('undo'), 'Geri al');
+  const redoBtn = h('button', { class: 'btn btn-small', title: 'Yinele (Ctrl+Y)', onClick: () => redo() }, h('span', { class: 'flip' }, icon('undo')), 'Yinele');
   const brushIn = h('input', { type: 'range', min: 1, max: 6, value: brush, 'aria-label': 'Fırça boyutu' });
   const brushLbl = h('span', { class: 'small' }, `${brush}`);
   brushIn.addEventListener('input', () => {
@@ -288,6 +289,7 @@ function openEditor(host: HTMLElement, cb: EditorCallbacks, draft: MapDraft, sav
               renderTools();
             },
           },
+          icon(t.icon),
           t.label,
         ),
       );
@@ -307,7 +309,7 @@ function openEditor(host: HTMLElement, cb: EditorCallbacks, draft: MapDraft, sav
               renderTools();
             },
           },
-          h('span', { class: 'mine-chip', style: { background: MINE_COLOR[m] } }, MINE_LETTER[m]),
+          h('span', { class: 'mine-chip', style: { background: MINE_COLOR[m], color: m === 'gold' ? '#3a2a00' : '#fff' } }, icon(RES_ICON[m])),
           ` ${RES_NAME[m]}`,
         ),
       );
@@ -318,7 +320,7 @@ function openEditor(host: HTMLElement, cb: EditorCallbacks, draft: MapDraft, sav
     clear(checkEl);
     const ok = check.errors.length === 0;
     append(checkEl, [
-      h('div', { class: `check-head ${ok ? 'good' : 'bad'}` }, ok ? `✔ ${MIN_PLAYERS}–${check.maxPlayers} oyuncu için uygun` : '✘ Henüz oynanamaz'),
+      h('div', { class: `check-head ${ok ? 'good' : 'bad'}` }, icon(ok ? 'check' : 'warning'), ok ? `${MIN_PLAYERS}–${check.maxPlayers} oyuncu için uygun` : 'Henüz oynanamaz'),
       h(
         'div',
         { class: 'muted small' },
@@ -393,10 +395,9 @@ function openEditor(host: HTMLElement, cb: EditorCallbacks, draft: MapDraft, sav
       ctx.beginPath();
       ctx.arc(cx, cy, cell * 0.38, 0, Math.PI * 2);
       ctx.fill();
-      if (cell >= 12) {
-        ctx.fillStyle = m === 'gold' ? '#3a2a00' : '#fff';
-        ctx.font = `bold ${Math.round(cell * 0.5)}px "Patrick Hand", sans-serif`;
-        ctx.fillText(MINE_LETTER[m], cx, cy + 1);
+      if (cell >= 10) {
+        const img = iconImage(RES_ICON[m], m === 'gold' ? '#3a2a00' : '#ffffff', paint);
+        if (img) ctx.drawImage(img, cx - cell * 0.3, cy - cell * 0.3, cell * 0.6, cell * 0.6);
       }
     }
     // Boğaz etiketleri
@@ -624,7 +625,7 @@ function openEditor(host: HTMLElement, cb: EditorCallbacks, draft: MapDraft, sav
           'aside',
           { class: 'editor-side' },
           h('section', {}, h('h3', {}, 'Araçlar'), toolsEl, h('div', { class: 'row' }, 'Fırça ', brushIn, brushLbl)),
-          h('section', {}, h('h3', {}, 'Madenler'), minesEl, h('div', { class: 'row' }, h('button', { class: 'btn btn-small', onClick: autoMines }, 'Otomatik yerleştir'), autoSel), h('button', { class: 'btn btn-small', onClick: clearMines }, 'Tüm madenleri sil')),
+          h('section', {}, h('h3', {}, 'Madenler'), minesEl, h('div', { class: 'row' }, h('button', { class: 'btn btn-small', onClick: autoMines }, icon('wand'), 'Otomatik yerleştir'), autoSel), h('button', { class: 'btn btn-small', onClick: clearMines }, 'Tüm madenleri sil')),
           h('section', {}, h('h3', {}, 'Denetim'), checkEl),
           h(
             'section',

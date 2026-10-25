@@ -1,5 +1,7 @@
 import { unitsAt, type GameMap, type GameState } from '../../engine';
-import { MINE_COLOR, MINE_LETTER, STRUCT_ICON, straitLabel } from '../format';
+import { MINE_COLOR, RES_ICON, STRUCT_ICON, straitLabel } from '../format';
+import { iconImage, type IconName } from '../icons';
+import { hatchShapes, playerHatch } from '../playerStyle';
 
 export type HighlightStyle = 'claim' | 'attack' | 'build' | 'select' | 'pick';
 
@@ -24,7 +26,6 @@ const STYLE_COLORS: Record<HighlightStyle, [string, string]> = {
   build: ['rgba(70, 170, 90, 0.32)', '#1f7a35'],
   select: ['rgba(90, 120, 255, 0.30)', '#2b47c9'],
 };
-const EMOJI_FONT = '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
 
 /** Deterministik küçük titreşim (el çizimi hissi) */
 function jitter(i: number, k: number): number {
@@ -57,7 +58,7 @@ export class MapView {
   private coastPath = new Path2D();
   private hatch: CanvasPattern | null = null;
   private flashes: Flash[] = [];
-  private mover: { x: number; y: number; icon: string } | null = null;
+  private mover: { x: number; y: number; icon: IconName } | null = null;
   private pointers = new Map<number, { x: number; y: number }>();
   private dragStart: { x: number; y: number; moved: boolean } | null = null;
   private pinchDist = 0;
@@ -140,7 +141,7 @@ export class MapView {
   }
 
   /** Bir birim simgesini rota boyunca hareket ettirir. */
-  async animatePath(from: number, path: number[], icon: string, msPerTile: number): Promise<void> {
+  async animatePath(from: number, path: number[], icon: IconName, msPerTile: number): Promise<void> {
     if (!this.map || msPerTile <= 0 || path.length === 0) return;
     const w = this.map.width;
     const pts = [from, ...path].map((t) => [(t % w) + 0.5, Math.floor(t / w) + 0.5]);
@@ -382,19 +383,25 @@ export class MapView {
         ctx.globalAlpha = 0.34;
         ctx.fillStyle = col;
         ctx.fillRect(x, y, 1, 1);
-        if (this.scale >= 10) {
-          ctx.globalAlpha = 0.45;
+        if (this.scale >= 8) {
+          // Oyuncuya özgü tarama deseni: renkleri ayırt edemeyenler için
+          const shape = hatchShapes(playerHatch(o));
+          ctx.globalAlpha = 0.6;
           ctx.strokeStyle = col;
-          ctx.lineWidth = 0.09;
+          ctx.fillStyle = col;
+          ctx.lineWidth = 0.08;
           ctx.beginPath();
-          for (let k = 0; k < 3; k++) {
-            const a = 0.15 + k * 0.33 + jitter(i, k);
-            ctx.moveTo(x + 0.08, y + a + 0.08);
-            ctx.lineTo(x + a + 0.08, y + 0.08);
-            ctx.moveTo(x + a + 0.04, y + 0.94);
-            ctx.lineTo(x + 0.94, y + a + 0.04);
+          for (const [x1, y1, x2, y2] of shape.lines) {
+            ctx.moveTo(x + x1 + jitter(i, 1) * 0.3, y + y1);
+            ctx.lineTo(x + x2, y + y2 + jitter(i, 2) * 0.3);
           }
           ctx.stroke();
+          for (const [cx, cy, r] of shape.dots) {
+            ctx.beginPath();
+            ctx.arc(x + cx, y + cy, Math.abs(r), 0, Math.PI * 2);
+            if (r > 0) ctx.fill();
+            else ctx.stroke();
+          }
         }
       }
     }
@@ -507,10 +514,9 @@ export class MapView {
       this.dirty = true; // nabız animasyonu
     }
 
-    // Maden simgeleri
+    // Maden simgeleri: renkli daire içinde ikon (çok uzaktan yalnızca daire)
+    const ready = () => (this.dirty = true);
     if (this.scale >= 7) {
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
       for (let y = y0; y <= y1; y++) {
         for (let x = x0; x <= x1; x++) {
           const i = y * m.width + x;
@@ -519,17 +525,18 @@ export class MapView {
           const hasStruct = s.structure[i] !== null;
           const cx = hasStruct ? x + 0.24 : x + 0.5;
           const cy = hasStruct ? y + 0.24 : y + 0.5;
-          const r = hasStruct ? 0.2 : 0.3;
+          const r = hasStruct ? 0.2 : 0.32;
           ctx.fillStyle = MINE_COLOR[mine];
-          ctx.strokeStyle = '#222';
+          ctx.strokeStyle = PENCIL;
           ctx.lineWidth = 0.05;
           ctx.beginPath();
           ctx.arc(cx, cy, r, 0, Math.PI * 2);
           ctx.fill();
           ctx.stroke();
-          ctx.fillStyle = mine === 'gold' ? '#3a2a00' : '#fff';
-          ctx.font = `bold ${r * 1.35}px "Patrick Hand", sans-serif`;
-          ctx.fillText(MINE_LETTER[mine], cx, cy + r * 0.06);
+          if (this.scale * r >= 5) {
+            const img = iconImage(RES_ICON[mine], mine === 'gold' ? '#3a2a00' : '#ffffff', ready);
+            if (img) ctx.drawImage(img, cx - r * 0.8, cy - r * 0.8, r * 1.6, r * 1.6);
+          }
         }
       }
     }
@@ -542,28 +549,28 @@ export class MapView {
         const i = y * m.width + x;
         const st = s.structure[i];
         if (!st) continue;
-        if (st === 'capital') {
-          ctx.fillStyle = '#fff8';
-          ctx.beginPath();
-          ctx.arc(x + 0.5, y + 0.5, 0.46, 0, Math.PI * 2);
-          ctx.fill();
-          const o = s.owner[i];
-          ctx.strokeStyle = o !== null ? s.players[o].color : '#333';
-          ctx.lineWidth = 0.09;
-          ctx.stroke();
-        }
-        ctx.font = `${st === 'capital' ? 0.8 : 0.74}px ${EMOJI_FONT}`;
-        ctx.fillText(STRUCT_ICON[st], x + 0.5, y + 0.54);
+        const o = s.owner[i];
+        // Kâğıt rengi zemin, sahibinin renginde çerçeve
+        ctx.fillStyle = 'rgba(255, 253, 246, 0.92)';
+        ctx.strokeStyle = o !== null ? s.players[o].color : PENCIL;
+        ctx.lineWidth = st === 'capital' ? 0.1 : 0.06;
+        ctx.beginPath();
+        ctx.arc(x + 0.5, y + 0.52, st === 'capital' ? 0.46 : 0.4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        const img = iconImage(STRUCT_ICON[st], PENCIL, ready);
+        const sz = st === 'capital' ? 0.72 : 0.62;
+        if (img) ctx.drawImage(img, x + 0.5 - sz / 2, y + 0.52 - sz / 2, sz, sz);
         if (st === 'shipyard' || st === 'factory') {
           const n = unitsAt(s, i).length;
           if (n > 0 && this.scale >= 9) {
-            ctx.fillStyle = '#222';
+            ctx.fillStyle = PENCIL;
             ctx.beginPath();
-            ctx.arc(x + 0.82, y + 0.82, 0.2, 0, Math.PI * 2);
+            ctx.arc(x + 0.84, y + 0.82, 0.2, 0, Math.PI * 2);
             ctx.fill();
             ctx.fillStyle = '#fff';
             ctx.font = `bold 0.3px "Patrick Hand", sans-serif`;
-            ctx.fillText(String(n), x + 0.82, y + 0.84);
+            ctx.fillText(String(n), x + 0.84, y + 0.84);
           }
         }
       }
@@ -618,8 +625,12 @@ export class MapView {
 
     // Hareket eden birim
     if (this.mover) {
-      ctx.font = `0.95px ${EMOJI_FONT}`;
-      ctx.fillText(this.mover.icon, this.mover.x, this.mover.y);
+      const img = iconImage(this.mover.icon, PENCIL);
+      ctx.fillStyle = 'rgba(255, 253, 246, 0.9)';
+      ctx.beginPath();
+      ctx.arc(this.mover.x, this.mover.y, 0.5, 0, Math.PI * 2);
+      ctx.fill();
+      if (img) ctx.drawImage(img, this.mover.x - 0.42, this.mover.y - 0.42, 0.84, 0.84);
     }
 
     // Harita çerçevesi

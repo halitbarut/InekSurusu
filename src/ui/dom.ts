@@ -1,3 +1,5 @@
+import { icon, type IconName } from './icons';
+
 export type Child = Node | string | number | null | undefined | false | Child[];
 
 type Attrs = Record<string, unknown>;
@@ -70,7 +72,7 @@ export interface ModalHandle {
 }
 
 /** Basit modal pencere. Düğmeye basılınca ya da kapatılınca result çözülür. */
-export function openModal(opts: { title: string; body?: Child; buttons?: ModalButton[]; closable?: boolean; wide?: boolean; className?: string }): ModalHandle {
+export function openModal(opts: { title: string; icon?: IconName; body?: Child; buttons?: ModalButton[]; closable?: boolean; wide?: boolean; className?: string }): ModalHandle {
   let resolve!: (v: string) => void;
   const result = new Promise<string>((r) => (resolve = r));
   const body = h('div', { class: 'modal-body' }, opts.body ?? null);
@@ -95,12 +97,12 @@ export function openModal(opts: { title: string; body?: Child; buttons?: ModalBu
   );
   const box = h(
     'div',
-    { class: `modal ${opts.wide ? 'modal-wide' : ''}` },
+    { class: `modal ${opts.wide ? 'modal-wide' : ''}`, role: 'dialog', 'aria-modal': 'true', 'aria-label': opts.title },
     h(
       'div',
       { class: 'modal-head' },
-      h('h2', {}, opts.title),
-      opts.closable !== false ? h('button', { class: 'icon-btn', title: 'Kapat', onClick: () => close('close') }, '✕') : null,
+      h('h2', {}, opts.icon ? icon(opts.icon, { cls: 'head-icon' }) : null, opts.title),
+      opts.closable !== false ? h('button', { class: 'icon-btn', title: 'Kapat', 'aria-label': 'Kapat', onClick: () => close('close') }, icon('close')) : null,
     ),
     body,
     buttons.length ? h('div', { class: 'modal-actions' }, buttons) : null,

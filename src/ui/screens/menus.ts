@@ -16,6 +16,8 @@ import {
 import { BOT_LEVEL_NAME } from '../../bot';
 import { clear, h, openModal, pickFile, toast } from '../dom';
 import { paintThumb } from '../mapPaint';
+import { cowMark, icon } from '../icons';
+import { PLAYER_COLORS } from '../playerStyle';
 import { mapFromSaved } from './mapEditor';
 import { getPrefs, setPrefs } from '../prefs';
 import { soundControls } from '../sound';
@@ -41,11 +43,11 @@ export interface MenuCallbacks {
 
 /** Bot seviyesi seçenekleri (değer: "bot:<seviye>") */
 function botOptions(selected: BotLevel | null) {
-  return BOT_LEVELS.map((lv) => h('option', { value: `bot:${lv}`, selected: selected === lv }, `🤖 Bot (${BOT_LEVEL_NAME[lv].toLocaleLowerCase('tr')})`));
+  return BOT_LEVELS.map((lv) => h('option', { value: `bot:${lv}`, selected: selected === lv }, `Bot (${BOT_LEVEL_NAME[lv].toLocaleLowerCase('tr')})`));
 }
 
 const NAMES = ['Ayşe', 'Mehmet', 'Zeynep', 'Ali', 'Elif', 'Mustafa', 'Fatma', 'Hasan'];
-const COLORS = ['#d62828', '#2a7de1', '#2a9d4a', '#f08c00', '#8e44ad', '#e84393', '#8d5524', '#1f9e9e'];
+const COLORS = PLAYER_COLORS;
 
 export function renderMainMenu(host: HTMLElement, cb: MenuCallbacks) {
   clear(host);
@@ -57,7 +59,7 @@ export function renderMainMenu(host: HTMLElement, cb: MenuCallbacks) {
       h(
         'div',
         { class: 'paper-card menu-card' },
-        h('div', { class: 'cow' }, '🐄🐄🐄'),
+        h('div', { class: 'cow' }, cowMark(92)),
         h('h1', { class: 'title' }, 'İnek Sürüsü'),
         h('p', { class: 'subtitle' }, 'Kareli defterden çıkıp gelen, topaçlı strateji oyunu'),
         h(
@@ -66,11 +68,11 @@ export function renderMainMenu(host: HTMLElement, cb: MenuCallbacks) {
           auto && auto.state.phase.kind !== 'gameover'
             ? h('button', { class: 'btn btn-primary btn-big', onClick: () => cb.start(auto.state) }, `▶ Devam et (${auto.round > 0 ? `${auto.round}. tur` : 'kurulum'})`)
             : null,
-          h('button', { class: `btn btn-big ${auto ? '' : 'btn-primary'}`, onClick: () => cb.newGame() }, '✏️ Yeni oyun'),
-          h('button', { class: 'btn btn-big', onClick: () => cb.online() }, '🌐 Çevrimiçi oyun'),
-          h('button', { class: 'btn btn-big', onClick: () => cb.load() }, '📂 Kayıtlı oyunu yükle'),
-          h('button', { class: 'btn btn-big', onClick: () => cb.editor() }, '🗺️ Harita Editörü'),
-          h('button', { class: 'btn btn-big', onClick: () => openSettings() }, '⚙️ Ayarlar'),
+          h('button', { class: `btn btn-big ${auto ? '' : 'btn-primary'}`, onClick: () => cb.newGame() }, icon('newGame'), 'Yeni oyun'),
+          h('button', { class: 'btn btn-big', onClick: () => cb.online() }, icon('online'), 'Çevrimiçi oyun'),
+          h('button', { class: 'btn btn-big', onClick: () => cb.load() }, icon('load'), 'Kayıtlı oyunu yükle'),
+          h('button', { class: 'btn btn-big', onClick: () => cb.editor() }, icon('map'), 'Harita Editörü'),
+          h('button', { class: 'btn btn-big', onClick: () => openSettings() }, icon('settings'), 'Ayarlar'),
         ),
         h('p', { class: 'muted small' }, 'Aynı ekranda sırayla (hot-seat), çevrimiçi ya da botlarla 3–8 oyuncu.'),
       ),
@@ -88,7 +90,8 @@ function openSettings() {
   const fast = h('input', { type: 'checkbox', checked: p.fastBots, onChange: (e: Event) => setPrefs({ fastBots: (e.target as HTMLInputElement).checked }) });
   const pass = h('input', { type: 'checkbox', checked: p.passScreen, onChange: (e: Event) => setPrefs({ passScreen: (e.target as HTMLInputElement).checked }) });
   openModal({
-    title: '⚙️ Ayarlar',
+    title: 'Ayarlar',
+    icon: 'settings',
     body: h(
       'div',
       { class: 'form-grid' },
@@ -159,13 +162,14 @@ export function renderLoadScreen(host: HTMLElement, cb: MenuCallbacks) {
         }
       },
     },
-    '⬆️ JSON dosyasından içe aktar',
+    icon('upload'),
+    'JSON dosyasından içe aktar',
   );
   host.appendChild(
     h(
       'div',
       { class: 'screen' },
-      h('div', { class: 'paper-card wide-card' }, h('h1', { class: 'title small-title' }, '📂 Kayıtlı oyunlar'), list, h('div', { class: 'row-buttons' }, h('button', { class: 'btn', onClick: () => cb.menu() }, '← Geri'), importBtn)),
+      h('div', { class: 'paper-card wide-card' }, h('h1', { class: 'title small-title' }, icon('load', { cls: 'title-icon' }), 'Kayıtlı oyunlar'), list, h('div', { class: 'row-buttons' }, h('button', { class: 'btn', onClick: () => cb.menu() }, '← Geri'), importBtn)),
     ),
   );
 }
@@ -246,7 +250,7 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
       const shown = locked ? lobby!.seats[i] : p;
       const kindSel = room
         ? i === 0
-          ? h('span', { class: 'tag tag-me' }, '🧑 Sen (oda sahibi)')
+          ? h('span', { class: 'tag tag-me' }, icon('human'), 'Sen (oda sahibi)')
           : h(
               'select',
               {
@@ -258,7 +262,7 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
                   syncLobby();
                 },
               },
-              h('option', { value: 'remote', selected: seatKinds[i] === 'remote' }, '🌐 Davetli oyuncu'),
+              h('option', { value: 'remote', selected: seatKinds[i] === 'remote' }, 'Davetli oyuncu'),
               botOptions(seatKinds[i] === 'bot' ? seatBotLevels[i] : null),
             )
         : h(
@@ -271,11 +275,11 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
                 if (v !== 'human') p.botLevel = v.slice(4) as BotLevel;
               },
             },
-            h('option', { value: 'human', selected: p.kind === 'human' }, '🧑 İnsan'),
+            h('option', { value: 'human', selected: p.kind === 'human' }, 'İnsan'),
             botOptions(p.kind === 'bot' ? (p.botLevel ?? 'medium') : null),
           );
       const status =
-        room && seatKinds[i] === 'remote' ? h('span', { class: 'muted small' }, claimed ? '✔ oturdu' : '⏳ boş') : null;
+        room && seatKinds[i] === 'remote' ? h('span', { class: 'muted small' }, claimed ? 'oturdu' : 'boş') : null;
       rowsEl.appendChild(
         h(
           'div',
@@ -324,7 +328,7 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
         const chk = checkMap(map, config);
         previewInfo.textContent = `${saved.name} · ${map.width}×${map.height} · ${chk.land} kara karesi · ${chk.straits} boğaz · ${chk.lakes} göl · en fazla ${chk.maxPlayers} oyuncu`;
         if (chk.maxPlayers < count) {
-          mapWarn.textContent = `⚠ Bu harita ${count} oyuncuya uygun değil: en fazla ${chk.maxPlayers} oyuncuya başlangıç alanı ayrılabiliyor. Oyuncu sayısını azalt ya da başka harita seç.`;
+          mapWarn.textContent = `Bu harita ${count} oyuncuya uygun değil: en fazla ${chk.maxPlayers} oyuncuya başlangıç alanı ayrılabiliyor. Oyuncu sayısını azalt ya da başka harita seç.`;
           mapWarn.classList.remove('hidden');
         }
       } catch (e) {
@@ -434,7 +438,7 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
       h(
         'div',
         { class: 'paper-card wide-card' },
-        h('h1', { class: 'title small-title' }, room ? '🌐 Çevrimiçi oda' : '✏️ Yeni oyun'),
+        h('h1', { class: 'title small-title' }, icon(room ? 'online' : 'newGame', { cls: 'title-icon' }), room ? 'Çevrimiçi oda' : 'Yeni oyun'),
         room ? inviteBox(room.code, peopleEl) : null,
         h(
           'div',
@@ -461,7 +465,7 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
                     schedulePreview();
                   },
                 },
-                '🎲',
+                icon('dice'),
               ),
             ),
             preview,

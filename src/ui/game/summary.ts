@@ -1,7 +1,7 @@
 import { SPEND_KEYS, type GameState, type PlayerSnapshot, type SpendKey } from '../../engine';
 import { clear, download, h } from '../dom';
 import { fmtNum } from '../format';
-import { playerDash } from '../playerStyle';
+import { playerDash, playerSwatch } from '../playerStyle';
 
 const SPEND_NAME: Record<SpendKey, string> = {
   claim: 'Toprak',
@@ -226,7 +226,7 @@ function table(state: GameState): HTMLElement {
     return h(
       'tr',
       { class: p.alive ? '' : 'dead' },
-      h('td', {}, h('span', { class: 'dot small', style: { background: p.color } }), ` ${p.name}`),
+      h('td', { class: 'nowrap' }, h('span', { class: 'pr-name' }, playerSwatch(p.color, p.id, 16), p.name)),
       h('td', {}, elim ? `${elim.round}. tur (${state.players[elim.by].name})` : '—'),
       SPEND_KEYS.map((k) => h('td', { class: 'num-col' }, t ? fmtNum(t.spend[k]) : '—')),
       h('td', { class: 'num-col' }, h('b', {}, fmtNum(total))),

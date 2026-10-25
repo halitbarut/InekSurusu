@@ -261,3 +261,24 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
     aç/kapa düğmesi vardır; tercih `localStorage` içinde hatırlanır.
 79. "Hızlı oynat" açıkken botların eylemlerinden yalnızca önemli olayların sesi çalar: savaşı kazanma/kaybetme,
     başkent düşüşü ve gelen teklif. İnsan oyuncunun kendi eylemleri her zaman ses verir.
+
+## Görsel dil ve erişilebilirlik
+
+80. Emojilerin yerini kendi SVG ikon setimiz aldı (`src/ui/icons.ts`): 24×24 alanda, yuvarlak uçlu 1,8 kalınlıkta
+    çizgi; kaynak ve yapılarda tanınmayı kolaylaştıran açık renk dolgu. Haritada aynı ikonlar Canvas'a resim olarak
+    çizilir. Olay günlüğü ve bildirim metinlerinden emojiler çıkarıldı; günlükte satır başına ikon gösterilir.
+81. **Varsayılan oyuncu renkleri** değişti: `#2160c4, #ea5b1e, #921f5e, #129390, #9977e4, #7b4704, #b14e4b, #e5518a`.
+    Renkler, kâğıt zemin (`#fbf8ef`) üzerinde renk körlüğü simülasyonu yapan doğrulayıcıyla seçildi: ilk 6 renk
+    **tüm çiftlerde** kırmızı-yeşil renk körlüğünde ΔE ≥ 10, normal görüşte ≥ 16; hepsi zemine karşı ≥ 3:1 kontrastlı.
+    8 rengin hepsini aynı anda ayırmak mümkün olmadığından 7. ve 8. oyuncuda ayrım desenlere dayanır.
+    Oyuncular yine istedikleri rengi seçebilir; eski kayıtlar kendi renkleriyle açılır.
+82. Haritada her oyuncunun toprağı rengine ek olarak **kendi tarama deseniyle** çizilir (ters eğik, dikey, yatay,
+    noktalı, kareli, çarpılı, halkalı, eğik). Eğik çizgi (/) denizin taramasına benzediği için en sona kondu.
+    Aynı desen oyuncu listesinde, aktif oyuncu kartında ve diplomasi penceresinde küçük örnek olarak görünür.
+83. Eylem çubuğunda yapılamayan eylemler tıklanabilir kalır ama soluk ve kesik çerçevelidir: üzerine gelince ya da
+    klavyeyle odaklanınca ipucunda nedeni yazar, tıklanınca nedeni bildirim olarak gösterir. Gerçek `disabled`
+    kullanılmadı, çünkü devre dışı düğmeler fare olaylarını almadığından nedeni gösteremez.
+84. Aşama göstergesi normal turda Bakım → Topaç → Eylemler adımlarını gösterir; kurulum, fetih, oylama ve oyun sonu
+    tek etiketle gösterilir. Seed üst çubuktan kaldırıldı (zafer ekranında ve kayıt adında duruyor).
+85. Hot-seat sıra geçiş ekranı artık tüm ekranı oyuncu rengine boyamıyor; diğer pencerelerle aynı kart, üstünde oyuncu
+    renginde şerit ve desen örneği. Hot-seat'te bilgiler zaten gizli değil (#36).
