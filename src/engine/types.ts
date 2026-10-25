@@ -112,6 +112,8 @@ export type Phase =
       counter: boolean;
     }
   | { kind: 'vote'; proposer: number; votes: Record<number, boolean> }
+  /** Bakım ödenemiyor: oyuncu birim/üs dağıtarak borcu akçesine indirir */
+  | { kind: 'upkeep'; due: number }
   | { kind: 'gameover' };
 
 export type BattleKind = 'land' | 'capital' | 'base';
@@ -157,6 +159,8 @@ export type GameEvent =
       /** Savunanın karşı saldırıyla alacağı toprak (yalnızca kara savaşı) */
       loss: number;
       streakNeeded: number;
+      /** Savaş başlatılırken ödenen masraf */
+      cost: BattleCost;
     }
   | { type: 'conquer'; player: number; from: number; tile: number }
   | { type: 'base_captured'; player: number; from: number; tile: number }
@@ -172,7 +176,15 @@ export type GameEvent =
   | { type: 'victory_proposed'; player: number }
   | { type: 'vote_cast'; player: number; accept: boolean }
   | { type: 'vote_result'; accepted: boolean }
-  | { type: 'game_over'; winners: number[] };
+  | { type: 'game_over'; winners: number[] }
+  | { type: 'upkeep'; player: number; amount: number; ships: number; planes: number; bases: number }
+  | { type: 'disband'; player: number; what: 'ship' | 'plane' | 'base'; tile: number; voluntary: boolean };
+
+export interface BattleCost {
+  akce: number;
+  iron: number;
+  steel: number;
+}
 
 export interface LogEntry {
   turn: number;
@@ -226,6 +238,8 @@ export type Action =
   | { type: 'BREAK_ALLIANCE'; player: number; target: number }
   | { type: 'PROPOSE_VICTORY'; player: number }
   | { type: 'CAST_VOTE'; player: number; accept: boolean }
+  | { type: 'DISBAND_UNIT'; player: number; unitId: number }
+  | { type: 'DEMOLISH_BASE'; player: number; tile: number }
   | { type: 'END_TURN'; player: number };
 
 export type ActionType = Action['type'];

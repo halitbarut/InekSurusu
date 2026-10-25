@@ -1,4 +1,4 @@
-import { DEFAULT_CONFIG, MAX_PLAYERS, MIN_PLAYERS, type GameConfig } from './config';
+import { DEFAULT_CONFIG, MAX_PLAYERS, MIN_PLAYERS, configProblems, type GameConfig } from './config';
 import { generateMap } from './map/generate';
 import { mixSeed } from './rng';
 import type { BotLevel, GameMap, GameState, Player } from './types';
@@ -22,6 +22,8 @@ export function createGame(settings: NewGameSettings): GameState {
   const n = settings.players.length;
   if (n < MIN_PLAYERS || n > MAX_PLAYERS) throw new Error(`Oyuncu sayısı ${MIN_PLAYERS}–${MAX_PLAYERS} olmalı`);
   const config: GameConfig = { ...DEFAULT_CONFIG, ...settings.config };
+  const problems = configProblems(config);
+  if (problems.length) throw new Error(`Geçersiz ayar: ${problems.join('; ')}`);
   const map = generateMap({
     width: settings.width,
     height: settings.height,

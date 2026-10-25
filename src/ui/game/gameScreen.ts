@@ -3,8 +3,12 @@ import {
   RESOURCE_KEYS,
   BATTLE_USED,
   allAliveAllied,
+  battleCost,
+  battleCostText,
+  upkeepDue,
   atPeace,
   battleUsed,
+  openingPeaceActive,
   attackableTiles,
   battleKindAt,
   buildableTiles,
@@ -790,6 +794,8 @@ export class GameScreen {
         return `Fetih: ${s.phase.remaining} toprak seç`;
       case 'vote':
         return 'Oylama';
+      case 'upkeep':
+        return `Bakım ödenemiyor (${s.phase.due} akçe)`;
       case 'gameover':
         return 'Oyun bitti';
     }
@@ -815,6 +821,7 @@ export class GameScreen {
         h('span', { class: 'stat', title: 'Gemi' }, '🚢 ', h('b', {}, st.ships)),
         h('span', { class: 'stat', title: 'Uçak' }, '✈️ ', h('b', {}, st.planes)),
         h('span', { class: 'stat', title: 'Toprak' }, '🟩 ', h('b', {}, st.tiles)),
+        s.config.upkeepEnabled ? h('span', { class: 'stat', title: 'Her tur başında gemi, uçak ve askeri üsler için ödenir' }, '🧾 Tur başı bakım: ', h('b', {}, `${fmtNum(upkeepDue(s, p.id))} akçe`)) : null,
       ),
       h('div', { class: 'meta' }, s.round > 0 ? `${s.round}. tur` : 'Kurulum', h('br'), h('span', { class: 'muted', title: 'Harita seed değeri' }, `Seed ${s.map.seed}`)),
     );
@@ -846,7 +853,7 @@ export class GameScreen {
             { class: 'pr-main' },
             h('div', { class: 'pr-name' }, p.id === cur ? '▶ ' : '', p.name, p.kind === 'bot' ? h('span', { class: 'tag' }, 'Bot') : null, this.seatBadge(p.id), ' ', rel),
             p.alive
-              ? h('div', { class: 'pr-stats' }, `🟩 ${st.tiles} · 🪙 ${fmtNum(p.resources.akce)} · 🚢 ${st.ships} · ✈️ ${st.planes}`)
+              ? h('div', { class: 'pr-stats' }, `🟩 ${st.tiles} · 🪙 ${fmtNum(p.resources.akce)} · 🚢 ${st.ships} · ✈️ ${st.planes}${s.config.upkeepEnabled ? ` · 🧾 ${fmtNum(upkeepDue(s, p.id))}` : ''}`)
               : h('div', { class: 'pr-stats' }, `☠️ Elendi${p.eliminatedBy !== null ? ` (${pname(s, p.eliminatedBy)})` : ''}`),
             allies.length ? h('div', { class: 'pr-allies' }, '🤝 ', allies.map((a) => h('span', { class: 'dot small', title: a.name, style: { background: a.color } }))) : null,
           ),
@@ -1004,6 +1011,16 @@ export class GameScreen {
       this.setBanner(`🟩 Başlangıç toprağı seç: kalan ${ph.picksLeft}. Her kare bölgene bitişik olmalı; maden kareleri seçilemez.`, [
         { label: 'Seçimi bitir', onClick: () => void this.act({ type: 'SKIP_START_PICKS', player: me }) },
       ]);
+    } else if (ph.kind === 'upkeep') {
+      const akce = s.players[me].resources.akce;
+      this.setBanner(`🧾 Bakım ${fmtNum(ph.due)} akçe, akçen ${fmtNum(akce)}. Ödenemeyen kadar birim ya da üs dağıtmalısın.`, [
+        { label: 'Dağıtılacakları seç', primary: true, onClick: () => this.openUpkeepDialog() },
+      ]);
+      const key = `upkeep-${s.turnCounter}`;
+      if (!this.prompted.has(key)) {
+        this.prompted.add(key);
+        setTimeout(() => this.openUpkeepDialog(), 0);
+      }
     } else if (ph.kind === 'spin') {
       this.setBanner('🎡 Sıra sende! Önce sekizgen topacı çevir.', [{ label: '🎡 Topacı çevir', primary: true, onClick: () => void this.act({ type: 'SPIN', player: me }) }]);
     } else if (ph.kind === 'conquest') {
@@ -1045,7 +1062,7 @@ export class GameScreen {
           const c = s.config;
           this.setBanner(
             ships.length || planes.length
-              ? `🏭 Tersaneye tıkla: gemi (${c.shipIronCost} demir + ${c.shipAkceCost} akçe) · Fabrikaya tıkla: uçak (${c.planeSteelCost} çelik + ${c.planeAkceCost} akçe)`
+              ? `🏭 Tersaneye tıkla: gemi (${c.shipIronCost} demir + ${c.shipAkceCost} akçe${c.upkeepEnabled ? `, bakım ${c.shipUpkeep}/tur` : ''}) · Fabrikaya tıkla: uçak (${c.planeSteelCost} çelik + ${c.planeAkceCost} akçe${c.upkeepEnabled ? `, bakım ${c.planeUpkeep}/tur` : ''})`
               : 'Üretim için tersane/uçak fabrikası ve yeterli kaynak gerekli.',
             [cancel],
           );
@@ -1057,8 +1074,10 @@ export class GameScreen {
           this.setBanner(
             battleUsed(s, me)
               ? `⚔️ ${BATTLE_USED}.`
+              : openingPeaceActive(s)
+                ? `☮️ Açılış barışı: ${s.config.openingPeaceRounds}. tur sonuna kadar kimse başka oyuncunun toprağına saldıramaz.`
               : t.length
-                ? '⚔️ Saldırılacak komşu düşman toprağını seç (turda tek savaş). Kaybedersen savunan karşı saldırıyla toprak alır; başkent ve üsler özel savaş gerektirir.'
+                ? `⚔️ Saldırılacak komşu düşman toprağını seç (turda tek savaş). ${this.battleCostsLine()} Kaybedersen savunan karşı saldırıyla toprak alır.`
                 : 'Saldırılabilecek komşu düşman toprağı yok.',
             [cancel],
           );
@@ -1103,7 +1122,7 @@ export class GameScreen {
           hl.selected = new Set([unit.tile]);
           const others = units.length > 1 ? [{ label: 'Başka birim', onClick: () => this.setMode({ kind: 'expedition', unit: mode.unit, unitId: null }) }] : [];
           this.setBanner(
-            `${icon} ${name} seferi (${mode.unit === 'ship' ? s.config.shipOilCost : s.config.planeOilCost} petrol): sarı = sahipsiz (${s.config.expeditionClaimCost} akçe), ${battleUsed(s, me) ? 'savaş hakkın bu tur kullanıldı' : 'kırmızı = savaş'}.${mode.unit === 'plane' ? ' Taralı kırmızı alan: düşman üssü engeli.' : ''}`,
+            `${icon} ${name} seferi (${mode.unit === 'ship' ? s.config.shipOilCost : s.config.planeOilCost} petrol): sarı = sahipsiz (${s.config.expeditionClaimCost} akçe), ${battleUsed(s, me) ? 'savaş hakkın bu tur kullanıldı' : `kırmızı = savaş${s.config.battleCostsEnabled ? ` (+${battleCostText(battleCost(s, 'land'))}, üs ${battleCostText(battleCost(s, 'base'))})` : ''}`}.${mode.unit === 'plane' ? ' Taralı kırmızı alan: düşman üssü engeli.' : ''}`,
             [...others, cancel],
           );
           break;
@@ -1286,13 +1305,64 @@ export class GameScreen {
   // Diyaloglar
   // ------------------------------------------------------------------
 
+  /** Saldırı modunda gösterilen masraf satırı */
+  private battleCostsLine(): string {
+    const s = this.state;
+    const parts: string[] = [];
+    if (s.config.battleCostsEnabled) {
+      parts.push(`Masraf: savaş ${battleCostText(battleCost(s, 'land'))} · üs ${battleCostText(battleCost(s, 'base'))} · başkent ${battleCostText(battleCost(s, 'capital'))}.`);
+    }
+    if (s.config.weaknessRule) parts.push('Zayıflık şartı açık: başkente ancak toprağı seninkinin yarısından az olan rakipte saldırabilirsin.');
+    return parts.join(' ');
+  }
+
+  /** Bakım ödenemiyorsa dağıtılacak birimleri/üsleri seçtiren pencere */
+  private openUpkeepDialog() {
+    const s = this.state;
+    if (s.phase.kind !== 'upkeep' || !this.isHumanTurn() || this.destroyed) return;
+    // Cihaz geçiş ekranı ya da başka bir pencere açıksa biraz sonra tekrar dene
+    if (document.querySelector('.modal-backdrop, .overlay')) {
+      setTimeout(() => this.openUpkeepDialog(), 500);
+      return;
+    }
+    const me = s.currentPlayer;
+    const c = s.config;
+    const res = s.players[me].resources;
+    let modal: ReturnType<typeof openModal> | null = null;
+    const run = (a: Action) => {
+      modal?.close();
+      void this.act(a).then(() => {
+        if (!this.destroyed && this.state.phase.kind === 'upkeep') this.openUpkeepDialog();
+      });
+    };
+    const units = s.units.filter((u) => u.owner === me);
+    const bases: number[] = [];
+    for (let i = 0; i < s.owner.length; i++) if (s.owner[i] === me && s.structure[i] === 'base') bases.push(i);
+    const row = (label: string, upkeep: number, btn: string, a: Action) =>
+      h('div', { class: 'seat-row' }, h('span', { class: 'grow' }, label, h('span', { class: 'muted small' }, ` · bakım ${upkeep}`)), h('button', { class: 'btn btn-small btn-danger', onClick: () => run(a) }, btn));
+    modal = openModal({
+      title: '🧾 Bakım ödenemiyor',
+      closable: false,
+      body: h(
+        'div',
+        {},
+        h('p', {}, `Bu turun bakımı ${fmtNum(s.phase.due)} akçe, elinde ${fmtNum(res.akce)} akçe var. Borç akçene inene kadar birim dağıt ya da üs yık; kalan bakım otomatik ödenir.`),
+        res.gold > 0
+          ? h('p', {}, h('button', { class: 'btn btn-small btn-primary', onClick: () => run({ type: 'EXCHANGE_GOLD', player: me, amount: res.gold }) }, `🥇 ${res.gold} altını bozdur (+${fmtNum(res.gold * c.goldToAkce)} akçe)`))
+          : null,
+        units.map((u) => row(`${UNIT_ICON[u.kind]} ${u.kind === 'ship' ? 'Gemi' : 'Uçak'} ${tileLabel(s, u.tile)}`, u.kind === 'ship' ? c.shipUpkeep : c.planeUpkeep, 'Dağıt', { type: 'DISBAND_UNIT', player: me, unitId: u.id })),
+        bases.map((t) => row(`${STRUCT_ICON.base} Askeri üs ${tileLabel(s, t)} (toprak sende kalır)`, c.baseUpkeep, 'Yık', { type: 'DEMOLISH_BASE', player: me, tile: t })),
+      ),
+    });
+  }
+
   private openBuildDialog() {
     const s = this.state;
     const me = s.players[s.currentPlayer];
     const items: { s: BuildableStructure; desc: string }[] = [
-      { s: 'shipyard', desc: 'Denize kıyısı olan bir toprağa (göl sayılmaz). Gemi üretir.' },
-      { s: 'factory', desc: 'Herhangi bir toprağa. Uçak üretir.' },
-      { s: 'base', desc: `Başkent dışında bir toprağa. ${s.config.baseBlockRadius} kare içinde düşman uçaklarını engeller; ele geçirmek için ${s.config.baseStreak} art arda galibiyet gerekir.` },
+      { s: 'shipyard', desc: `Denize kıyısı olan bir toprağa (göl sayılmaz). Gemi üretir${s.config.upkeepEnabled ? ` (gemi bakımı ${s.config.shipUpkeep} akçe/tur)` : ''}.` },
+      { s: 'factory', desc: `Herhangi bir toprağa. Uçak üretir${s.config.upkeepEnabled ? ` (uçak bakımı ${s.config.planeUpkeep} akçe/tur)` : ''}.` },
+      { s: 'base', desc: `Başkent dışında bir toprağa. ${s.config.baseBlockRadius} kare içinde düşman uçaklarını engeller; ele geçirmek için ${s.config.baseStreak} art arda galibiyet gerekir.${s.config.upkeepEnabled ? ` Bakım: ${s.config.baseUpkeep} akçe/tur.` : ''}` },
     ];
     const m = openModal({
       title: '🔨 İnşa et',
@@ -1714,6 +1784,14 @@ export class GameScreen {
           h('li', {}, `Tersane ${c.shipyardCost} (denize kıyı), uçak fabrikası ${c.factoryCost}, askeri üs ${c.baseCost} akçe (başkente kurulamaz). Karede tek yapı.`),
           h('li', {}, `Gemi: ${c.shipIronCost} demir + ${c.shipAkceCost} akçe. Uçak: ${c.planeSteelCost} çelik + ${c.planeAkceCost} akçe. Kalıcıdırlar.`),
           h('li', {}, 'Turda yalnızca 1 savaş (kara, gemi/uçakla saldırı, başkent ya da üs savaşı). Sahipsiz toprak almak savaş sayılmaz.'),
+          c.battleCostsEnabled
+            ? h('li', {}, `Savaş masrafı (başlatırken, sonuçtan bağımsız): normal ${battleCostText(battleCost(this.state, 'land'))}, üs ${battleCostText(battleCost(this.state, 'base'))}, başkent ${battleCostText(battleCost(this.state, 'capital'))}.`)
+            : null,
+          c.upkeepEnabled
+            ? h('li', {}, `Tur başı bakım (topaçtan önce): gemi ${c.shipUpkeep}, uçak ${c.planeUpkeep}, askeri üs ${c.baseUpkeep} akçe. Ödenemeyen kadar birim dağıtılır, üs yıkılır.`)
+            : null,
+          c.weaknessRule ? h('li', {}, 'Zayıflık şartı: başkente saldırmak için savunanın toprağı saldıranınkinin yarısından az olmalı.') : null,
+          c.openingPeace ? h('li', {}, `Açılış barışı: ilk ${c.openingPeaceRounds} tur kimse başka oyuncunun toprağına saldıramaz.`) : null,
           h('li', {}, 'Kara savaşı: iki taraf topaç çevirir. A > D ise saldıran A − D toprak seçer; A < D ise savunan karşı saldırıyla ⌈(D − A) / 2⌉ toprak seçer; eşitlik sonuçsuz.'),
           h('li', {}, `Başkent savaşı: ${c.capitalStreak} kez art arda yüksek at (eşitlik tekrar). Başkent düşerse oyuncu elenir, her şeyi saldırana geçer.`),
           h('li', {}, `Askeri üs savaşı: ${c.baseStreak} kez art arda yüksek at. Başkent/üs savaşını kaybetmenin toprak bedeli yok.`),

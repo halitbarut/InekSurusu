@@ -1,3 +1,4 @@
+import { isAkceAmount } from './config';
 import { atPeace, isAllied, mutRelation, refreshStraits, transferTile } from './helpers';
 import { RESOURCE_KEYS, type GameEvent, type GameState, type Offer, type OfferItem } from './types';
 
@@ -20,6 +21,7 @@ export function offerItemProblem(state: GameState, from: number, to: number, ite
     case 'resource': {
       if (!RESOURCE_KEYS.includes(item.resource)) return 'Geçersiz kaynak';
       if (!Number.isInteger(item.amount) || item.amount <= 0) return 'Miktar pozitif tam sayı olmalı';
+      if (item.resource === 'akce' && !isAkceAmount(item.amount)) return "Akçe miktarı 100'ün katı olmalı";
       const giver = state.players[sideToPlayer(from, to, item.giver)];
       if (giver.resources[item.resource] < item.amount) return `${giver.name} yeterli kaynağa sahip değil`;
       return null;
@@ -35,7 +37,7 @@ export function offerItemProblem(state: GameState, from: number, to: number, ite
       const st = state.straits[item.straitId];
       if (!st) return 'Geçersiz boğaz';
       if (st.controller !== giver) return 'Boğaz verenin idaresinde değil';
-      if (!Number.isInteger(item.toll) || item.toll < 0) return 'Vergi negatif olamaz';
+      if (!isAkceAmount(item.toll)) return "Vergi 0 ya da 100'ün katı olmalı";
       return null;
     }
   }

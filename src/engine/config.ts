@@ -38,6 +38,28 @@ export interface GameConfig {
   minesPerTypePerPlayer: number;
   /** Barış anlaşması en fazla kaç tur sürebilir */
   maxPeaceRounds: number;
+
+  /** Savaş masrafları uygulansın mı (kapalıysa savaşlar bedelsiz) */
+  battleCostsEnabled: boolean;
+  /** Normal savaş (kara ya da gemi/uçakla dolu toprağa) masrafı */
+  landBattleAkce: number;
+  baseBattleAkce: number;
+  baseBattleIron: number;
+  capitalBattleAkce: number;
+  capitalBattleIron: number;
+  capitalBattleSteel: number;
+
+  /** Tur başı bakım uygulansın mı */
+  upkeepEnabled: boolean;
+  shipUpkeep: number;
+  planeUpkeep: number;
+  baseUpkeep: number;
+
+  /** Zayıflık şartı: başkente saldırmak için savunanın toprağı saldıranın yarısından az olmalı */
+  weaknessRule: boolean;
+  /** Açılış barışı: ilk N tur oyuncu topraklarına saldırı yok */
+  openingPeace: boolean;
+  openingPeaceRounds: number;
 }
 
 export const DEFAULT_CONFIG: GameConfig = {
@@ -65,7 +87,58 @@ export const DEFAULT_CONFIG: GameConfig = {
   maxSortiesPerUnitPerTurn: 0,
   minesPerTypePerPlayer: 1,
   maxPeaceRounds: 30,
+  battleCostsEnabled: true,
+  landBattleAkce: 100,
+  baseBattleAkce: 400,
+  baseBattleIron: 2,
+  capitalBattleAkce: 1000,
+  capitalBattleIron: 3,
+  capitalBattleSteel: 3,
+  upkeepEnabled: true,
+  shipUpkeep: 100,
+  planeUpkeep: 100,
+  baseUpkeep: 100,
+  weaknessRule: false,
+  openingPeace: false,
+  openingPeaceRounds: 5,
 };
+
+/** Akçe cinsinden tüm ayarlar: hepsi 100'ün katı olmalı */
+export const AKCE_FIELDS: readonly (keyof GameConfig)[] = [
+  'startAkce',
+  'claimCost',
+  'expeditionClaimCost',
+  'goldToAkce',
+  'spinMultiplier',
+  'shipyardCost',
+  'factoryCost',
+  'baseCost',
+  'shipAkceCost',
+  'planeAkceCost',
+  'landBattleAkce',
+  'baseBattleAkce',
+  'capitalBattleAkce',
+  'shipUpkeep',
+  'planeUpkeep',
+  'baseUpkeep',
+];
+
+/** Oyundaki tüm akçe miktarları bu birimin katıdır */
+export const AKCE_UNIT = 100;
+
+export function isAkceAmount(n: number): boolean {
+  return Number.isInteger(n) && n >= 0 && n % AKCE_UNIT === 0;
+}
+
+/** Ayarlardaki sorunları döner (boşsa geçerli). */
+export function configProblems(cfg: GameConfig): string[] {
+  const problems: string[] = [];
+  for (const k of AKCE_FIELDS) {
+    if (!isAkceAmount(cfg[k] as number)) problems.push(`${k} 100'ün katı olmalı (şu an ${cfg[k]})`);
+  }
+  if (!Number.isInteger(cfg.openingPeaceRounds) || cfg.openingPeaceRounds < 0) problems.push('openingPeaceRounds 0 veya pozitif tam sayı olmalı');
+  return problems;
+}
 
 /** Her oyuncu turunda yapılabilecek savaş sayısı (sabit kural) */
 export const BATTLES_PER_TURN = 1;

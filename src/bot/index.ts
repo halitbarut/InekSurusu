@@ -4,6 +4,7 @@ import type { BotBrain } from './types';
 
 export type { BotBrain } from './types';
 export { MediumBot, MEDIUM_TUNING, type BotTuning } from './medium';
+export { RusherBot } from './rusher';
 
 const brains: Record<BotLevel, BotBrain> = {
   medium: new MediumBot(),

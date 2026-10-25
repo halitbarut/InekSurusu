@@ -1,5 +1,8 @@
 import {
+  AKCE_FIELDS,
+  AKCE_UNIT,
   DEFAULT_CONFIG,
+  configProblems,
   MAX_PLAYERS,
   MIN_PLAYERS,
   createGame,
@@ -186,6 +189,24 @@ const CONFIG_FIELDS: ConfigField[] = [
   { key: 'maxSortiesPerUnitPerTurn', label: 'Birim başına tur içi sefer (0 = sınırsız)', min: 0, max: 100 },
   { key: 'minesPerTypePerPlayer', label: 'Oyuncu başına maden (her türden)', min: 0, max: 20 },
   { key: 'maxPeaceRounds', label: 'En uzun barış süresi (tur)', min: 1, max: 200 },
+  { key: 'landBattleAkce', label: 'Normal savaş masrafı (akçe)', min: 0, max: 10000 },
+  { key: 'baseBattleAkce', label: 'Üs savaşı masrafı (akçe)', min: 0, max: 10000 },
+  { key: 'baseBattleIron', label: 'Üs savaşı masrafı (demir)', min: 0, max: 100 },
+  { key: 'capitalBattleAkce', label: 'Başkent savaşı masrafı (akçe)', min: 0, max: 100000 },
+  { key: 'capitalBattleIron', label: 'Başkent savaşı masrafı (demir)', min: 0, max: 100 },
+  { key: 'capitalBattleSteel', label: 'Başkent savaşı masrafı (çelik)', min: 0, max: 100 },
+  { key: 'shipUpkeep', label: 'Gemi bakımı (akçe/tur)', min: 0, max: 10000 },
+  { key: 'planeUpkeep', label: 'Uçak bakımı (akçe/tur)', min: 0, max: 10000 },
+  { key: 'baseUpkeep', label: 'Askeri üs bakımı (akçe/tur)', min: 0, max: 10000 },
+  { key: 'openingPeaceRounds', label: 'Açılış barışı süresi (tur)', min: 0, max: 100 },
+];
+
+/** Aç/kapa kurallar */
+const CONFIG_TOGGLES: { key: keyof GameConfig; label: string }[] = [
+  { key: 'battleCostsEnabled', label: 'Savaş masrafları' },
+  { key: 'upkeepEnabled', label: 'Tur başı bakım' },
+  { key: 'weaknessRule', label: 'Zayıflık şartı (başkente yalnızca toprağı senin yarından az olana saldırılır)' },
+  { key: 'openingPeace', label: 'Açılış barışı (ilk N tur oyuncu topraklarına saldırı yok)' },
 ];
 
 /** Yeni oyun ekranı. room verilirse çevrimiçi oda sahibi lobisi olarak çalışır. */
@@ -324,18 +345,38 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
   const configGrid = h(
     'div',
     { class: 'form-grid config-grid' },
-    CONFIG_FIELDS.map((f) => [
-      h('label', {}, f.label),
+    CONFIG_FIELDS.map((f) => {
+      // Akçe değerleri 100'er artıp azalır
+      const akce = AKCE_FIELDS.includes(f.key);
+      return [
+        h('label', {}, f.label),
+        h('input', {
+          type: 'number',
+          class: 'num',
+          min: f.min,
+          max: f.max,
+          step: akce ? AKCE_UNIT : 1,
+          value: config[f.key] as number,
+          onInput: (e: Event) => {
+            (config as unknown as Record<string, number>)[f.key] = clampInt((e.target as HTMLInputElement).value, f.min, f.max);
+            if (f.key === 'minesPerTypePerPlayer' || f.key === 'startTerritoryCount') schedulePreview();
+          },
+          onChange: (e: Event) => {
+            if (!akce) return;
+            const el = e.target as HTMLInputElement;
+            const v = Math.round(clampInt(el.value, f.min, f.max) / AKCE_UNIT) * AKCE_UNIT;
+            el.value = String(v);
+            (config as unknown as Record<string, number>)[f.key] = v;
+          },
+        }),
+      ];
+    }),
+    CONFIG_TOGGLES.map((t) => [
+      h('label', {}, t.label),
       h('input', {
-        type: 'number',
-        class: 'num',
-        min: f.min,
-        max: f.max,
-        value: config[f.key] as number,
-        onInput: (e: Event) => {
-          (config as unknown as Record<string, number>)[f.key] = clampInt((e.target as HTMLInputElement).value, f.min, f.max);
-          if (f.key === 'minesPerTypePerPlayer' || f.key === 'startTerritoryCount') schedulePreview();
-        },
+        type: 'checkbox',
+        checked: config[t.key] as boolean,
+        onChange: (e: Event) => ((config as unknown as Record<string, boolean>)[t.key] = (e.target as HTMLInputElement).checked),
       }),
     ]),
     h('label', {}, 'Üs engeli mesafe ölçüsü'),
@@ -348,6 +389,11 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
   );
 
   const start = async () => {
+    if (configProblems(config).length) {
+      // Kullanıcıya iç anahtar adları yerine alan etiketlerini göster
+      const bad = CONFIG_FIELDS.filter((f) => AKCE_FIELDS.includes(f.key) && (config[f.key] as number) % AKCE_UNIT !== 0).map((f) => f.label);
+      return toast(`Akçe değerleri 100'ün katı olmalı: ${bad.join(', ') || configProblems(config).join('; ')}`, 'error', 6000);
+    }
     let ps = players.slice(0, count).map((p, i) => ({ ...p, name: p.name.trim() || `Oyuncu ${i + 1}` }));
     if (room) {
       const seats = room.lobby().seats;

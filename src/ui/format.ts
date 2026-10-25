@@ -179,6 +179,14 @@ export function formatEvent(state: GameState, e: GameEvent): string | null {
       return `🗳️ ${N(e.player)}: ${e.accept ? 'evet' : 'hayır'}`;
     case 'vote_result':
       return e.accepted ? '🗳️ Oylama oybirliğiyle kabul edildi' : '🗳️ Oylama reddedildi, oyun sürüyor';
+    case 'upkeep': {
+      const parts = [e.ships ? `${e.ships} gemi` : '', e.planes ? `${e.planes} uçak` : '', e.bases ? `${e.bases} üs` : ''].filter(Boolean).join(', ');
+      return `🧾 ${N(e.player)} bakım ödedi: ${fmtNum(e.amount)} akçe (${parts})`;
+    }
+    case 'disband': {
+      const what = e.what === 'base' ? 'askeri üssünü yıktı' : e.what === 'ship' ? 'gemiyi dağıttı' : 'uçağı dağıttı';
+      return `${e.voluntary ? '🗑️' : '🧾'} ${N(e.player)} ${tileLabel(state, e.tile)} karesindeki ${what}${e.voluntary ? '' : ' (bakım ödenemedi)'}`;
+    }
     case 'game_over':
       return `🏆 Oyun bitti! Kazanan: ${e.winners.map(N).join(', ')}`;
   }

@@ -4,6 +4,10 @@ import { isCoastal, neighbors4 } from './grid';
 import {
   allAliveAllied,
   attackBlockReason,
+  battleCost,
+  battleCostProblem,
+  upkeepDue,
+  weaknessProblem,
   capitalProblem,
   conquestCandidates,
   isAllied,
@@ -14,12 +18,14 @@ import {
   unitCanSortie,
 } from './helpers';
 import { planeRoutes, shipRoutes, type Route, type RouteMap } from './movement';
+import { isAkceAmount } from './config';
 import { createRng, type Rng } from './rng';
 import {
   MINE_TYPES,
   type Action,
   type ApplyResult,
   type AttackVia,
+  type BattleKind,
   type BuildableStructure,
   type GameEvent,
   type GameState,
@@ -95,7 +101,7 @@ export function validateAction(state: GameState, action: Action): ValidationResu
       return OK;
     }
     case 'EXCHANGE_GOLD':
-      if (ph.kind !== 'actions' && ph.kind !== 'spin' && ph.kind !== 'conquest') return fail('Şu an bozdurulamaz');
+      if (ph.kind !== 'actions' && ph.kind !== 'spin' && ph.kind !== 'conquest' && ph.kind !== 'upkeep') return fail('Şu an bozdurulamaz');
       if (!myTurn) return fail('Sıra sizde değil');
       if (!Number.isInteger(action.amount) || action.amount < 1) return fail('Miktar pozitif tam sayı olmalı');
       if (res.gold < action.amount) return fail('Yeterli altın yok');
@@ -135,8 +141,27 @@ export function validateAction(state: GameState, action: Action): ValidationResu
       if (o === action.player) return fail('Bu toprak zaten sizin');
       if (!touchesOwn(state, action.player, action.target)) return fail('Saldırmak için sınır komşuluğu gerekli');
       const block = attackBlockReason(state, action.player, o);
-      return block ? fail(block) : OK;
+      if (block) return fail(block);
+      const kind = targetBattleKind(state, action.target);
+      if (kind === 'capital') {
+        const weak = weaknessProblem(state, action.player, o);
+        if (weak) return fail(weak);
+      }
+      const costProb = battleCostProblem(state, action.player, kind);
+      return costProb ? fail(costProb) : OK;
     }
+    case 'DISBAND_UNIT': {
+      if (ph.kind !== 'upkeep' && ph.kind !== 'actions') return fail('Birimler bakım ya da eylem aşamasında dağıtılır');
+      if (!myTurn) return fail('Sıra sizde değil');
+      const u = state.units.find((x) => x.id === action.unitId);
+      if (!u || u.owner !== action.player) return fail('Birim bulunamadı');
+      return OK;
+    }
+    case 'DEMOLISH_BASE':
+      if (ph.kind !== 'upkeep' && ph.kind !== 'actions') return fail('Üsler bakım ya da eylem aşamasında yıkılır');
+      if (!myTurn) return fail('Sıra sizde değil');
+      if (!validTile(state, action.tile) || state.owner[action.tile] !== action.player || state.structure[action.tile] !== 'base') return fail('Burada senin askeri üssün yok');
+      return OK;
     case 'SHIP_EXPEDITION':
     case 'PLANE_EXPEDITION': {
       const r = expeditionCheck(state, action);
@@ -154,7 +179,7 @@ export function validateAction(state: GameState, action: Action): ValidationResu
       if (!st) return fail('Geçersiz boğaz');
       if (st.controller !== action.player) return fail('Bu boğazı idare etmiyorsunuz');
       if (!state.players[action.target] || action.target === action.player) return fail('Geçersiz oyuncu');
-      if (!Number.isInteger(action.toll) || action.toll < 0 || action.toll > 1_000_000) return fail('Vergi 0 veya pozitif tam sayı olmalı');
+      if (!isAkceAmount(action.toll) || action.toll > 1_000_000) return fail("Vergi 0 ya da 100'ün katı olmalı");
       return OK;
     }
     case 'PROPOSE_OFFER': {
@@ -200,6 +225,12 @@ function anyStrictCapitalSpot(state: GameState, p: number): boolean {
   return false;
 }
 
+/** Hedef karedeki savaş türü */
+export function targetBattleKind(state: GameState, tile: number): BattleKind {
+  const st = state.structure[tile];
+  return st === 'capital' ? 'capital' : st === 'base' ? 'base' : 'land';
+}
+
 type ExpeditionAction = Extract<Action, { type: 'SHIP_EXPEDITION' | 'PLANE_EXPEDITION' }>;
 
 /** Sefer kontrolü; geçerliyse rota bilgisini de döner. */
@@ -236,7 +267,12 @@ export function expeditionCheck(
   const route = routes.routeTo(t);
   if (!route) return bad(isShip ? 'Bu hedefe deniz yolu yok (boğazlar kapalı olabilir)' : 'Askeri üs engeli nedeniyle bu hedefe uçulamaz');
   const claimCost = o === null ? cfg.expeditionClaimCost : 0;
-  if (res.akce < route.toll + claimCost) return bad(`${route.toll + claimCost} akçe gerekli (vergi + ele geçirme)`);
+  if (o === null) {
+    if (res.akce < route.toll + claimCost) return bad(`${route.toll + claimCost} akçe gerekli (vergi + ele geçirme)`);
+  } else {
+    const costProb = battleCostProblem(state, action.player, targetBattleKind(state, t), route.toll);
+    if (costProb) return bad(costProb);
+  }
   return { ok: true, route, claimCost };
 }
 
@@ -295,8 +331,21 @@ export function applyAction(state: GameState, action: Action, rng: Rng): ApplyRe
       me.resources.gold -= action.amount;
       me.resources.akce += akce;
       ev.push({ type: 'exchange', player: me.id, gold: action.amount, akce });
+      if (s.phase.kind === 'upkeep') tryPayUpkeep(s, ev);
       break;
     }
+    case 'DISBAND_UNIT': {
+      const u = s.units.find((x) => x.id === action.unitId)!;
+      s.units = s.units.filter((x) => x.id !== u.id);
+      ev.push({ type: 'disband', player: me.id, what: u.kind, tile: u.tile, voluntary: s.phase.kind !== 'upkeep' });
+      if (s.phase.kind === 'upkeep') tryPayUpkeep(s, ev);
+      break;
+    }
+    case 'DEMOLISH_BASE':
+      s.structure[action.tile] = null;
+      ev.push({ type: 'disband', player: me.id, what: 'base', tile: action.tile, voluntary: s.phase.kind !== 'upkeep' });
+      if (s.phase.kind === 'upkeep') tryPayUpkeep(s, ev);
+      break;
     case 'BUILD':
       me.resources.akce -= structureCost(s, action.structure);
       s.structure[action.tile] = action.structure;
@@ -445,13 +494,19 @@ export function dispatch(state: GameState, action: Action): ApplyResult {
 
 function startBattle(s: GameState, attacker: number, defender: number, target: number, via: AttackVia, rng: Rng, ev: GameEvent[]) {
   const cfg = s.config;
-  s.players[attacker].battlesThisTurn++;
+  const A = s.players[attacker];
+  A.battlesThisTurn++;
   const struct = s.structure[target];
+  // Masraf savaş sonucundan bağımsız, başlatırken ödenir
+  const cost = battleCost(s, targetBattleKind(s, target));
+  A.resources.akce -= cost.akce;
+  A.resources.iron -= cost.iron;
+  A.resources.steel -= cost.steel;
   if (struct === 'capital' || struct === 'base') {
     // Başkent / üs savaşında saldıran kaybederse karşı toprak kaybı yok
     const streak = struct === 'capital' ? cfg.capitalStreak : cfg.baseStreak;
     const r = resolveSeriesBattle(rng, cfg.spinFaces, streak);
-    ev.push({ type: 'battle', attacker, defender, kind: struct, via, target, rounds: r.rounds, success: r.success, gain: r.success ? 1 : 0, loss: 0, streakNeeded: streak });
+    ev.push({ type: 'battle', attacker, defender, kind: struct, via, target, rounds: r.rounds, success: r.success, gain: r.success ? 1 : 0, loss: 0, streakNeeded: streak, cost });
     if (!r.success) return;
     if (struct === 'capital') eliminate(s, defender, attacker, ev);
     else {
@@ -461,7 +516,7 @@ function startBattle(s: GameState, attacker: number, defender: number, target: n
     return;
   }
   const r = resolveLandBattle(rng, cfg.spinFaces);
-  ev.push({ type: 'battle', attacker, defender, kind: 'land', via, target, rounds: r.rounds, success: r.gain > 0, gain: r.gain, loss: r.loss, streakNeeded: 1 });
+  ev.push({ type: 'battle', attacker, defender, kind: 'land', via, target, rounds: r.rounds, success: r.gain > 0, gain: r.gain, loss: r.loss, streakNeeded: 1, cost });
   if (r.gain > 0) {
     s.phase = { kind: 'conquest', taker: attacker, victim: defender, remaining: r.gain, anchor: via === 'land' ? null : target, counter: false };
   } else if (r.loss > 0) {
@@ -570,6 +625,27 @@ function beginTurn(s: GameState, ev: GameEvent[]) {
     }
   }
   if (any) ev.push({ type: 'income', player: p.id, gained });
+  // Bakım: topaçtan önce otomatik ödenir; yetmezse oyuncu dağıtacaklarını seçer
+  s.phase = { kind: 'upkeep', due: 0 };
+  tryPayUpkeep(s, ev);
+}
+
+/** Bakımı öder ve topaç aşamasına geçer; akçe yetmiyorsa bakım aşamasında kalır. */
+function tryPayUpkeep(s: GameState, ev: GameEvent[]) {
+  const p = s.players[s.currentPlayer];
+  const due = upkeepDue(s, p.id);
+  if (due > p.resources.akce) {
+    s.phase = { kind: 'upkeep', due };
+    return;
+  }
+  if (due > 0) {
+    p.resources.akce -= due;
+    const ships = s.units.filter((u) => u.owner === p.id && u.kind === 'ship').length;
+    const planes = s.units.filter((u) => u.owner === p.id && u.kind === 'plane').length;
+    let bases = 0;
+    for (let i = 0; i < s.owner.length; i++) if (s.owner[i] === p.id && s.structure[i] === 'base') bases++;
+    ev.push({ type: 'upkeep', player: p.id, amount: due, ships, planes, bases });
+  }
   s.phase = { kind: 'spin' };
 }
 

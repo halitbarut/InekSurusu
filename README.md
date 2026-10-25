@@ -10,6 +10,7 @@ npm install
 npm run dev        # geliştirme sunucusu (http://localhost:5173)
 npm run build      # dist/ klasörüne statik derleme
 npm test           # kural motoru testleri (Vitest)
+npm run simulate   # denge simülasyonu → docs/BALANCE_REPORT.md (uzun sürer; --games 20 ile kısalt)
 ```
 
 `npm run build` çıktısı (`dist/`) herhangi bir statik sunucuda ya da alt klasörde çalışır.
@@ -20,7 +21,8 @@ npm test           # kural motoru testleri (Vitest)
 2. **Kurulum:** herkes sırayla başkentini seçer, sonra başkentine bitişik 9 toprak seçer. Bu aşamada maden
    kareleri seçilemez (haritada kırmızı taranır); madenler oyun başladıktan sonra alınır.
    Haritada her maden türünden (altın, petrol, demir, çelik) oyuncu sayısı kadar maden vardır.
-3. **Her tur:** madenler 1'er kaynak verir → sekizgen topacı çevir (sayı × 100 akçe) → istediğin kadar eylem yap → **Turu bitir**.
+3. **Her tur:** madenler 1'er kaynak verir → gemi, uçak ve askeri üsler için **bakım** ödenir →
+   sekizgen topacı çevir (sayı × 100 akçe) → istediğin kadar eylem yap → **Turu bitir**.
 
 Haritayı sürükleyerek kaydır, tekerlekle (ya da iki parmakla) yakınlaş. Bir eylem seçince geçerli hedefler
 haritada vurgulanır; karelerin üzerine gelince bilgi ve neden yapılamadığı görünür. `Esc` eylemi iptal eder,
@@ -35,6 +37,8 @@ haritada vurgulanır; karelerin üzerine gelince bilgi ve neden yapılamadığı
 | Gemi / Uçak üret | 2 demir + 100 akçe / 2 çelik + 200 akçe. Birimler kalıcıdır |
 | Altın bozdur | 1 altın = 200 akçe |
 | **Turda tek savaş** | Kara savaşı, gemi/uçakla dolu toprağa saldırı, başkent ve üs savaşı — hepsinden turda yalnızca 1 tane |
+| **Savaş masrafı** | Başlatırken ödenir, sonuçtan bağımsız: normal savaş 100 akçe · üs savaşı 400 akçe + 2 demir · başkent savaşı 1000 akçe + 3 demir + 3 çelik. Yetmiyorsa savaş başlatılamaz |
+| **Bakım** | Her tur başında, topaçtan önce: gemi, uçak ve askeri üs başına 100 akçe. Akçe yetmezse oyuncu dağıtacaklarını seçer; ödenemeyen kadar birim dağıtılır, üs yıkılır (toprak kalır) |
 | Kara savaşı | Sınır komşuluğu. İki taraf topaç çevirir. A > D: saldıran A − D toprak seçer. A < D: savunan karşı saldırıyla ⌈(D − A)/2⌉ toprak seçer (saldıranın kendisine komşu topraklarından). A = D: sonuçsuz |
 | Başkent savaşı | Yalnızca karadan (sınır komşuluğu). Art arda 3 kez yüksek at (eşitlik tekrar). Kazanırsan rakip elenir, her şeyi sana geçer. Kaybedersen toprak kaybı yok |
 | Askeri üs savaşı | Art arda 2 kez yüksek at. Kaybedersen toprak kaybı yok |
@@ -53,7 +57,16 @@ verin"), seçimden sonra sıra saldırana döner.
   birleştirilebilir. Müttefiklere ve barış yapılanlara saldırılamaz; müttefik üsleri uçaklarını engellemez.
 - **Kazanma:** dünyada tek devlet kalırsa ya da kalan herkes müttefikse ve oybirliğiyle bitirmeye karar verirse.
 
+**İsteğe bağlı kurallar** (yeni oyun → kural ayarları, varsayılan kapalı, kayda dahil):
+
+- **Zayıflık şartı:** başkente saldırmak için savunanın toprak sayısı saldıranınkinin yarısından az olmalı.
+- **Açılış barışı:** ilk N tur (varsayılan 5) kimse başka oyuncunun toprağına saldıramaz; sahipsiz toprak serbest.
+
+Oyundaki tüm akçe miktarları (maliyetler, masraflar, bakım, boğaz vergisi, akçe takası) 100'ün katıdır;
+ayar ekranı bunu denetler. Savaş masrafları ve bakım ayarlardan tamamen kapatılabilir.
+
 Belirsiz kural noktalarında verilen kararlar: [docs/ASSUMPTIONS.md](docs/ASSUMPTIONS.md).
+Denge simülasyonu sonuçları ve öneriler: [docs/BALANCE_REPORT.md](docs/BALANCE_REPORT.md).
 
 ## Çevrimiçi oyun
 
@@ -96,7 +109,8 @@ src/
     helpers.ts     İlişkiler, boğaz idaresi, fetih adayları ...
     queries.ts     Arayüz/bot için geçerli hedef sorguları
     map/           Harita üretici (gürültü, iç deniz, göl, boğaz, maden) ve boğaz tespiti
-  bot/             BotBrain arayüzü ve orta seviye bot
+  bot/             BotBrain arayüzü, orta seviye bot, simülasyon için acele eden bot
+scripts/           Denge simülasyonu (npm run simulate)
   net/             Çevrimiçi oda: protokol, PeerJS taşıyıcı, oda sahibi (HostRoom) ve katılan (ClientRoom)
   ui/              Canvas harita, topaç animasyonu, paneller, diyaloglar, lobi, kayıt
 tests/             Vitest birim testleri

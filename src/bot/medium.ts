@@ -1,6 +1,9 @@
 import {
   allAliveAllied,
+  battleCost,
   battleUsed,
+  targetBattleKind,
+  upkeepDue,
   landOutcomes,
   seriesWinProbability,
   attackBlockReason,
@@ -24,6 +27,7 @@ import {
   tileCount,
   validateAction,
   type Action,
+  type BattleCost,
   type BuildableStructure,
   type GameEvent,
   type GameState,
@@ -40,6 +44,12 @@ const RESOURCE_VALUE: Record<ResourceKey, number> = { akce: 1, gold: 200, oil: 1
 export interface BotTuning {
   /** Savaşa girmek için gereken en düşük beklenen net kazanç (toprak değeri cinsinden) */
   minBattleValue: number;
+  /** Toplam bakım, beklenen tur gelirinin en fazla bu oranı olabilir */
+  maxUpkeepShare: number;
+  /** Başkent savaşı için masrafın en az bu katı kaynak olmalı */
+  capitalCostCushion: number;
+  /** Başkent savaşı için savunanın toprağı en fazla bizimkinin bu oranı olmalı */
+  capitalWeakRatio: number;
   maxShipsBase: number;
   maxPlanesBase: number;
   diplomacyEvery: number;
@@ -47,13 +57,16 @@ export interface BotTuning {
 
 export const MEDIUM_TUNING: BotTuning = {
   minBattleValue: 0.05,
+  maxUpkeepShare: 0.5,
+  capitalCostCushion: 1.5,
+  capitalWeakRatio: 0.75,
   maxShipsBase: 2,
   maxPlanesBase: 2,
   diplomacyEvery: 3,
 };
 
 export class MediumBot implements BotBrain {
-  constructor(private tuning: BotTuning = MEDIUM_TUNING) {}
+  constructor(protected tuning: BotTuning = MEDIUM_TUNING) {}
 
   chooseAction(state: GameState, p: number): Action {
     const a = this.pick(state, p);
@@ -106,7 +119,7 @@ export class MediumBot implements BotBrain {
 
   // ------------------------------------------------------------------
 
-  private pick(state: GameState, p: number): Action {
+  protected pick(state: GameState, p: number): Action {
     const ph = state.phase;
     switch (ph.kind) {
       case 'setup_capital':
@@ -130,6 +143,8 @@ export class MediumBot implements BotBrain {
       }
       case 'vote':
         return { type: 'CAST_VOTE', player: p, accept: true };
+      case 'upkeep':
+        return this.pickUpkeep(state, p);
       case 'actions':
         return this.pickTurnAction(state, p);
       case 'gameover':
@@ -137,7 +152,7 @@ export class MediumBot implements BotBrain {
     }
   }
 
-  private pickCapital(state: GameState, p: number): Action {
+  protected pickCapital(state: GameState, p: number): Action {
     const cands = capitalCandidates(state, p);
     const map = state.map;
     const others = state.players.filter((pl) => pl.capital !== null).map((pl) => pl.capital!);
@@ -169,7 +184,7 @@ export class MediumBot implements BotBrain {
     return { type: 'PLACE_CAPITAL', player: p, tile: best(cands, score) };
   }
 
-  private pickTurnAction(state: GameState, p: number): Action {
+  protected pickTurnAction(state: GameState, p: number): Action {
     const me = state.players[p];
     const res = me.resources;
     const cfg = state.config;
@@ -185,13 +200,20 @@ export class MediumBot implements BotBrain {
     // 2) Akçe azsa altını bozdur
     if (res.gold > 0 && res.akce < 800) return { type: 'EXCHANGE_GOLD', player: p, amount: res.gold };
 
+    // 2b) Bakım gelirin çoğunu yiyorsa (ör. fetihle gelen birimler) fazlasını dağıt
+    const excess = this.excessUnit(state, p);
+    if (excess !== null) return { type: 'DISBAND_UNIT', player: p, unitId: excess };
+
     // 3) Yapılar
     const enemyBorder = attackableTiles(state, p).length > 0;
     const wants: BuildableStructure[] = [];
     if (stats.structures.shipyard === 0 && (res.iron >= cfg.shipIronCost || stats.mines.iron > 0) && state.round >= 2) wants.push('shipyard');
     if (stats.structures.factory === 0 && (res.steel >= cfg.planeSteelCost || stats.mines.steel > 0) && state.round >= 3) wants.push('factory');
-    if (enemyBorder && stats.structures.base < 1 + Math.floor(stats.tiles / 25) && state.round >= 4) wants.push('base');
-    let reserve = 0;
+    // Bakım varken üs sayısını sınırlı tut
+    const maxBases = 1 + Math.floor(stats.tiles / (cfg.upkeepEnabled ? 80 : 25));
+    if (enemyBorder && stats.structures.base < maxBases && state.round >= 4 && this.upkeepRoom(state, p, cfg.baseUpkeep)) wants.push('base');
+    // Başkent savaşı planı varsa kaynak biriktir
+    let reserve = this.capitalReserve(state, p);
     for (const s of wants) {
       const tiles = buildableTiles(state, p, s);
       if (tiles.length > 0) {
@@ -205,11 +227,11 @@ export class MediumBot implements BotBrain {
     // 4) Üretim
     const maxShips = this.tuning.maxShipsBase + Math.floor(stats.tiles / 30);
     const maxPlanes = this.tuning.maxPlanesBase + Math.floor(stats.tiles / 30);
-    if (stats.ships < maxShips && res.akce >= cfg.shipAkceCost + reserve) {
+    if (stats.ships < maxShips && res.akce >= cfg.shipAkceCost + reserve && this.upkeepRoom(state, p, cfg.shipUpkeep)) {
       const t = producibleTiles(state, p, 'ship');
       if (t.length) return { type: 'PRODUCE', player: p, tile: t[0], unit: 'ship' };
     }
-    if (stats.planes < maxPlanes && res.akce >= cfg.planeAkceCost + reserve) {
+    if (stats.planes < maxPlanes && res.akce >= cfg.planeAkceCost + reserve && this.upkeepRoom(state, p, cfg.planeUpkeep)) {
       const t = producibleTiles(state, p, 'plane');
       if (t.length) return { type: 'PRODUCE', player: p, tile: t[0], unit: 'plane' };
     }
@@ -217,7 +239,7 @@ export class MediumBot implements BotBrain {
     // 5) Sahipsiz komşu toprak al (madenler ve kıyılar öncelikli)
     const claimable = claimableTiles(state, p);
     if (claimable.length > 0) {
-      const tile = best(claimable, (t) => tileScore(state, p, t));
+      const tile = best(claimable, (t) => this.claimScore(state, p, t));
       if (res.akce >= cfg.claimCost + reserve || state.map.mines[tile]) return { type: 'CLAIM_TILE', player: p, tile };
     }
 
@@ -236,7 +258,86 @@ export class MediumBot implements BotBrain {
     return end;
   }
 
-  private pickBuildTile(state: GameState, p: number, s: BuildableStructure, tiles: number[]): number | null {
+  /** Sahipsiz toprak seçimi puanı (agresif botlar başkente yönelir) */
+  protected claimScore(state: GameState, p: number, t: number): number {
+    return tileScore(state, p, t);
+  }
+
+  /** Beklenen tur geliri: ortalama topaç + altın madenleri */
+  protected expectedIncome(state: GameState, p: number): number {
+    const c = state.config;
+    return ((c.spinFaces + 1) / 2) * c.spinMultiplier + playerStats(state, p).mines.gold * c.goldToAkce;
+  }
+
+  /** Yeni bir bakım kalemi eklenince toplam bakım gelirin makul payını aşar mı? */
+  protected upkeepRoom(state: GameState, p: number, extra: number): boolean {
+    if (!state.config.upkeepEnabled) return true;
+    const income = this.expectedIncome(state, p);
+    // Dağıtma eşiğinin (%80) altında kal ki üret-dağıt döngüsü olmasın
+    const limit = Math.min(this.tuning.maxUpkeepShare * income + state.players[p].resources.akce / 50, 0.7 * income);
+    return upkeepDue(state, p) + extra <= limit;
+  }
+
+  /** Bakım beklenen gelirin %80'ini aşıyorsa dağıtılacak birim */
+  protected excessUnit(state: GameState, p: number): number | null {
+    if (!state.config.upkeepEnabled) return null;
+    if (upkeepDue(state, p) <= 0.8 * this.expectedIncome(state, p)) return null;
+    const mine = state.units.filter((u) => u.owner === p);
+    if (mine.length <= 1) return null;
+    const ships = mine.filter((u) => u.kind === 'ship');
+    const planes = mine.filter((u) => u.kind === 'plane');
+    const pool = planes.length >= ships.length ? planes : ships;
+    return pool[pool.length - 1].id;
+  }
+
+  /** Bakım ödenemiyor: önce altını boz, sonra en az işe yarayanı dağıt. */
+  protected pickUpkeep(state: GameState, p: number): Action {
+    const me = state.players[p];
+    if (me.resources.gold > 0) return { type: 'EXCHANGE_GOLD', player: p, amount: me.resources.gold };
+    const mine = state.units.filter((u) => u.owner === p);
+    const ships = mine.filter((u) => u.kind === 'ship');
+    const planes = mine.filter((u) => u.kind === 'plane');
+    const pool = planes.length >= ships.length ? planes : ships;
+    if (pool.length) return { type: 'DISBAND_UNIT', player: p, unitId: pool[pool.length - 1].id };
+    const bases = ownedStructures(state, p, 'base');
+    const cap = me.capital;
+    // Başkentten en uzak üs en az değerlidir
+    const base = best(bases, (t) => (cap === null ? 0 : manhattan(state.map, t, cap)));
+    return { type: 'DEMOLISH_BASE', player: p, tile: base };
+  }
+
+  /** Başkent savaşı makulse (komşu, zayıf hedef, demir/çelik var) biriktirilecek akçe */
+  protected capitalReserve(state: GameState, p: number): number {
+    if (!state.config.battleCostsEnabled) return 0;
+    const target = this.capitalTarget(state, p);
+    if (target === null) return 0;
+    return Math.ceil((state.config.capitalBattleAkce * this.tuning.capitalCostCushion) / 100) * 100;
+  }
+
+  /** Saldırılabilecek, zayıflamış ve masrafı karşılanabilecek komşu başkent */
+  protected capitalTarget(state: GameState, p: number): number | null {
+    const cost = battleCost(state, 'capital');
+    const res = state.players[p].resources;
+    const k = this.tuning.capitalCostCushion;
+    if (res.iron < cost.iron * k || res.steel < cost.steel * k) return null;
+    const myTiles = tileCount(state, p);
+    for (const q of state.players) {
+      if (!q.alive || q.id === p || q.capital === null || attackBlockReason(state, p, q.id)) continue;
+      if (!neighbors4(state.map, q.capital).some((n) => state.owner[n] === p)) continue;
+      if (tileCount(state, q.id) > myTiles * this.tuning.capitalWeakRatio) continue;
+      return q.capital;
+    }
+    return null;
+  }
+
+  /** Kaynak harcamasının toprak değeri cinsinden karşılığı */
+  protected costValue(state: GameState, p: number, cost: BattleCost): number {
+    // Alınabilecek sahipsiz toprak varken 100 akçe ≈ 1 toprak; yokken akçenin başka kullanımı az
+    const akcePer100 = claimableTiles(state, p).length > 0 ? 1 : 0.35;
+    return (cost.akce / 100) * akcePer100 + cost.iron * 0.4 + cost.steel * 0.4;
+  }
+
+  protected pickBuildTile(state: GameState, p: number, s: BuildableStructure, tiles: number[]): number | null {
     const map = state.map;
     const cap = state.players[p].capital ?? tiles[0];
     const enemyAdj = (t: number) => neighbors4(map, t).filter((n) => state.owner[n] !== null && state.owner[n] !== p).length;
@@ -250,7 +351,7 @@ export class MediumBot implements BotBrain {
     return best(top, (t) => shipRoutes(state, p, t).targets.size * 0.05 + safe(t));
   }
 
-  private pickExpeditionClaim(state: GameState, p: number, reserve: number, claimableCount: number): Action | null {
+  protected pickExpeditionClaim(state: GameState, p: number, reserve: number, claimableCount: number): Action | null {
     const me = state.players[p];
     for (const kind of ['ship', 'plane'] as const) {
       const units = readyUnits(state, p, kind);
@@ -280,7 +381,7 @@ export class MediumBot implements BotBrain {
    * = E[alınacak toprakların değeri] − E[karşı saldırıda kaybedileceklerin değeri];
    * başkent/üs savaşında kayıp yoktur, kazanma olasılığı 1/2^seri.
    */
-  private pickBattle(state: GameState, p: number): Action | null {
+  protected pickBattle(state: GameState, p: number): Action | null {
     if (battleUsed(state, p)) return null;
     const cfg = state.config;
     const outcomes = landOutcomes(cfg.spinFaces);
@@ -304,7 +405,8 @@ export class MediumBot implements BotBrain {
           options.push({ action: { type: 'ATTACK', player: p, target: nearestToCapital(state, normalBorder, q) }, value: landValue(outcomes, gainPool, lossPool) + push });
         }
         const cap = state.players[q].capital;
-        if (cap !== null && border.includes(cap)) {
+        // Başkent: olasılık 1/8; yalnızca masraf rahatça karşılanıyor ve hedef zayıfsa
+        if (cap !== null && border.includes(cap) && this.capitalTarget(state, p) === cap) {
           options.push({ action: { type: 'ATTACK', player: p, target: cap }, value: seriesWinProbability(cfg.capitalStreak) * allValue });
         }
         const base = border.find((t) => state.structure[t] === 'base');
@@ -337,11 +439,16 @@ export class MediumBot implements BotBrain {
       }
     }
     let bestOpt: { action: Action; value: number } | null = null;
-    for (const o of options) if (!bestOpt || o.value > bestOpt.value) bestOpt = o;
+    for (const o of options) {
+      if (!validateAction(state, o.action).ok) continue; // masraf yetmiyor vb.
+      const target = o.action.type === 'ATTACK' || o.action.type === 'SHIP_EXPEDITION' || o.action.type === 'PLANE_EXPEDITION' ? o.action.target : -1;
+      o.value -= this.costValue(state, p, battleCost(state, targetBattleKind(state, target)));
+      if (!bestOpt || o.value > bestOpt.value) bestOpt = o;
+    }
     return bestOpt && bestOpt.value > this.tuning.minBattleValue ? bestOpt.action : null;
   }
 
-  private pickDiplomacy(state: GameState, p: number, turnEvents: GameEvent[]): Action | null {
+  protected pickDiplomacy(state: GameState, p: number, turnEvents: GameEvent[]): Action | null {
     if (turnEvents.some((e) => e.type === 'offer_made' && e.offer.from === p)) return null;
     if (state.round % this.tuning.diplomacyEvery !== p % this.tuning.diplomacyEvery) return null;
     const myTiles = tileCount(state, p);
@@ -381,6 +488,12 @@ function fallbackAction(state: GameState, p: number): Action {
       return { type: 'END_CONQUEST', player: p };
     case 'vote':
       return { type: 'CAST_VOTE', player: p, accept: true };
+    case 'upkeep': {
+      const u = state.units.find((x) => x.owner === p);
+      if (u) return { type: 'DISBAND_UNIT', player: p, unitId: u.id };
+      const b = state.structure.findIndex((x, i) => x === 'base' && state.owner[i] === p);
+      return { type: 'DEMOLISH_BASE', player: p, tile: b };
+    }
     default:
       return { type: 'END_TURN', player: p };
   }
@@ -444,6 +557,12 @@ function conquestScore(state: GameState, p: number, t: number): number {
   if (state.structure[t]) s += 8;
   if (state.units.some((u) => u.tile === t)) s += 5;
   return s;
+}
+
+function ownedStructures(state: GameState, p: number, s: BuildableStructure): number[] {
+  const r: number[] = [];
+  for (let i = 0; i < state.owner.length; i++) if (state.owner[i] === p && state.structure[i] === s) r.push(i);
+  return r;
 }
 
 function unownedMinesAround(state: GameState, t: number): number {

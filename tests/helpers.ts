@@ -22,13 +22,16 @@ export function scriptedRng(values: number[]): Rng {
   };
 }
 
-/** Oyunu doğrudan eylem aşamasında, 1. turda başlatır. */
+/**
+ * Oyunu doğrudan eylem aşamasında, 1. turda başlatır. Temel kural testleri için savaş
+ * masrafı ve bakım varsayılan olarak kapalıdır; bunları sınayan testler config ile açar.
+ */
 export function testState(rows: string[], players = 3, config: Partial<GameConfig> = {}): GameState {
   const map = mapFromAscii(rows);
   const s = createGameFromMap(
     map,
     Array.from({ length: players }, (_, i) => ({ name: `P${i}`, color: '#000', kind: 'human' as const })),
-    { ...DEFAULT_CONFIG, ...config },
+    { ...DEFAULT_CONFIG, battleCostsEnabled: false, upkeepEnabled: false, ...config },
   );
   s.phase = { kind: 'actions' };
   s.round = 1;

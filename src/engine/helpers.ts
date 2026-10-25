@@ -1,6 +1,6 @@
 import { BATTLES_PER_TURN } from './config';
 import { chebyshev, neighbors4 } from './grid';
-import type { GameEvent, GameState, Relation, StraitPolicy, Unit } from './types';
+import type { BattleCost, BattleKind, GameEvent, GameState, Relation, StraitPolicy, Unit } from './types';
 
 export function relKey(a: number, b: number): string {
   return a < b ? `${a}-${b}` : `${b}-${a}`;
@@ -30,6 +30,58 @@ export function atPeace(state: GameState, a: number, b: number): boolean {
 
 export const BATTLE_USED = 'Bu tur savaş hakkını kullandın';
 
+/** Açılış barışı sürüyor mu? (ilk N tam tur) */
+export function openingPeaceActive(state: GameState): boolean {
+  return state.config.openingPeace && state.round <= state.config.openingPeaceRounds;
+}
+
+const NO_COST: BattleCost = { akce: 0, iron: 0, steel: 0 };
+
+/** Savaş türüne göre başlatma masrafı */
+export function battleCost(state: GameState, kind: BattleKind): BattleCost {
+  const c = state.config;
+  if (!c.battleCostsEnabled) return NO_COST;
+  if (kind === 'capital') return { akce: c.capitalBattleAkce, iron: c.capitalBattleIron, steel: c.capitalBattleSteel };
+  if (kind === 'base') return { akce: c.baseBattleAkce, iron: c.baseBattleIron, steel: 0 };
+  return { akce: c.landBattleAkce, iron: 0, steel: 0 };
+}
+
+export function battleCostText(cost: BattleCost): string {
+  const parts = [`${cost.akce} akçe`];
+  if (cost.iron) parts.push(`${cost.iron} demir`);
+  if (cost.steel) parts.push(`${cost.steel} çelik`);
+  return parts.join(' + ');
+}
+
+/** Savaş masrafı (ve varsa ek akçe, ör. boğaz vergisi) karşılanamıyorsa nedeni */
+export function battleCostProblem(state: GameState, p: number, kind: BattleKind, extraAkce = 0): string | null {
+  const cost = battleCost(state, kind);
+  const r = state.players[p].resources;
+  if (r.akce < cost.akce + extraAkce || r.iron < cost.iron || r.steel < cost.steel) {
+    const name = kind === 'capital' ? 'Başkent savaşı' : kind === 'base' ? 'Askeri üs savaşı' : 'Savaş';
+    return `${name} için ${battleCostText({ ...cost, akce: cost.akce + extraAkce })} gerekli${extraAkce ? ' (vergi dahil)' : ''}`;
+  }
+  return null;
+}
+
+/** Zayıflık şartı açıksa başkent saldırısı için sorun */
+export function weaknessProblem(state: GameState, attacker: number, defender: number): string | null {
+  if (!state.config.weaknessRule) return null;
+  const a = tileCount(state, attacker);
+  const d = tileCount(state, defender);
+  return d * 2 < a ? null : `Zayıflık şartı: başkente saldırmak için savunanın toprağı (${d}) seninkinin (${a}) yarısından az olmalı`;
+}
+
+/** Oyuncunun tur başı bakım borcu */
+export function upkeepDue(state: GameState, p: number): number {
+  const c = state.config;
+  if (!c.upkeepEnabled) return 0;
+  let due = 0;
+  for (const u of state.units) if (u.owner === p) due += u.kind === 'ship' ? c.shipUpkeep : c.planeUpkeep;
+  for (let i = 0; i < state.owner.length; i++) if (state.owner[i] === p && state.structure[i] === 'base') due += c.baseUpkeep;
+  return due;
+}
+
 /** Oyuncu bu turdaki tek savaş hakkını kullandı mı? */
 export function battleUsed(state: GameState, p: number): boolean {
   return state.players[p].battlesThisTurn >= BATTLES_PER_TURN;
@@ -41,6 +93,7 @@ export function attackBlockReason(state: GameState, a: number, b: number): strin
   const pb = state.players[b];
   if (!pb || !pb.alive) return 'Bu oyuncu oyunda değil';
   if (battleUsed(state, a)) return BATTLE_USED;
+  if (openingPeaceActive(state)) return `Açılış barışı: ${state.config.openingPeaceRounds}. tur sonuna kadar oyuncu topraklarına saldırılamaz`;
   const r = getRelation(state, a, b);
   if (r.allied) return 'Müttefikinize saldıramazsınız';
   if (atPeace(state, a, b)) return 'Barış anlaşması sürüyor';

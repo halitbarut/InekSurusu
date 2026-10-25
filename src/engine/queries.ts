@@ -1,5 +1,5 @@
 import { isCoastal } from './grid';
-import { attackBlockReason, capitalProblem, conquestCandidates, touchesOwn, unitCanSortie } from './helpers';
+import { attackBlockReason, battleCost, capitalProblem, conquestCandidates, touchesOwn, unitCanSortie } from './helpers';
 import { planeRoutes, shipRoutes, type Route } from './movement';
 import { expeditionCheck, structureCost, validateAction } from './rules';
 import { MINE_TYPES, type BattleKind, type BuildableStructure, type GameState, type MineType, type UnitKind } from './types';
@@ -99,7 +99,8 @@ export function expeditionTargets(state: GameState, p: number, unitId: number): 
       tile: t,
       route: chk.route,
       kind: state.owner[t] === null ? 'claim' : battleKindAt(state, t),
-      cost: chk.route.toll + chk.claimCost,
+      // Sahipsizse ele geçirme, savaşsa savaş masrafı (akçe kısmı) + vergi
+      cost: chk.route.toll + (state.owner[t] === null ? chk.claimCost : battleCost(state, battleKindAt(state, t)).akce),
     });
   }
   return out;

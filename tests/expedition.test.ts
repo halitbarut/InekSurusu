@@ -85,17 +85,17 @@ describe('gemi seferi', () => {
   it('geçiş vergisi sefer başında otomatik ödenir', () => {
     let s = seaWorld();
     giveBanksTo(s, 1);
-    s = act(s, { type: 'SET_STRAIT_POLICY', player: 1, straitId: 0, target: 0, allow: true, toll: 50 });
+    s = act(s, { type: 'SET_STRAIT_POLICY', player: 1, straitId: 0, target: 0, allow: true, toll: 100 });
     s = act(s, ship(s, 10, 1));
-    expect(s.players[0].resources.akce).toBe(1000 - 50 - 100);
-    expect(s.players[1].resources.akce).toBe(50);
+    expect(s.players[0].resources.akce).toBe(1000 - 100 - 100);
+    expect(s.players[1].resources.akce).toBe(100);
   });
 
   it('vergiye yetecek akçe yoksa sefer yapılamaz', () => {
     let s = seaWorld();
     giveBanksTo(s, 1);
-    s = act(s, { type: 'SET_STRAIT_POLICY', player: 1, straitId: 0, target: 0, allow: true, toll: 50 });
-    s.players[0].resources.akce = 120;
+    s = act(s, { type: 'SET_STRAIT_POLICY', player: 1, straitId: 0, target: 0, allow: true, toll: 100 });
+    s.players[0].resources.akce = 100;
     expect(validateAction(s, ship(s, 10, 1)).ok).toBe(false);
   });
 
