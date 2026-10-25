@@ -1,6 +1,6 @@
 import {
   AKCE_FIELDS,
-  AKCE_UNIT,
+  AKCE_STEP,
   DEFAULT_CONFIG,
   configProblems,
   MAX_PLAYERS,
@@ -355,18 +355,12 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
           class: 'num',
           min: f.min,
           max: f.max,
-          step: akce ? AKCE_UNIT : 1,
+          // Okla 50'şer değişir; elle yazılan her tam sayı geçerlidir
+          step: akce ? AKCE_STEP : 1,
           value: config[f.key] as number,
           onInput: (e: Event) => {
             (config as unknown as Record<string, number>)[f.key] = clampInt((e.target as HTMLInputElement).value, f.min, f.max);
             if (f.key === 'minesPerTypePerPlayer' || f.key === 'startTerritoryCount') schedulePreview();
-          },
-          onChange: (e: Event) => {
-            if (!akce) return;
-            const el = e.target as HTMLInputElement;
-            const v = Math.round(clampInt(el.value, f.min, f.max) / AKCE_UNIT) * AKCE_UNIT;
-            el.value = String(v);
-            (config as unknown as Record<string, number>)[f.key] = v;
           },
         }),
       ];
@@ -389,11 +383,8 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
   );
 
   const start = async () => {
-    if (configProblems(config).length) {
-      // Kullanıcıya iç anahtar adları yerine alan etiketlerini göster
-      const bad = CONFIG_FIELDS.filter((f) => AKCE_FIELDS.includes(f.key) && (config[f.key] as number) % AKCE_UNIT !== 0).map((f) => f.label);
-      return toast(`Akçe değerleri 100'ün katı olmalı: ${bad.join(', ') || configProblems(config).join('; ')}`, 'error', 6000);
-    }
+    const problems = configProblems(config);
+    if (problems.length) return toast(`Kural ayarları geçersiz: ${problems.join('; ')}`, 'error', 6000);
     let ps = players.slice(0, count).map((p, i) => ({ ...p, name: p.name.trim() || `Oyuncu ${i + 1}` }));
     if (room) {
       const seats = room.lobby().seats;

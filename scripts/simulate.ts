@@ -2,7 +2,8 @@
  * Denge simülasyonu: arayüz olmadan kural motoru ve botlarla çok sayıda oyun oynatır,
  * sonuçları docs/BALANCE_REPORT.md dosyasına tablolar hâlinde yazar.
  *
- *   npm run simulate                      # tüm senaryolar, her biri 150 oyun
+ *   npm run simulate                      # 1. tur: A, B, C, D, RA, RB (150'şer oyun)
+ *   npm run simulate -- --round 2         # 2. tur: B2, RB2 ve karşılaştırma için 1. tur ayarlarıyla B, RB (100'er oyun)
  *   npm run simulate -- --games 20        # hızlı deneme
  *   npm run simulate -- --scenarios B,C   # yalnızca seçilen senaryolar
  */
@@ -11,6 +12,7 @@ import { availableParallelism } from 'node:os';
 import { resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Worker, isMainThread, parentPort } from 'node:worker_threads';
+import type { BotTuning } from '../src/bot';
 import { DEFAULT_CONFIG, type GameConfig } from '../src/engine';
 import { playGame, SNAPSHOT_ROUNDS, type GameMetrics, type GameSpec, type SpendKey } from './sim/game';
 
@@ -19,18 +21,40 @@ interface Scenario {
   title: string;
   config: Partial<GameConfig>;
   rusher: boolean;
+  /** Orta seviye botların ayarları */
+  tuning?: Partial<BotTuning>;
 }
 
-const LEGACY: Partial<GameConfig> = { battleCostsEnabled: false, upkeepEnabled: false };
+/** 1. turdaki varsayılan değerler ve bot temkini (sonuçlar yeniden üretilebilsin diye sabit) */
+const ROUND1_CONFIG: Partial<GameConfig> = {
+  landBattleAkce: 100,
+  baseBattleAkce: 400,
+  baseBattleIron: 2,
+  capitalBattleAkce: 1000,
+  capitalBattleIron: 3,
+  capitalBattleSteel: 3,
+  shipUpkeep: 100,
+  planeUpkeep: 100,
+  baseUpkeep: 100,
+};
+const ROUND1_TUNING: Partial<BotTuning> = { capitalCostCushion: 1.5, capitalReserveUpkeep: false, capitalWeakRatio: 0.75 };
+const LEGACY: Partial<GameConfig> = { ...ROUND1_CONFIG, battleCostsEnabled: false, upkeepEnabled: false };
 
 const SCENARIOS: Scenario[] = [
-  { id: 'A', title: 'Eski kurallar (savaş masrafı ve bakım yok)', config: LEGACY, rusher: false },
-  { id: 'B', title: 'Yeni varsayılan kurallar', config: {}, rusher: false },
-  { id: 'C', title: 'B + zayıflık şartı', config: { weaknessRule: true }, rusher: false },
-  { id: 'D', title: `B + açılış barışı (${DEFAULT_CONFIG.openingPeaceRounds} tur)`, config: { openingPeace: true }, rusher: false },
-  { id: 'RA', title: 'A + 1 acele eden bot', config: LEGACY, rusher: true },
-  { id: 'RB', title: 'B + 1 acele eden bot', config: {}, rusher: true },
+  { id: 'A', title: 'Eski kurallar (savaş masrafı ve bakım yok)', config: LEGACY, tuning: ROUND1_TUNING, rusher: false },
+  { id: 'B', title: '1. tur varsayılanları (savaş 100 · üs 400+2 demir · başkent 1000+3+3 · bakım 100/100/100) ve temkinli bot', config: ROUND1_CONFIG, tuning: ROUND1_TUNING, rusher: false },
+  { id: 'C', title: 'B + zayıflık şartı', config: { ...ROUND1_CONFIG, weaknessRule: true }, tuning: ROUND1_TUNING, rusher: false },
+  { id: 'D', title: `B + açılış barışı (${DEFAULT_CONFIG.openingPeaceRounds} tur)`, config: { ...ROUND1_CONFIG, openingPeace: true }, tuning: ROUND1_TUNING, rusher: false },
+  { id: 'RA', title: 'A + 1 acele eden bot', config: LEGACY, tuning: ROUND1_TUNING, rusher: true },
+  { id: 'RB', title: 'B + 1 acele eden bot', config: ROUND1_CONFIG, tuning: ROUND1_TUNING, rusher: true },
+  { id: 'B2', title: '2. tur varsayılanları (savaş 100 · üs 200+1 demir · başkent 600+2+2 · bakım 50/50/0) ve gevşetilmiş bot', config: {}, rusher: false },
+  { id: 'RB2', title: 'B2 + 1 acele eden bot', config: {}, rusher: true },
 ];
+
+const ROUNDS: Record<string, { scenarios: string[]; games: number }> = {
+  '1': { scenarios: ['A', 'B', 'C', 'D', 'RA', 'RB'], games: 150 },
+  '2': { scenarios: ['B', 'RB', 'B2', 'RB2'], games: 100 },
+};
 
 // ------------------------------------------------------------------
 // İşçi (worker) tarafı: verilen oyunları oynatıp sonuçları döner
@@ -52,20 +76,22 @@ function arg(name: string): string | undefined {
 }
 
 async function main() {
-  const games = Number(arg('games') ?? 150);
+  const round = arg('round') ?? '1';
+  if (!ROUNDS[round]) throw new Error(`Bilinmeyen tur: ${round}`);
+  const games = Number(arg('games') ?? ROUNDS[round].games);
   const players = Number(arg('players') ?? 5);
   const maxRounds = Number(arg('max-rounds') ?? 300);
   const workers = Number(arg('workers') ?? Math.max(1, availableParallelism() - 1));
-  const wanted = arg('scenarios')?.split(',') ?? SCENARIOS.map((s) => s.id);
+  const wanted = arg('scenarios')?.split(',') ?? ROUNDS[round].scenarios;
   const out = resolve(arg('out') ?? 'docs/BALANCE_REPORT.md');
-  const scenarios = SCENARIOS.filter((s) => wanted.includes(s.id));
+  const scenarios = wanted.map((id) => SCENARIOS.find((s) => s.id === id)!).filter(Boolean);
 
   const jobs: { scenario: string; spec: GameSpec }[] = [];
   for (const sc of scenarios) {
     for (let g = 0; g < games; g++) {
       // Aynı seed'ler tüm senaryolarda kullanılır: haritalar aynı, yalnızca kurallar farklı
       const seed = 10_000 + g;
-      jobs.push({ scenario: sc.id, spec: { seed, players, maxRounds, config: sc.config, rusherSeat: sc.rusher ? g % players : null } });
+      jobs.push({ scenario: sc.id, spec: { seed, players, maxRounds, config: sc.config, tuning: sc.tuning, rusherSeat: sc.rusher ? g % players : null } });
     }
   }
   const results = new Map<string, GameMetrics[]>(scenarios.map((s) => [s.id, []]));
@@ -102,8 +128,9 @@ async function main() {
   });
   console.log(`\nBitti (${Math.round((Date.now() - t0) / 1000)} sn).`);
 
-  const report = buildReport(scenarios, results, { games, players, maxRounds });
-  writeReport(out, report);
+  const opt = { games, players, maxRounds };
+  if (round === '1') writeReport(out, buildReport(scenarios, results, opt));
+  else writeSection(out, 'tur2', buildRound2(scenarios, results, opt));
   console.log(`Rapor yazıldı: ${out}`);
 }
 
@@ -175,10 +202,10 @@ const SPEND_NAMES: Record<SpendKey, string> = {
   toll: 'Boğaz vergisi',
 };
 
-function buildReport(scenarios: Scenario[], results: Map<string, GameMetrics[]>, opt: { games: number; players: number; maxRounds: number }): string {
+type Opt = { games: number; players: number; maxRounds: number };
+
+function buildReport(scenarios: Scenario[], results: Map<string, GameMetrics[]>, opt: Opt): string {
   const L: string[] = [];
-  const main = scenarios.filter((s) => !s.rusher);
-  const rush = scenarios.filter((s) => s.rusher);
   L.push('# Denge raporu');
   L.push('');
   L.push(
@@ -193,8 +220,15 @@ function buildReport(scenarios: Scenario[], results: Map<string, GameMetrics[]>,
   L.push('');
   L.push('Tablolardaki dağılım sütunları: **ortalama | medyan | %10–%90 | en az–en çok**.');
   L.push('');
+  return [...L, ...tables(scenarios, results, opt, '##')].join('\n');
+}
 
-  L.push('## İlk başkentin düştüğü tur');
+/** Senaryo tabloları; H başlık düzeyi ('##' ya da '###') */
+function tables(scenarios: Scenario[], results: Map<string, GameMetrics[]>, opt: Opt, H: string): string[] {
+  const L: string[] = [];
+  const main = scenarios.filter((s) => !s.rusher);
+  const rush = scenarios.filter((s) => s.rusher);
+  L.push(`${H} İlk başkentin düştüğü tur`);
   L.push('');
   L.push('| Senaryo | Başkent düşen oyun | Ortalama | Medyan | %10–%90 | En az–en çok |');
   L.push('|---|---|---|---|---|---|');
@@ -212,7 +246,7 @@ function buildReport(scenarios: Scenario[], results: Map<string, GameMetrics[]>,
   }
   L.push('');
 
-  L.push('## Oyun süresi ve kazanma türü');
+  L.push(`${H} Oyun süresi ve kazanma türü`);
   L.push('');
   L.push('| Senaryo | Biten oyunların bitiş turu (ort. \\| medyan \\| %10–%90 \\| en az–en çok) | Tur sınırına takılan | Tek devlet | İttifak |');
   L.push('|---|---|---|---|---|');
@@ -238,7 +272,7 @@ function buildReport(scenarios: Scenario[], results: Map<string, GameMetrics[]>,
     L.push('');
   }
 
-  L.push('## Kaynak stokları');
+  L.push(`${H} Kaynak stokları`);
   L.push('');
   L.push('Yaşayan oyuncu başına ortalama; parantez içinde o tura ulaşan oyun sayısı.');
   L.push('');
@@ -256,7 +290,7 @@ function buildReport(scenarios: Scenario[], results: Map<string, GameMetrics[]>,
   L.push('Maden kaynağı = altın + petrol + demir + çelik toplamı.');
   L.push('');
 
-  L.push('## Harcamaların dağılımı');
+  L.push(`${H} Harcamaların dağılımı`);
   L.push('');
   const keys = Object.keys(SPEND_NAMES) as SpendKey[];
   L.push(`| Senaryo | ${keys.map((k) => SPEND_NAMES[k]).join(' | ')} | Harcama / gelir |`);
@@ -270,8 +304,24 @@ function buildReport(scenarios: Scenario[], results: Map<string, GameMetrics[]>,
   L.push('');
   L.push('Gelir = topaçtan ve altın bozdurmadan gelen akçe. Teklif yoluyla el değiştiren akçe harcama sayılmaz.');
   L.push('');
+  const withUpkeep = main.filter((s) => results.get(s.id)!.some((m) => m.spend.upkeep > 0));
+  if (withUpkeep.length) {
+    L.push('Bakımın kalemlere göre dökümü (bakım harcamasının içindeki pay ve oyun başına akçe):');
+    L.push('');
+    L.push('| Senaryo | Gemi | Uçak | Askeri üs | Bakım / tüm harcama |');
+    L.push('|---|---|---|---|---|');
+    for (const s of withUpkeep) {
+      const ms = results.get(s.id)!;
+      const by = (k: 'ship' | 'plane' | 'base') => ms.reduce((a, m) => a + m.upkeepBy[k], 0);
+      const up = by('ship') + by('plane') + by('base');
+      const tot = keys.reduce((a, k) => a + ms.reduce((b, m) => b + m.spend[k], 0), 0);
+      const cell = (k: 'ship' | 'plane' | 'base') => `${pct(by(k) / up, 0)} (${f(by(k) / ms.length)})`;
+      L.push(`| ${s.id} | ${cell('ship')} | ${cell('plane')} | ${cell('base')} | ${pct(up / tot, 1)} |`);
+    }
+    L.push('');
+  }
 
-  L.push('## Savaşlar');
+  L.push(`${H} Savaşlar`);
   L.push('');
   L.push('| Senaryo | Oyun başına savaş | Normal | Üs | Başkent | Başkent savaşı başarı oranı | Üs savaşı başarı oranı |');
   L.push('|---|---|---|---|---|---|---|');
@@ -288,7 +338,7 @@ function buildReport(scenarios: Scenario[], results: Map<string, GameMetrics[]>,
   L.push('');
 
   if (rush.length) {
-    L.push('## Acele eden bot testi');
+    L.push(`${H} Acele eden bot testi`);
     L.push('');
     L.push(
       `Her oyunda 1 bot en yakın rakip başkentine koşar (toprak alımını o yöne çevirir, savaşını hep o yönde kullanır, ` +
@@ -321,10 +371,122 @@ function buildReport(scenarios: Scenario[], results: Map<string, GameMetrics[]>,
     );
     L.push('');
   }
+  return L;
+}
+
+// ------------------------------------------------------------------
+// 2. tur bölümü
+// ------------------------------------------------------------------
+
+interface Summary {
+  firstFallMedian: number;
+  neverFell: number;
+  limitShare: number;
+  endMedian: number;
+  upkeepShare: number;
+  spendIncome: number;
+  akce100: number;
+  battlesPerGame: number;
+  capitalPerGame: number;
+  baseShare: number;
+  rusherShare: number;
+  rusherHi: number;
+}
+
+function summarize(ms: GameMetrics[], rush: GameMetrics[] | undefined): Summary {
+  const keys = Object.keys(SPEND_NAMES) as SpendKey[];
+  const tot = keys.reduce((a, k) => a + ms.reduce((b, m) => b + m.spend[k], 0), 0);
+  const income = ms.reduce((a, m) => a + m.income, 0);
+  const falls = ms.map((m) => m.firstCapitalFall).filter((x): x is number => x !== null);
+  const sum = (k: keyof GameMetrics['battles']) => ms.reduce((a, m) => a + m.battles[k], 0);
+  const battles = sum('land') + sum('base') + sum('capital');
+  let share = 0;
+  for (const m of rush ?? []) if (m.rusherSeat !== null && m.winners.includes(m.rusherSeat)) share += 1 / m.winners.length;
+  const n = rush?.length ?? 0;
+  return {
+    // Hiç düşmeyen oyunlar medyana tur sınırı olarak katılır (iyimser tahmin olmasın)
+    firstFallMedian: quantile(ms.map((m) => m.firstCapitalFall ?? Infinity).map((x) => (x === Infinity ? 999 : x)), 0.5),
+    neverFell: (ms.length - falls.length) / ms.length,
+    limitShare: ms.filter((m) => m.hitLimit).length / ms.length,
+    endMedian: quantile(ms.filter((m) => !m.hitLimit).map((m) => m.endRound), 0.5),
+    upkeepShare: ms.reduce((a, m) => a + m.spend.upkeep, 0) / tot,
+    spendIncome: tot / income,
+    akce100: mean(ms.map((m) => m.akceAt[100]).filter((x) => x !== undefined)),
+    battlesPerGame: battles / ms.length,
+    capitalPerGame: sum('capital') / ms.length,
+    baseShare: sum('base') / battles,
+    rusherShare: n ? share / n : NaN,
+    rusherHi: n ? wilson(Math.round(share), n)[1] : NaN,
+  };
+}
+
+function buildRound2(scenarios: Scenario[], results: Map<string, GameMetrics[]>, opt: Opt): string {
+  const L: string[] = [];
+  const get = (id: string) => results.get(id);
+  L.push('## 2. tur');
+  L.push('');
+  L.push(
+    `\`npm run simulate -- --round 2\` ile üretilir (son çalıştırma: ${new Date().toISOString().slice(0, 10)}). ` +
+      `Her senaryo için ${opt.games} oyun, ${opt.players} oyuncu, ${opt.maxRounds} tur sınırı, seed'ler 10000–${10_000 + opt.games - 1}. ` +
+      'Karşılaştırmanın aynı haritalarda yapılması için 1. turun ayarları (B, RB) da bu seed\'lerde yeniden oynatıldı; ' +
+      'yukarıdaki 1. tur tabloları 150 oyunluk asıl çalıştırmadır.',
+  );
+  L.push('');
+  L.push('| Senaryo | Açıklama |');
+  L.push('|---|---|');
+  for (const s of scenarios) L.push(`| ${s.id} | ${s.title} |`);
+  L.push('');
+  L.push('Gevşetilmiş bot: başkent savaşına masraf + bir sonraki turun bakımı yetiyorsa ve hedefin toprağı kendisininkinden fazla değilse girer (1. turda: masrafın 1,5 katı ve hedef %75\'ten küçük).');
+  L.push('');
+  const b1 = get('B') && summarize(get('B')!, get('RB'));
+  const b2 = get('B2') && summarize(get('B2')!, get('RB2'));
+  if (b1 && b2) {
+    L.push('### Karşılaştırma ve hedefler');
+    L.push('');
+    const ok = (v: boolean) => (v ? '✔' : '✘');
+    const rows: [string, (x: Summary) => string, string, (x: Summary) => boolean | null][] = [
+      ['Acele eden botun kazanma payı (%95 üst sınır)', (x) => `${pct(x.rusherShare)} (${pct(x.rusherHi, 0)})`, '< %24', (x) => x.rusherShare < 0.24],
+      ['İlk başkent fethi, medyan tur', (x) => f(x.firstFallMedian === 999 ? NaN : x.firstFallMedian), '20–40', (x) => x.firstFallMedian >= 20 && x.firstFallMedian <= 40],
+      ['Hiç başkent düşmeyen oyun', (x) => pct(x.neverFell, 0), '—', () => null],
+      ['Tur sınırına takılan oyun', (x) => pct(x.limitShare, 0), '< %10', (x) => x.limitShare < 0.1],
+      ['Bakım / tüm harcama', (x) => pct(x.upkeepShare, 0), '< %50', (x) => x.upkeepShare < 0.5],
+      ['Harcama / gelir', (x) => pct(x.spendIncome, 0), '—', () => null],
+      ['Ortalama akçe stoku, tur 100', (x) => f(x.akce100), '—', () => null],
+      ['Biten oyunların bitiş turu, medyan', (x) => f(x.endMedian), '—', () => null],
+      ['Oyun başına savaş', (x) => f(x.battlesPerGame, 0), '—', () => null],
+      ['Oyun başına başkent savaşı', (x) => f(x.capitalPerGame, 1), '—', () => null],
+      ['Üs savaşlarının payı', (x) => pct(x.baseShare, 1), '—', () => null],
+    ];
+    L.push('| Ölçüt | 1. tur ayarları (B / RB) | 2. tur (B2 / RB2) | Hedef | 2. turda tuttu mu |');
+    L.push('|---|---|---|---|---|');
+    for (const [name, fmt, target, check] of rows) {
+      const c = check(b2);
+      L.push(`| ${name} | ${fmt(b1)} | ${fmt(b2)} | ${target} | ${c === null ? '' : ok(c)} |`);
+    }
+    L.push('');
+    L.push('İlk başkent fethi medyanında hiç başkent düşmeyen oyunlar tur sınırı olarak sayıldı; bu yüzden medyan "—" ise oyunların yarısından çoğunda hiç başkent düşmemiştir.');
+    L.push('');
+  }
+  L.push(...tables(scenarios, results, opt, '###'));
   return L.join('\n');
 }
 
 const MARKER = '<!-- öneriler: bu satırın altı simülasyon tarafından değiştirilmez -->';
+
+/**
+ * Rapora adlandırılmış bir bölüm yazar: işaretler arasındaki kısım değiştirilir, yoksa dosyanın sonuna eklenir.
+ * Bölümün altına elle yazılan değerlendirme (kapanış işaretinden sonrası) korunur.
+ */
+function writeSection(path: string, name: string, generated: string) {
+  const open = `<!-- bölüm:${name} — bu işaretle kapanış işareti arası simülasyon tarafından yazılır -->`;
+  const close = `<!-- /bölüm:${name} -->`;
+  const block = `${open}\n\n${generated}\n${close}`;
+  const old = existsSync(path) ? readFileSync(path, 'utf8') : '# Denge raporu\n';
+  const i = old.indexOf(open);
+  const j = old.indexOf(close);
+  const next = i >= 0 && j > i ? old.slice(0, i) + block + old.slice(j + close.length) : `${old.trimEnd()}\n\n${block}\n\n### Değerlendirme ve öneriler (2. tur)\n\n_Henüz yazılmadı._\n`;
+  writeFileSync(path, next);
+}
 
 /** Raporu yazar; dosyada elle yazılmış "Öneriler" bölümü varsa korunur. */
 function writeReport(path: string, generated: string) {

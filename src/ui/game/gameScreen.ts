@@ -1351,7 +1351,8 @@ export class GameScreen {
           ? h('p', {}, h('button', { class: 'btn btn-small btn-primary', onClick: () => run({ type: 'EXCHANGE_GOLD', player: me, amount: res.gold }) }, `🥇 ${res.gold} altını bozdur (+${fmtNum(res.gold * c.goldToAkce)} akçe)`))
           : null,
         units.map((u) => row(`${UNIT_ICON[u.kind]} ${u.kind === 'ship' ? 'Gemi' : 'Uçak'} ${tileLabel(s, u.tile)}`, u.kind === 'ship' ? c.shipUpkeep : c.planeUpkeep, 'Dağıt', { type: 'DISBAND_UNIT', player: me, unitId: u.id })),
-        bases.map((t) => row(`${STRUCT_ICON.base} Askeri üs ${tileLabel(s, t)} (toprak sende kalır)`, c.baseUpkeep, 'Yık', { type: 'DEMOLISH_BASE', player: me, tile: t })),
+        // Bakımsız üsleri yıkmak borcu azaltmaz
+        c.baseUpkeep <= 0 ? null : bases.map((t) => row(`${STRUCT_ICON.base} Askeri üs ${tileLabel(s, t)} (toprak sende kalır)`, c.baseUpkeep, 'Yık', { type: 'DEMOLISH_BASE', player: me, tile: t })),
       ),
     });
   }
@@ -1362,7 +1363,7 @@ export class GameScreen {
     const items: { s: BuildableStructure; desc: string }[] = [
       { s: 'shipyard', desc: `Denize kıyısı olan bir toprağa (göl sayılmaz). Gemi üretir${s.config.upkeepEnabled ? ` (gemi bakımı ${s.config.shipUpkeep} akçe/tur)` : ''}.` },
       { s: 'factory', desc: `Herhangi bir toprağa. Uçak üretir${s.config.upkeepEnabled ? ` (uçak bakımı ${s.config.planeUpkeep} akçe/tur)` : ''}.` },
-      { s: 'base', desc: `Başkent dışında bir toprağa. ${s.config.baseBlockRadius} kare içinde düşman uçaklarını engeller; ele geçirmek için ${s.config.baseStreak} art arda galibiyet gerekir.${s.config.upkeepEnabled ? ` Bakım: ${s.config.baseUpkeep} akçe/tur.` : ''}` },
+      { s: 'base', desc: `Başkent dışında bir toprağa. ${s.config.baseBlockRadius} kare içinde düşman uçaklarını engeller; ele geçirmek için ${s.config.baseStreak} art arda galibiyet gerekir.${s.config.upkeepEnabled && s.config.baseUpkeep > 0 ? ` Bakım: ${s.config.baseUpkeep} akçe/tur.` : ''}` },
     ];
     const m = openModal({
       title: '🔨 İnşa et',

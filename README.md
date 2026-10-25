@@ -10,7 +10,8 @@ npm install
 npm run dev        # geliştirme sunucusu (http://localhost:5173)
 npm run build      # dist/ klasörüne statik derleme
 npm test           # kural motoru testleri (Vitest)
-npm run simulate   # denge simülasyonu → docs/BALANCE_REPORT.md (uzun sürer; --games 20 ile kısalt)
+npm run simulate   # denge simülasyonu, 1. tur → docs/BALANCE_REPORT.md (uzun sürer; --games 20 ile kısalt)
+npm run simulate -- --round 2   # 2. tur: yeni varsayılanlar ve karşılaştırma
 ```
 
 `npm run build` çıktısı (`dist/`) herhangi bir statik sunucuda ya da alt klasörde çalışır.
@@ -37,8 +38,8 @@ haritada vurgulanır; karelerin üzerine gelince bilgi ve neden yapılamadığı
 | Gemi / Uçak üret | 2 demir + 100 akçe / 2 çelik + 200 akçe. Birimler kalıcıdır |
 | Altın bozdur | 1 altın = 200 akçe |
 | **Turda tek savaş** | Kara savaşı, gemi/uçakla dolu toprağa saldırı, başkent ve üs savaşı — hepsinden turda yalnızca 1 tane |
-| **Savaş masrafı** | Başlatırken ödenir, sonuçtan bağımsız: normal savaş 100 akçe · üs savaşı 400 akçe + 2 demir · başkent savaşı 1000 akçe + 3 demir + 3 çelik. Yetmiyorsa savaş başlatılamaz |
-| **Bakım** | Her tur başında, topaçtan önce: gemi, uçak ve askeri üs başına 100 akçe. Akçe yetmezse oyuncu dağıtacaklarını seçer; ödenemeyen kadar birim dağıtılır, üs yıkılır (toprak kalır) |
+| **Savaş masrafı** | Başlatırken ödenir, sonuçtan bağımsız: normal savaş 100 akçe · üs savaşı 200 akçe + 1 demir · başkent savaşı 600 akçe + 2 demir + 2 çelik. Yetmiyorsa savaş başlatılamaz |
+| **Bakım** | Her tur başında, topaçtan önce: gemi ve uçak başına 50 akçe (askeri üs varsayılan olarak bakımsız). Akçe yetmezse oyuncu dağıtacaklarını seçer; ödenemeyen kadar birim dağıtılır, bakımlı üs yıkılır (toprak kalır) |
 | Kara savaşı | Sınır komşuluğu. İki taraf topaç çevirir. A > D: saldıran A − D toprak seçer. A < D: savunan karşı saldırıyla ⌈(D − A)/2⌉ toprak seçer (saldıranın kendisine komşu topraklarından). A = D: sonuçsuz |
 | Başkent savaşı | Yalnızca karadan (sınır komşuluğu). Art arda 3 kez yüksek at (eşitlik tekrar). Kazanırsan rakip elenir, her şeyi sana geçer. Kaybedersen toprak kaybı yok |
 | Askeri üs savaşı | Art arda 2 kez yüksek at. Kaybedersen toprak kaybı yok |
@@ -62,8 +63,7 @@ verin"), seçimden sonra sıra saldırana döner.
 - **Zayıflık şartı:** başkente saldırmak için savunanın toprak sayısı saldıranınkinin yarısından az olmalı.
 - **Açılış barışı:** ilk N tur (varsayılan 5) kimse başka oyuncunun toprağına saldıramaz; sahipsiz toprak serbest.
 
-Oyundaki tüm akçe miktarları (maliyetler, masraflar, bakım, boğaz vergisi, akçe takası) 100'ün katıdır;
-ayar ekranı bunu denetler. Savaş masrafları ve bakım ayarlardan tamamen kapatılabilir.
+Savaş masrafları ve bakım ayarlardan tamamen kapatılabilir.
 
 Belirsiz kural noktalarında verilen kararlar: [docs/ASSUMPTIONS.md](docs/ASSUMPTIONS.md).
 Denge simülasyonu sonuçları ve öneriler: [docs/BALANCE_REPORT.md](docs/BALANCE_REPORT.md).

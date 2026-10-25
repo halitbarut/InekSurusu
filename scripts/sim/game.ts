@@ -1,4 +1,4 @@
-import { getBot, RusherBot, type BotBrain } from '../../src/bot';
+import { MediumBot, MEDIUM_TUNING, RusherBot, type BotBrain, type BotTuning } from '../../src/bot';
 import { createGame, defaultMapSize, dispatch, structureCost, type GameConfig, type GameState } from '../../src/engine';
 
 export const SNAPSHOT_ROUNDS = [10, 25, 50, 100] as const;
@@ -17,6 +17,8 @@ export interface GameMetrics {
   /** Tur → yaşayan oyuncuların ortalama maden kaynağı (altın+petrol+demir+çelik) */
   minesAt: Record<number, number>;
   spend: Record<SpendKey, number>;
+  /** Bakım harcamasının kalemlere göre dökümü */
+  upkeepBy: { ship: number; plane: number; base: number };
   /** Topaç + altın bozdurma ile elde edilen akçe */
   income: number;
   battles: { land: number; base: number; capital: number; capitalWon: number; baseWon: number };
@@ -31,6 +33,8 @@ export interface GameSpec {
   maxRounds: number;
   config: Partial<GameConfig>;
   rusherSeat: number | null;
+  /** Orta seviye botların ayarları (verilmezse varsayılan) */
+  tuning?: Partial<BotTuning>;
 }
 
 /** Arayüz olmadan, yalnızca kural motoru ve botlarla bir oyun oynatır. */
@@ -43,7 +47,7 @@ export function playGame(spec: GameSpec): GameMetrics {
     seed: spec.seed,
     config: spec.config,
   });
-  const medium = getBot('medium');
+  const medium = new MediumBot({ ...MEDIUM_TUNING, ...spec.tuning });
   const rusher = new RusherBot();
   const brain = (p: number): BotBrain => (p === spec.rusherSeat ? rusher : medium);
   const m: GameMetrics = {
@@ -56,6 +60,7 @@ export function playGame(spec: GameSpec): GameMetrics {
     akceAt: {},
     minesAt: {},
     spend: { claim: 0, build: 0, produce: 0, battle: 0, upkeep: 0, toll: 0 },
+    upkeepBy: { ship: 0, plane: 0, base: 0 },
     income: 0,
     battles: { land: 0, base: 0, capital: 0, capitalWon: 0, baseWon: 0 },
     rusherSeat: spec.rusherSeat,
@@ -102,6 +107,9 @@ export function playGame(spec: GameSpec): GameMetrics {
           break;
         case 'upkeep':
           m.spend.upkeep += e.amount;
+          m.upkeepBy.ship += e.ships * cfg.shipUpkeep;
+          m.upkeepBy.plane += e.planes * cfg.planeUpkeep;
+          m.upkeepBy.base += e.bases * cfg.baseUpkeep;
           break;
         case 'expedition':
           m.spend.toll += e.tolls.reduce((a, t) => a + t.amount, 0);

@@ -89,21 +89,21 @@ export const DEFAULT_CONFIG: GameConfig = {
   maxPeaceRounds: 30,
   battleCostsEnabled: true,
   landBattleAkce: 100,
-  baseBattleAkce: 400,
-  baseBattleIron: 2,
-  capitalBattleAkce: 1000,
-  capitalBattleIron: 3,
-  capitalBattleSteel: 3,
+  baseBattleAkce: 200,
+  baseBattleIron: 1,
+  capitalBattleAkce: 600,
+  capitalBattleIron: 2,
+  capitalBattleSteel: 2,
   upkeepEnabled: true,
-  shipUpkeep: 100,
-  planeUpkeep: 100,
-  baseUpkeep: 100,
+  shipUpkeep: 50,
+  planeUpkeep: 50,
+  baseUpkeep: 0,
   weaknessRule: false,
   openingPeace: false,
   openingPeaceRounds: 5,
 };
 
-/** Akçe cinsinden tüm ayarlar: hepsi 100'ün katı olmalı */
+/** Akçe cinsinden ayarlar (ayar ekranında 50'şer adımla değişir) */
 export const AKCE_FIELDS: readonly (keyof GameConfig)[] = [
   'startAkce',
   'claimCost',
@@ -123,18 +123,15 @@ export const AKCE_FIELDS: readonly (keyof GameConfig)[] = [
   'baseUpkeep',
 ];
 
-/** Oyundaki tüm akçe miktarları bu birimin katıdır */
-export const AKCE_UNIT = 100;
-
-export function isAkceAmount(n: number): boolean {
-  return Number.isInteger(n) && n >= 0 && n % AKCE_UNIT === 0;
-}
+/** Ayar ekranında akçe alanlarının artış adımı */
+export const AKCE_STEP = 50;
 
 /** Ayarlardaki sorunları döner (boşsa geçerli). */
 export function configProblems(cfg: GameConfig): string[] {
   const problems: string[] = [];
   for (const k of AKCE_FIELDS) {
-    if (!isAkceAmount(cfg[k] as number)) problems.push(`${k} 100'ün katı olmalı (şu an ${cfg[k]})`);
+    const v = cfg[k] as number;
+    if (!Number.isInteger(v) || v < 0) problems.push(`${k} 0 ya da pozitif tam sayı olmalı (şu an ${v})`);
   }
   if (!Number.isInteger(cfg.openingPeaceRounds) || cfg.openingPeaceRounds < 0) problems.push('openingPeaceRounds 0 veya pozitif tam sayı olmalı');
   return problems;

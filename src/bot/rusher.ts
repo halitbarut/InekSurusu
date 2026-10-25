@@ -16,7 +16,7 @@ import { MediumBot, MEDIUM_TUNING } from './medium';
  */
 export class RusherBot extends MediumBot {
   constructor() {
-    super({ ...MEDIUM_TUNING, capitalWeakRatio: Infinity, capitalCostCushion: 1 });
+    super({ ...MEDIUM_TUNING, capitalWeakRatio: Infinity, capitalCostCushion: 1, capitalReserveUpkeep: false });
   }
 
   /** En yakın, saldırılabilir rakip başkenti */

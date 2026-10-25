@@ -48,6 +48,8 @@ export interface BotTuning {
   maxUpkeepShare: number;
   /** Başkent savaşı için masrafın en az bu katı kaynak olmalı */
   capitalCostCushion: number;
+  /** Başkent savaşında akçe, masrafa ek olarak bir sonraki turun bakımını da karşılamalı */
+  capitalReserveUpkeep: boolean;
   /** Başkent savaşı için savunanın toprağı en fazla bizimkinin bu oranı olmalı */
   capitalWeakRatio: number;
   maxShipsBase: number;
@@ -58,8 +60,9 @@ export interface BotTuning {
 export const MEDIUM_TUNING: BotTuning = {
   minBattleValue: 0.05,
   maxUpkeepShare: 0.5,
-  capitalCostCushion: 1.5,
-  capitalWeakRatio: 0.75,
+  capitalCostCushion: 1,
+  capitalReserveUpkeep: true,
+  capitalWeakRatio: 1,
   maxShipsBase: 2,
   maxPlanesBase: 2,
   diplomacyEvery: 3,
@@ -311,7 +314,7 @@ export class MediumBot implements BotBrain {
     if (!state.config.battleCostsEnabled) return 0;
     const target = this.capitalTarget(state, p);
     if (target === null) return 0;
-    return Math.ceil((state.config.capitalBattleAkce * this.tuning.capitalCostCushion) / 100) * 100;
+    return Math.ceil(state.config.capitalBattleAkce * this.tuning.capitalCostCushion) + (this.tuning.capitalReserveUpkeep ? upkeepDue(state, p) : 0);
   }
 
   /** Saldırılabilecek, zayıflamış ve masrafı karşılanabilecek komşu başkent */
@@ -328,6 +331,12 @@ export class MediumBot implements BotBrain {
       return q.capital;
     }
     return null;
+  }
+
+  /** Akçe masrafı (gerekirse bir sonraki turun bakımıyla birlikte) karşılanıyor mu? */
+  protected canFundCapitalBattle(state: GameState, p: number): boolean {
+    const need = battleCost(state, 'capital').akce * this.tuning.capitalCostCushion + (this.tuning.capitalReserveUpkeep ? upkeepDue(state, p) : 0);
+    return state.players[p].resources.akce >= need;
   }
 
   /** Kaynak harcamasının toprak değeri cinsinden karşılığı */
@@ -406,7 +415,7 @@ export class MediumBot implements BotBrain {
         }
         const cap = state.players[q].capital;
         // Başkent: olasılık 1/8; yalnızca masraf rahatça karşılanıyor ve hedef zayıfsa
-        if (cap !== null && border.includes(cap) && this.capitalTarget(state, p) === cap) {
+        if (cap !== null && border.includes(cap) && this.capitalTarget(state, p) === cap && this.canFundCapitalBattle(state, p)) {
           options.push({ action: { type: 'ATTACK', player: p, target: cap }, value: seriesWinProbability(cfg.capitalStreak) * allValue });
         }
         const base = border.find((t) => state.structure[t] === 'base');

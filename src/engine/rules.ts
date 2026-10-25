@@ -18,7 +18,6 @@ import {
   unitCanSortie,
 } from './helpers';
 import { planeRoutes, shipRoutes, type Route, type RouteMap } from './movement';
-import { isAkceAmount } from './config';
 import { createRng, type Rng } from './rng';
 import {
   MINE_TYPES,
@@ -179,7 +178,7 @@ export function validateAction(state: GameState, action: Action): ValidationResu
       if (!st) return fail('Geçersiz boğaz');
       if (st.controller !== action.player) return fail('Bu boğazı idare etmiyorsunuz');
       if (!state.players[action.target] || action.target === action.player) return fail('Geçersiz oyuncu');
-      if (!isAkceAmount(action.toll) || action.toll > 1_000_000) return fail("Vergi 0 ya da 100'ün katı olmalı");
+      if (!Number.isInteger(action.toll) || action.toll < 0 || action.toll > 1_000_000) return fail('Vergi 0 veya pozitif tam sayı olmalı');
       return OK;
     }
     case 'PROPOSE_OFFER': {

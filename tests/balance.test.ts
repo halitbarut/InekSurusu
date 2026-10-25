@@ -1,10 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import { getBot } from '../src/bot';
-import { DEFAULT_CONFIG, configProblems, createGame, upkeepDue, validateAction, type GameState } from '../src/engine';
+import { upkeepDue, validateAction, type GameState } from '../src/engine';
 import { act, at, own, setCapital, testState } from './helpers';
 
 const FIELD = ['########', '########', '########', '########', '########', '########'];
-const ON = { battleCostsEnabled: true, upkeepEnabled: true };
+/** Testler varsayılanlara bağlı kalmasın diye değerler açıkça verilir */
+const ON = {
+  battleCostsEnabled: true,
+  upkeepEnabled: true,
+  landBattleAkce: 100,
+  baseBattleAkce: 400,
+  baseBattleIron: 2,
+  capitalBattleAkce: 1000,
+  capitalBattleIron: 3,
+  capitalBattleSteel: 3,
+  shipUpkeep: 100,
+  planeUpkeep: 100,
+  baseUpkeep: 100,
+};
 
 /** P0: x=0..1, P1: x=2..3 (üs (2,0)), P2: x=6..7 */
 function battlefield(config = {}): GameState {
@@ -159,22 +172,5 @@ describe('isteğe bağlı kurallar', () => {
     expect(validateAction(s, { type: 'CLAIM_TILE', player: 0, tile: at(s, 5, 1) }).ok).toBe(true);
     s.round = 6;
     expect(validateAction(s, { type: 'ATTACK', player: 0, target: at(s, 2, 2) }).ok).toBe(true);
-  });
-});
-
-describe("akçe değerleri 100'ün katı", () => {
-  it('varsayılan ayarlar geçerli, 100 katı olmayan değerler reddedilir', () => {
-    expect(configProblems(DEFAULT_CONFIG)).toEqual([]);
-    expect(configProblems({ ...DEFAULT_CONFIG, claimCost: 150, shipUpkeep: 50 })).toHaveLength(2);
-    expect(() =>
-      createGame({ players: ['A', 'B', 'C'].map((name) => ({ name, color: '#000', kind: 'bot' as const })), width: 40, height: 30, seed: 1, config: { landBattleAkce: 250 } }),
-    ).toThrow(/100'ün katı/);
-  });
-
-  it('boğaz vergisi ve akçe takası da 100 katı olmalı', () => {
-    const s = battlefield();
-    s.players[0].resources = { ...rich };
-    expect(validateAction(s, { type: 'PROPOSE_OFFER', player: 0, to: 1, items: [{ kind: 'resource', giver: 'from', resource: 'akce', amount: 150 }] }).ok).toBe(false);
-    expect(validateAction(s, { type: 'PROPOSE_OFFER', player: 0, to: 1, items: [{ kind: 'resource', giver: 'from', resource: 'akce', amount: 200 }] }).ok).toBe(true);
   });
 });

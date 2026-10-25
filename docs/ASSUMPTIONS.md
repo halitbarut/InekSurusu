@@ -125,10 +125,9 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
 42. **Savaş masrafı** savaş başlatılırken, sonuçtan (eşitlik dahil) bağımsız ödenir. Gemi/uçakla sahipli
     toprağa saldırıda masrafa ek olarak petrol ve varsa boğaz vergisi de gerekir; hepsi aynı anda yetmelidir.
     Sahipsiz toprağa sefer savaş değildir, savaş masrafı yoktur.
-43. **Başkent savaşı yalnızca karadan:** yeni denge metni başkent ve üs savaşlarının "gemi ve uçakla da
-    yapılabileceğini" söylüyor, ama aynı metin "diğer kurallar değişmiyor" diyor ve önceki bir istekle
-    başkente gemi/uçakla saldırı kapatılmıştı. Bu yüzden başkent savaşı yalnızca karadan kalmaya devam ediyor;
-    üs savaşı gemiyle yapılabiliyor (uçakla yapılamaz, çünkü üs kendi engel alanının içinde).
+43. **Başkent savaşı yalnızca karadan yapılır (kesin kural).** Başkente gemi ya da uçakla saldırılamaz;
+    başkent savaşı için sınır komşuluğu gerekir. Üs savaşı gemiyle yapılabilir (uçakla yapılamaz, çünkü üs
+    kendi engel alanının içindedir).
 44. **Bakım** her oyuncu turunun başında, gelirden (madenler) sonra ve topaçtan önce ödenir. Akçe yetmezse
     bakım aşamasına geçilir: oyuncu altın bozdurabilir, gemi/uçak dağıtabilir ya da üs yıkabilir; borç akçesine
     inince kalan bakım otomatik ödenir ve topaç aşaması başlar. Dağıtılan birim tamamen yok olur. Oyuncu eylem
@@ -138,11 +137,12 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
     savunanın toprağı × 2 < saldıranın toprağı.
 47. **Açılış barışı** 1'den N'e kadar (dahil) tam turlarda geçerlidir; kara savaşı, seferle saldırı, üs ve başkent
     savaşının hepsini engeller. Sahipsiz toprak almak ve diğer eylemler serbesttir.
-48. **100'ün katı kuralı** yalnızca akçe için geçerlidir: maliyetler, masraflar, bakım, boğaz vergisi ve
-    teklifteki akçe miktarları. Altın, petrol, demir ve çelik miktarları serbest tam sayılardır. Oyun
-    oluşturulurken ayarlar denetlenir; geçersizse oyun başlamaz.
+48. Ayarlardaki akçe değerleri (maliyetler, masraflar, bakım) 0 ya da pozitif tam sayı olmalıdır; oyun
+    oluşturulurken denetlenir. Ayar ekranında akçe alanları 50'şer artıp azalır ama elle her değer yazılabilir.
+    Boğaz vergisi ve tekliflerdeki akçe de herhangi bir pozitif (vergi için 0 dahil) tam sayı olabilir.
 49. Simülasyon ve testler için savaş masrafları (`battleCostsEnabled`) ve bakım (`upkeepEnabled`) ayrı
     bayraklarla kapatılabilir; ikisi de kapalıyken kurallar bu güncellemeden öncekiyle aynıdır.
 50. Orta seviye bot birim ve üs üretirken toplam bakımı beklenen tur gelirinin (ortalama topaç + altın madenleri)
     en fazla %70'inde tutar; bakım gelirin %80'ini aşarsa fazla birimi kendiliğinden dağıtır. Başkent savaşına
-    ancak masrafın 1,5 katı kaynağı varsa ve hedefin toprağı kendisininkinin %75'inden azsa girer.
+    masraf ile bir sonraki turun bakımını karşılayabiliyorsa ve hedefin toprağı kendisininkinden fazla değilse
+    girer (bot ayarları: `capitalCostCushion` = 1, `capitalReserveUpkeep` = açık, `capitalWeakRatio` = 1).
