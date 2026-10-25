@@ -63,6 +63,7 @@ import type { Presence } from '../../net/protocol';
 import { MapView, type Highlight } from './mapView';
 import { Spinner } from './spinner';
 import { renderSummary } from './summary';
+import { play, playSpin, setMuted, soundControls } from '../sound';
 
 type Mode =
   | { kind: 'none' }
@@ -160,7 +161,23 @@ export class GameScreen {
   // Yerleşim
   // ------------------------------------------------------------------
 
+  private muteBtn = h('button', {
+    class: 'btn btn-small',
+    onClick: () => {
+      setMuted(!getPrefs().muted);
+      this.updateMuteBtn();
+    },
+  });
+
+  private updateMuteBtn() {
+    const muted = getPrefs().muted;
+    this.muteBtn.textContent = muted ? '🔇' : '🔊';
+    this.muteBtn.title = muted ? 'Sesi aç' : 'Sesi kapat';
+    this.muteBtn.setAttribute('aria-pressed', String(muted));
+  }
+
   private buildLayout(): HTMLElement {
+    this.updateMuteBtn();
     this.elTop = h('div', { class: 'active-panel' });
     this.elPlayers = h('div', { class: 'player-list' });
     this.elLog = h('div', { class: 'log' });
@@ -185,6 +202,7 @@ export class GameScreen {
           'div',
           { class: 'top-controls' },
           h('label', { class: 'fast-toggle', title: 'Bot hamlelerini hızlı oynat' }, fast, ' ⚡ Hızlı oynat'),
+          this.muteBtn,
           h('button', { class: 'btn btn-small', title: 'Kaydet', onClick: () => this.openSaveDialog() }, '💾'),
           h('button', { class: 'btn btn-small', title: 'Menü', onClick: () => this.openGameMenu() }, '☰'),
         ),
@@ -381,6 +399,7 @@ export class GameScreen {
     this.targetCache = null;
     if (this.mode.kind === 'offerTiles') this.mode = { kind: 'none' };
     if (this.net?.kind === 'host') this.net.room.broadcastUpdate(this.state, [], origin, this.undoCount(this.state));
+    play('undo');
     toast(`↶ Geri alındı: ${actionLabel(this.state, entry.action)}`, 'info', 2200);
     this.render();
   }
@@ -435,7 +454,11 @@ export class GameScreen {
     this.state = r.state;
     this.targetCache = null;
     this.render();
-    for (const e of r.events) if (e.type === 'offer_made') await this.routeOffer(e.offer);
+    for (const e of r.events) {
+      if (e.type !== 'offer_made') continue;
+      if (this.mine(e.offer.to) && this.state.players[e.offer.to].kind === 'human') play('offer');
+      await this.routeOffer(e.offer);
+    }
     if (action.type === 'END_TURN' || r.events.some((e) => e.type === 'game_over')) autosave(this.state);
     return true;
   }
@@ -448,15 +471,36 @@ export class GameScreen {
       switch (e.type) {
         case 'spin': {
           const f = animFactor(!isHuman(e.player));
+          playSpin(1500 * f, !isHuman(e.player));
           if (f > 0) await this.showSpin(e.player, e.value, f);
           break;
         }
         case 'battle': {
           const human = isHuman(e.attacker) || isHuman(e.defender);
           const f = animFactor(!human);
+          if (f > 0) play('battleStart', !human);
           if (f > 0) await this.showBattle(e, f, (mine(e.attacker) || mine(e.defender)) && f >= 1);
+          // Kazanma/kaybetme bu cihazdaki oyuncunun gözünden; izlerken saldıranınkinden
+          const me = mine(e.defender) && !mine(e.attacker) ? e.defender : e.attacker;
+          const attackerWon = e.kind === 'land' ? e.gain > 0 : e.success;
+          const defenderWon = e.kind === 'land' ? e.loss > 0 : !e.success;
+          const won = me === e.attacker ? attackerWon : defenderWon;
+          const lost = me === e.attacker ? defenderWon : attackerWon;
+          if (!(e.kind === 'capital' && e.success)) {
+            if (won) play('win', !human);
+            else if (lost) play('lose', !human);
+          }
           break;
         }
+        case 'build':
+          play('build', !isHuman(e.player));
+          break;
+        case 'produce':
+          play('produce', !isHuman(e.player));
+          break;
+        case 'turn_start':
+          if (isHuman(e.player)) play('turn', !mine(e.player));
+          break;
         case 'expedition': {
           const f = animFactor(byBot);
           if (f > 0) await this.map.animatePath(e.from, e.path, UNIT_ICON[e.unit], 45 * f);
@@ -465,9 +509,11 @@ export class GameScreen {
         case 'claim':
         case 'conquer':
         case 'base_captured':
+          if (e.type === 'claim') play('claim', !isHuman(e.player));
           this.map.flash([e.tile], s.players[e.player].color);
           break;
         case 'eliminated':
+          play('capitalFall');
           toast(formatEvent(s, e) ?? '', 'error', 4500);
           break;
         case 'offer_response':
@@ -566,7 +612,11 @@ export class GameScreen {
           this.state = state;
           this.targetCache = null;
           this.render();
-          for (const e of events) if (e.type === 'offer_made' && this.mine(e.offer.to)) void this.promptOffer(e.offer);
+          for (const e of events) {
+            if (e.type !== 'offer_made' || !this.mine(e.offer.to)) continue;
+            play('offer');
+            void this.promptOffer(e.offer);
+          }
         }).then(() => this.clientFollowUp());
       };
       room.events.onGameState = (state, _seat, presence) => {
@@ -1832,6 +1882,7 @@ export class GameScreen {
         anim,
         h('label', {}, 'Sıra değişince "Sıra: X" ekranı (hot-seat)'),
         pass,
+        soundControls(),
       ),
       buttons: [{ label: 'Tamam', value: 'ok', primary: true }],
     });

@@ -248,3 +248,16 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
     eşitlik ikisine de sayılmaz. Başkent ve üs savaşında başarı saldıranın, başarısızlık savunanın galibiyetidir.
     "Başkent savaşı denemesi" saldıranın başlattığı başkent savaşlarıdır.
 75. Grafiklerde oyuncular renge ek olarak çizgi deseniyle ayrılır; elenen oyuncunun çizgisi elendiği turda × ile biter.
+
+## Ses
+
+76. Tüm sesler `src/ui/sound.ts` içinde Web Audio API ile sentezlenir (osilatör + süzgeçten geçmiş gürültü);
+    ses dosyası yoktur. Tarayıcı kuralı gereği ses bağlamı ilk tıklamadan sonra açılır.
+77. Topaç sesi topaç animasyonuyla aynı sürede yavaşlayan tıkırtılardan ve bir "tok" durma sesinden oluşur.
+    Savaş sonunda kazanma/kaybetme sesi bu cihazdaki oyuncunun gözünden çalar (savaşa karışmıyorsa saldıranın).
+    Başkent düşüşünde (eleme) ayrı, daha görkemli bir ses çalar. Tur değişim sesi yalnızca insan oyuncunun turu
+    başlarken çalar.
+78. Ana ses düzeyi ve sessiz mod ayarlardadır (ana menü ve oyun içi), oyun ekranının üst çubuğunda da ses
+    aç/kapa düğmesi vardır; tercih `localStorage` içinde hatırlanır.
+79. "Hızlı oynat" açıkken botların eylemlerinden yalnızca önemli olayların sesi çalar: savaşı kazanma/kaybetme,
+    başkent düşüşü ve gelen teklif. İnsan oyuncunun kendi eylemleri her zaman ses verir.

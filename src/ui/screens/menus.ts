@@ -18,6 +18,7 @@ import { clear, h, openModal, pickFile, toast } from '../dom';
 import { paintThumb } from '../mapPaint';
 import { mapFromSaved } from './mapEditor';
 import { getPrefs, setPrefs } from '../prefs';
+import { soundControls } from '../sound';
 import type { HostRoom } from '../../net/hostRoom';
 import type { LobbyInfo, SeatKind } from '../../net/protocol';
 import { AUTOSAVE_ID, deleteSave, getSave, importState, listMaps, listSaves } from '../storage';
@@ -97,6 +98,7 @@ function openSettings() {
       fast,
       h('label', {}, 'Hot-seat sıra geçiş ekranı ("Sıra: X")'),
       pass,
+      soundControls(),
     ),
     buttons: [{ label: 'Tamam', value: 'ok', primary: true }],
   });

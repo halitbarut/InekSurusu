@@ -6,10 +6,14 @@ export interface UiPrefs {
   fastBots: boolean;
   /** Hot-seat'te sıra değişince "Sıra: X" geçiş ekranı */
   passScreen: boolean;
+  /** Ana ses düzeyi (0–1) */
+  volume: number;
+  /** Sessiz mod */
+  muted: boolean;
 }
 
 const KEY = 'inek-surusu-prefs';
-const DEFAULTS: UiPrefs = { animSpeed: 'normal', fastBots: false, passScreen: true };
+const DEFAULTS: UiPrefs = { animSpeed: 'normal', fastBots: false, passScreen: true, volume: 0.7, muted: false };
 
 let cache: UiPrefs | null = null;
 

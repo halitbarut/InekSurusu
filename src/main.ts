@@ -5,8 +5,10 @@ import { GameScreen, type NetMode } from './ui/game/gameScreen';
 import { renderLoadScreen, renderMainMenu, renderNewGame, type MenuCallbacks } from './ui/screens/menus';
 import { renderMapList } from './ui/screens/mapEditor';
 import { renderOnlineMenu } from './ui/screens/online';
+import { bindClickSounds } from './ui/sound';
 
 const host = document.getElementById('app')!;
+bindClickSounds();
 let game: GameScreen | null = null;
 
 function leaveGame() {
