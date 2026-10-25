@@ -1,4 +1,4 @@
-# 🐄 İnek Sürüsü
+# İnek Sürüsü
 
 Kareli defter kâğıdında oynanan sıra tabanlı, topaçlı strateji oyununun tarayıcı sürümü.
 Aynı ekranda sırayla (hot-seat) ve botlarla 3–8 oyuncu oynanır.
@@ -13,13 +13,16 @@ npm test           # kural motoru testleri (Vitest)
 npm run simulate   # denge simülasyonu, 1. tur → docs/BALANCE_REPORT.md (uzun sürer; --games 20 ile kısalt)
 npm run simulate -- --round 2   # 2. tur: yeni varsayılanlar ve karşılaştırma
 npm run simulate -- --round 3   # 3. tur: dengeli madenler, küçük harita; 1.–3. tur karşılaştırması
+npm run simulate -- --round onayar   # hazır kural takımlarının (Klasik, Dengeli, Hızlı, Sakin açılış) karşılaştırması
+npm run simulate -- --round zorluk   # bot seviyeleri: Zor 1 + Orta 4 ve Orta 1 + Kolay 4
 ```
 
 `npm run build` çıktısı (`dist/`) herhangi bir statik sunucuda ya da alt klasörde çalışır.
 
 ## Nasıl oynanır
 
-1. **Yeni oyun:** oyuncu sayısı, ad, renk, İnsan/Bot; harita boyutu ve seed (önizlemeli); kural ayarları.
+1. **Yeni oyun:** oyuncu sayısı, ad, renk, İnsan ya da Bot (Kolay / Orta / Zor); rastgele harita (boyut ve seed,
+   önizlemeli) ya da harita editöründe çizilmiş kayıtlı bir harita; kurallar için bir önayar (aşağıda).
 2. **Kurulum:** herkes sırayla başkentini seçer, sonra başkentine bitişik 9 toprak seçer. Bu aşamada maden
    kareleri seçilemez (haritada kırmızı taranır); madenler oyun başladıktan sonra alınır.
    Haritada her maden türünden (altın, petrol, demir, çelik) oyuncu sayısı kadar maden vardır ve madenler
@@ -28,8 +31,62 @@ npm run simulate -- --round 3   # 3. tur: dengeli madenler, küçük harita; 1.�
    sekizgen topacı çevir (sayı × 100 akçe) → istediğin kadar eylem yap → **Turu bitir**.
 
 Haritayı sürükleyerek kaydır, tekerlekle (ya da iki parmakla) yakınlaş. Bir eylem seçince geçerli hedefler
-haritada vurgulanır; karelerin üzerine gelince bilgi ve neden yapılamadığı görünür. `Esc` eylemi iptal eder,
-`Boşluk` topacı çevirir.
+haritada vurgulanır; karelerin üzerine gelince bilgi ve neden yapılamadığı görünür. Üst çubukta sıradaki oyuncu ve
+turun aşaması (Bakım → Topaç → Eylemler) görünür. Eylem çubuğundaki her düğmenin ipucu vardır; yapılamayan
+eylemler soluk görünür ve ipucunda nedeni yazar. `Esc` eylemi iptal eder, `Boşluk` topacı çevirir,
+`Ctrl+Z` son eylemi geri alır.
+
+### Kural önayarları
+
+Yeni oyun ekranında önce bir önayar seçilir; varsayılan **Dengeli**dir.
+
+| Önayar | Ne değişir |
+|---|---|
+| Klasik | Kâğıt oyuna en yakın: savaş masrafı ve bakım yok |
+| Dengeli | Denge simülasyonlarıyla ayarlanmış varsayılanlar |
+| Hızlı | Haritanın %80'i boyutunda, 300 akçeyle başlangıç: oyun daha kısa sürer |
+| Sakin açılış | Dengeli + ilk 5 tur kimse kimseye saldıramaz |
+| Özel | Bütün ayarlar katlanabilir gruplarda (Harita, Ekonomi, Savaş, Bakım, İsteğe bağlı kurallar) |
+
+Bir değer değiştirilince seçim kendiliğinden **Özel**e geçer. Özel ayarlar isim verilerek kaydedilip sonra listeden
+seçilebilir ve silinebilir (tarayıcıda saklanır).
+
+### Botlar
+
+Her bot için seviye ayrı seçilir: **Kolay** daha az planlı ve gelişigüzel oynar, kolay kandırılır; **Orta** önceki
+sürümün botudur; **Zor** en yakın rakip başkentini hedefler, başkent savaşı için akçe ve demir saklar, kendi
+başkentine dayanan düşmanı önce geri iter, diplomaside çıkarını korur. Hiçbiri hile yapmaz (topaç sonuçlarını
+göremez, ek kaynak almaz). Simülasyonda Zor bot 4 orta botun arasında oyunların %35'ini, orta bot 4 kolay botun
+arasında %48'ini kazanıyor (adil pay %20; BALANCE_REPORT.md).
+
+### Geri alma
+
+Kendi turunda yaptığın toprak alma, inşa, üretim, altın bozdurma, boğaz ayarı ve sahipsiz toprağa seferi
+"Geri al" düğmesi ya da `Ctrl+Z` ile geri alabilirsin. Topaç, savaş (savaşa dönüşen sefer dahil) ve diplomasi
+geri alınamaz; bunlardan biri yapılınca o ana kadarki geçmiş silinir, kimse savaş sonucunu görüp önceki
+hamlelerini değiştiremez. Geçmiş tur bitince silinir.
+
+### Oyun sonu
+
+Zafer ekranında tur tur toprak ve akçe grafikleri (elenmeler işaretli), her oyuncunun kalem kalem harcaması,
+kazandığı ve kaybettiği savaşlar ve başkent savaşı denemeleri vardır. Özet JSON olarak indirilebilir.
+
+### Ses
+
+Bütün sesler tarayıcıda Web Audio ile üretilir (ses dosyası yok): topaç, toprak alma, inşa ve üretim, savaş,
+başkent düşüşü, tur değişimi, gelen teklif ve hafif düğme tıklamaları. Ses düzeyi ve sessiz mod ayarlardadır
+(oyun içinde üst çubukta da ses düğmesi var). "Hızlı oynat" açıkken botların yalnızca önemli olaylarının sesi çalar.
+
+## Harita editörü
+
+Ana menüde **Harita Editörü**: boş bir kâğıtla (boyut seçilerek) ya da rastgele bir haritayla başla; kara ve deniz
+fırçası (boyut ayarlı), kova, maden yerleştirme (altın, petrol, demir, çelik; istersen otomatik dengeli yerleşim)
+ve silgiyle çiz. Editörün kendi geri al/yinele'si vardır (`Ctrl+Z`, `Ctrl+Y`). Kapalı küçük su kütleleri kendiliğinden
+göl, dar geçitler kendiliğinden boğaz olur ve haritada işaretlenir. Denetim paneli haritanın kaç oyuncuya uygun
+olduğunu (madensiz başkent + 9 bitişik toprak alanı) ve sorunları gösterir; boğaz ya da göl yoksa yalnızca uyarır.
+Haritalar isimle kaydedilir, küçük önizlemeli listede düzenlenir, silinir, JSON olarak dışa/içe aktarılır.
+Yeni oyun ekranında "Rastgele harita" yerine kayıtlı bir harita seçilebilir; oyuncu sayısına yetmiyorsa uyarı
+verilir. Kayıtlı oyunlar haritanın kendisini de içerdiği için harita silinse de açılır.
 
 ## Kurallar (özet)
 
@@ -69,13 +126,14 @@ Savaş masrafları ve bakım ayarlardan tamamen kapatılabilir.
 
 Belirsiz kural noktalarında verilen kararlar: [docs/ASSUMPTIONS.md](docs/ASSUMPTIONS.md).
 Denge simülasyonu sonuçları ve öneriler: [docs/BALANCE_REPORT.md](docs/BALANCE_REPORT.md).
+Arayüz incelemesi ve önce/sonra ekran görüntüleri: [docs/UI_REVIEW.md](docs/UI_REVIEW.md).
 
 ## Çevrimiçi oyun
 
 Herkes kendi cihazından oynar; ayrı bir sunucu gerekmez. Oyun **oda sahibinin tarayıcısında** çalışır
 (kurallar, zarlar ve botlar orada), diğerleri tarayıcıdan tarayıcıya (WebRTC, PeerJS) bağlanır.
 
-1. Oda sahibi: **🌐 Çevrimiçi oyun → Oda kur**. Bir oda kodu ve davet linki çıkar
+1. Oda sahibi: **Çevrimiçi oyun → Oda kur**. Bir oda kodu ve davet linki çıkar
    (`http://…/?oda=KOD`). Koltukları "Davetli oyuncu" ya da "Bot" yapar, harita ve kuralları ayarlar.
 2. Katılanlar: linke tıklar (ya da kodu girer), adını ve rengini yazar, boş bir koltuğa oturur.
    Oturmayanlar **izleyici** olur; oyun başladıktan sonra gelenler de izleyici olarak girer.
@@ -93,7 +151,7 @@ Herkes kendi cihazından oynar; ayrı bir sunucu gerekmez. Oyun **oda sahibinin 
 
 ## Kaydet / yükle
 
-Oyun her tur sonunda otomatik kaydedilir (ana menüde **Devam et**). 💾 düğmesiyle adlandırılmış kayıt
+Oyun her tur sonunda otomatik kaydedilir (ana menüde **Devam et**). Üst çubuktaki kaydet düğmesiyle adlandırılmış kayıt
 oluşturulur ya da oyun JSON olarak dışa aktarılır; JSON dosyası "Kayıtlı oyunu yükle" ekranından içe aktarılır.
 Kayıtlar tarayıcının `localStorage` alanında tutulur.
 
@@ -110,11 +168,19 @@ src/
     diplomacy.ts   Teklif doğrulama ve uygulama
     helpers.ts     İlişkiler, boğaz idaresi, fetih adayları ...
     queries.ts     Arayüz/bot için geçerli hedef sorguları
-    map/           Harita üretici (gürültü, iç deniz, göl, boğaz, maden) ve boğaz tespiti
-  bot/             BotBrain arayüzü, orta seviye bot, simülasyon için acele eden bot
+    presets.ts     Hazır kural takımları (önayarlar)
+    undo.ts        Geri alma: hangi eylemler geri alınır, tur içi geçmiş
+    stats.ts       Tur sonu istatistikleri ve harcama/savaş toplamları (oyun sonu özeti)
+    map/           Harita üretici (gürültü, iç deniz, göl, boğaz, maden), boğaz tespiti, elle çizilen haritalar
+  bot/             BotBrain arayüzü, kolay/orta/zor botlar, simülasyon için acele eden bot
 scripts/           Denge simülasyonu (npm run simulate)
   net/             Çevrimiçi oda: protokol, PeerJS taşıyıcı, oda sahibi (HostRoom) ve katılan (ClientRoom)
   ui/              Canvas harita, topaç animasyonu, paneller, diyaloglar, lobi, kayıt
+    icons.ts       Kendi SVG ikon seti (DOM ve Canvas için)
+    sound.ts       Web Audio ile sentezlenen sesler
+    playerStyle.ts Oyuncu renkleri, harita desenleri ve grafik çizgi desenleri
+    game/summary.ts Oyun sonu grafikleri ve özet tablo
+    screens/       Ana menü, yeni oyun (önayarlar), harita editörü, çevrimiçi lobi
 tests/             Vitest birim testleri
 ```
 
@@ -122,6 +188,6 @@ tests/             Vitest birim testleri
 - Her oyuncu eylemi bir `Action`'dır: `validateAction(state, action)` geçerliliği söyler,
   `applyAction(state, action, rng)` yeni durumu ve olayları (`GameEvent[]`) döner; girdi durumu değişmez.
   `dispatch(state, action)` RNG'yi durumdan alıp geri yazan kısayoldur.
-- Botlar aynı `Action` arayüzünü kullanır (`BotBrain.chooseAction`). Yeni zorluk seviyeleri `BotBrain`
-  uygulanarak ya da `BotTuning` değerleri değiştirilerek eklenebilir.
+- Botlar aynı `Action` arayüzünü kullanır (`BotBrain.chooseAction`). Seviyeler `MediumBot`'tan türetilir
+  (`EasyBot`, `HardBot`); bot rastgeleliği oyunun RNG'sine dokunmaz.
 - Arayüz yalnızca eylem gönderir ve olayları canlandırır; bu ayrım ileride çevrimiçi moda geçişi kolaylaştırır.
