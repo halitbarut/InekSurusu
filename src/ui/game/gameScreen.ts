@@ -1,8 +1,10 @@
 import { getBot } from '../../bot';
 import {
   RESOURCE_KEYS,
+  BATTLE_USED,
   allAliveAllied,
   atPeace,
+  battleUsed,
   attackableTiles,
   battleKindAt,
   buildableTiles,
@@ -191,9 +193,15 @@ export class GameScreen {
     return this.state.players.filter((p) => p.alive && p.kind === 'human').length;
   }
 
+  /** Şu an karar verecek oyuncu: karşı saldırıda toprak seçen savunan, aksi halde sıradaki oyuncu. */
+  private actor(): number {
+    const ph = this.state.phase;
+    return ph.kind === 'conquest' ? ph.taker : this.state.currentPlayer;
+  }
+
   private isHumanTurn(): boolean {
     const s = this.state;
-    return s.phase.kind !== 'gameover' && s.phase.kind !== 'vote' && s.players[s.currentPlayer].kind === 'human';
+    return s.phase.kind !== 'gameover' && s.phase.kind !== 'vote' && s.players[this.actor()].kind === 'human';
   }
 
   private botDelay(): number {
@@ -226,7 +234,7 @@ export class GameScreen {
           }
           continue;
         }
-        const cur = s.players[s.currentPlayer];
+        const cur = s.players[this.actor()];
         if (cur.kind === 'bot') {
           this.render();
           await sleep(this.botDelay());
@@ -236,17 +244,26 @@ export class GameScreen {
           // Güvenlik: bot aynı turda çok uzun oynarsa turu bitir
           if (++this.botActions.count > 300 && this.state.phase.kind === 'actions') action = { type: 'END_TURN', player: cur.id };
           const ok = await this.commit(action, true);
-          if (!ok) await this.commit({ type: 'END_TURN', player: cur.id }, true);
+          if (!ok) await this.commit({ type: this.state.phase.kind === 'conquest' ? 'END_CONQUEST' : 'END_TURN', player: cur.id }, true);
           continue;
         }
         // İnsan sırası
         const setup = s.phase.kind === 'setup_capital' || s.phase.kind === 'setup_territory';
-        const key = `${setup ? s.phase.kind : 'turn'}-${s.currentPlayer}-${s.turnCounter}`;
+        const counter = s.phase.kind === 'conquest' && s.phase.counter;
+        const key = `${setup ? s.phase.kind : counter ? 'counter' : 'turn'}-${cur.id}-${s.turnCounter}`;
         if (key !== this.lastHumanKey) {
+          const wasCounter = this.lastHumanKey.startsWith('counter-') && this.lastHumanKey.endsWith(`-${s.turnCounter}`);
+          const prevActor = Number(this.lastHumanKey.split('-')[1]);
           this.lastHumanKey = key;
           this.mode = { kind: 'none' };
           this.render();
-          if (getPrefs().passScreen && this.humanCount() > 1) await this.passDevice(cur.id, 'Sıra sende!', true);
+          // Karşı saldırıda cihaz savunana, sonra saldırana geçer (bu geçişler ayardan bağımsız gösterilir)
+          const handoff = (counter || wasCounter) && prevActor !== cur.id;
+          if (this.humanCount() > 1 && (handoff || getPrefs().passScreen)) {
+            if (counter) await this.passDevice(cur.id, 'Karşı saldırıyı kazandın! Saldırandan alacağın toprakları seç.');
+            else if (wasCounter) await this.passDevice(cur.id, 'Karşı saldırı seçimi bitti, sıra yine sende.');
+            else await this.passDevice(cur.id, 'Sıra sende!', true);
+          }
           const incoming = this.state.offers.filter((o) => o.to === cur.id).length;
           if (incoming > 0) toast(`📜 ${incoming} bekleyen teklifin var (Diplomasi)`, 'info', 4000);
         }
@@ -425,13 +442,15 @@ export class GameScreen {
       e.kind === 'land'
         ? e.gain > 0
           ? `${A.name} ${e.gain} toprak alacak!`
-          : 'Saldırı sonuçsuz kaldı.'
+          : e.loss > 0
+            ? `Karşı saldırı! ${D.name} ${e.loss} toprak alacak.`
+            : 'Saldırı sonuçsuz kaldı.'
         : e.success
           ? e.kind === 'capital'
             ? `${gen(D.name)} başkenti düştü!`
             : 'Askeri üs ele geçirildi!'
           : 'Saldırı başarısız!';
-    status.classList.add('final', e.success ? 'good' : 'bad');
+    status.classList.add('final', e.success ? 'good' : e.loss > 0 || e.kind !== 'land' ? 'bad' : 'neutral');
     if (needClick) {
       btn.classList.remove('hidden');
       btn.focus();
@@ -569,7 +588,7 @@ export class GameScreen {
 
   private renderTop() {
     const s = this.state;
-    const p = s.players[s.currentPlayer];
+    const p = s.players[this.actor()];
     const st = playerStats(s, p.id);
     const res = p.resources;
     clear(this.elTop);
@@ -651,16 +670,20 @@ export class GameScreen {
     clear(this.elActions);
     const human = this.isHumanTurn();
     const actions = human && s.phase.kind === 'actions';
-    const me = s.currentPlayer;
+    const me = this.actor();
     const incoming = s.offers.filter((o) => o.to === me).length;
-    const btn = (icon: string, label: string, onClick: () => void, opts: { active?: boolean; enabled?: boolean; badge?: number; title?: string; cls?: string } = {}) =>
+    const used = actions && battleUsed(s, me);
+    type BtnOpts = { active?: boolean; enabled?: boolean; badge?: number; title?: string; cls?: string; locked?: string };
+    const btn = (icon: string, label: string, onClick: () => void, opts: BtnOpts = {}) =>
       h(
         'button',
         {
-          class: `action-btn ${opts.active ? 'active' : ''} ${opts.cls ?? ''}`,
+          // Kilitli düğme gerçekten devre dışı değildir ki üzerine gelince/tıklayınca neden görünsün
+          class: `action-btn ${opts.active ? 'active' : ''} ${opts.locked ? 'locked' : ''} ${opts.cls ?? ''}`,
           disabled: !(opts.enabled ?? actions),
-          title: opts.title ?? label,
-          onClick,
+          'aria-disabled': opts.locked ? 'true' : null,
+          title: opts.locked ?? opts.title ?? label,
+          onClick: opts.locked ? () => toast(opts.locked!, 'error') : onClick,
         },
         h('span', { class: 'ab-icon' }, icon),
         h('span', { class: 'ab-label' }, label),
@@ -672,7 +695,7 @@ export class GameScreen {
       btn('🟩', 'Toprak al', toggle({ kind: 'claim' }), { active: m === 'claim', title: `Sahipsiz komşu toprak (${s.config.claimCost} akçe)` }),
       btn('🔨', 'İnşa et', () => this.openBuildDialog(), { active: m === 'build' }),
       btn('🏭', 'Üret', toggle({ kind: 'produce' }), { active: m === 'produce', title: 'Tersanede gemi, fabrikada uçak üret' }),
-      btn('⚔️', 'Saldır', toggle({ kind: 'attack' }), { active: m === 'attack' }),
+      btn('⚔️', 'Saldır', toggle({ kind: 'attack' }), { active: m === 'attack', locked: used ? BATTLE_USED : undefined, title: 'Turda tek savaş hakkın var' }),
       btn('🚢', 'Gemi seferi', toggle({ kind: 'expedition', unit: 'ship', unitId: null }), { active: m === 'expedition' && this.mode.kind === 'expedition' && this.mode.unit === 'ship' }),
       btn('✈️', 'Uçak seferi', toggle({ kind: 'expedition', unit: 'plane', unitId: null }), { active: m === 'expedition' && this.mode.kind === 'expedition' && this.mode.unit === 'plane' }),
       btn('🥇', 'Altın bozdur', () => this.openGoldDialog(), { enabled: human && (s.phase.kind === 'actions' || s.phase.kind === 'spin') }),
@@ -702,7 +725,7 @@ export class GameScreen {
   /** Mevcut aşama/moda göre geçerli hedefler ve bilgi şeridi. */
   private renderTargets() {
     const s = this.state;
-    const me = s.currentPlayer;
+    const me = this.actor();
     const hl: Highlight = {};
     this.elBanner.classList.add('hidden');
     if (s.phase.kind === 'gameover') {
@@ -723,19 +746,29 @@ export class GameScreen {
       return v;
     };
     const ph = s.phase;
+    if (ph.kind === 'setup_capital' || ph.kind === 'setup_territory') {
+      // Yerleşimde maden kareleri seçilemez: kırmızı taranır
+      const mines = new Uint8Array(s.owner.length);
+      for (let i = 0; i < mines.length; i++) if (s.map.mines[i]) mines[i] = 1;
+      hl.danger = mines;
+    }
     if (ph.kind === 'setup_capital') {
       hl.groups = cached('cap', () => ({ groups: [{ tiles: new Set(capitalCandidates(s, me)), style: 'pick' }] })).groups;
-      this.setBanner(`🏰 ${pname(s, me)}, başkentini seç: vurgulanan karelerden birine tıkla (madensiz, diğer başkentlerden uzak).`);
+      this.setBanner(`🏰 ${pname(s, me)}, başkentini seç: vurgulanan karelerden birine tıkla. Kırmızı maden kareleri yerleşimde seçilemez.`);
     } else if (ph.kind === 'setup_territory') {
       hl.groups = [{ tiles: new Set(startPickCandidates(s, me)), style: 'pick' }];
-      this.setBanner(`🟩 Başlangıç toprağı seç: kalan ${ph.picksLeft}. Her kare bölgene bitişik olmalı.`, [
+      this.setBanner(`🟩 Başlangıç toprağı seç: kalan ${ph.picksLeft}. Her kare bölgene bitişik olmalı; maden kareleri seçilemez.`, [
         { label: 'Seçimi bitir', onClick: () => void this.act({ type: 'SKIP_START_PICKS', player: me }) },
       ]);
     } else if (ph.kind === 'spin') {
       this.setBanner('🎡 Sıra sende! Önce sekizgen topacı çevir.', [{ label: '🎡 Topacı çevir', primary: true, onClick: () => void this.act({ type: 'SPIN', player: me }) }]);
     } else if (ph.kind === 'conquest') {
       hl.groups = [{ tiles: new Set(conquestCandidates(s)), style: 'attack' }];
-      this.setBanner(`⚔️ Zafer! ${pname(s, ph.defender)} topraklarından ${ph.remaining} tane seç.`, [
+      this.setBanner(
+        ph.counter
+          ? `🛡️ Karşı saldırı! ${pname(s, me)}, sana saldıran ${gen(pname(s, ph.victim))} sınırındaki topraklarından ${ph.remaining} tane seç.`
+          : `⚔️ Zafer! ${pname(s, ph.victim)} topraklarından ${ph.remaining} tane seç.`,
+        [
         { label: 'Fethi bitir', onClick: () => void this.act({ type: 'END_CONQUEST', player: me }) },
       ]);
     } else if (ph.kind === 'actions') {
@@ -777,7 +810,14 @@ export class GameScreen {
         case 'attack': {
           const t = attackableTiles(s, me);
           hl.groups = [{ tiles: new Set(t), style: 'attack' }];
-          this.setBanner(t.length ? '⚔️ Saldırılacak komşu düşman toprağını seç. Başkent ve üsler özel savaş gerektirir.' : 'Saldırılabilecek komşu düşman toprağı yok.', [cancel]);
+          this.setBanner(
+            battleUsed(s, me)
+              ? `⚔️ ${BATTLE_USED}.`
+              : t.length
+                ? '⚔️ Saldırılacak komşu düşman toprağını seç (turda tek savaş). Kaybedersen savunan karşı saldırıyla toprak alır; başkent ve üsler özel savaş gerektirir.'
+                : 'Saldırılabilecek komşu düşman toprağı yok.',
+            [cancel],
+          );
           break;
         }
         case 'expedition': {
@@ -819,7 +859,7 @@ export class GameScreen {
           hl.selected = new Set([unit.tile]);
           const others = units.length > 1 ? [{ label: 'Başka birim', onClick: () => this.setMode({ kind: 'expedition', unit: mode.unit, unitId: null }) }] : [];
           this.setBanner(
-            `${icon} ${name} seferi (${mode.unit === 'ship' ? s.config.shipOilCost : s.config.planeOilCost} petrol): sarı = sahipsiz (${s.config.expeditionClaimCost} akçe), kırmızı = savaş.${mode.unit === 'plane' ? ' Taralı kırmızı alan: düşman üssü engeli.' : ''}`,
+            `${icon} ${name} seferi (${mode.unit === 'ship' ? s.config.shipOilCost : s.config.planeOilCost} petrol): sarı = sahipsiz (${s.config.expeditionClaimCost} akçe), ${battleUsed(s, me) ? 'savaş hakkın bu tur kullanıldı' : 'kırmızı = savaş'}.${mode.unit === 'plane' ? ' Taralı kırmızı alan: düşman üssü engeli.' : ''}`,
             [...others, cancel],
           );
           break;
@@ -859,7 +899,7 @@ export class GameScreen {
   private async onTileClick(t: number) {
     if (this.busy || !this.isHumanTurn()) return;
     const s = this.state;
-    const me = s.currentPlayer;
+    const me = this.actor();
     const ph = s.phase;
     if (ph.kind === 'setup_capital') return void this.act({ type: 'PLACE_CAPITAL', player: me, tile: t });
     if (ph.kind === 'setup_territory') return void this.act({ type: 'PICK_START_TILE', player: me, tile: t });
@@ -881,9 +921,12 @@ export class GameScreen {
         await this.act({ type: 'PRODUCE', player: me, tile: t, unit: st === 'shipyard' ? 'ship' : 'plane' });
         break;
       }
-      case 'attack':
-        await this.act({ type: 'ATTACK', player: me, target: t });
+      case 'attack': {
+        const ok = await this.act({ type: 'ATTACK', player: me, target: t });
+        // Turda tek savaş: savaştan sonra saldırı modundan çık
+        if (ok && this.mode.kind === 'attack') this.setMode({ kind: 'none' });
         break;
+      }
       case 'expedition': {
         if (mode.unitId === null) {
           const u = readyUnits(s, me, mode.unit).find((x) => x.tile === t);
@@ -945,6 +988,13 @@ export class GameScreen {
         const pol = straitPolicyFor(s, sid, s.currentPlayer);
         lines.push(h('div', {}, pol.allow ? `Sana açık · vergi ${pol.toll}` : 'Sana kapalı'));
       }
+    }
+    // Yerleşimde neden seçilemediği
+    if (this.isHumanTurn() && (s.phase.kind === 'setup_capital' || s.phase.kind === 'setup_territory') && m.terrain[t] === 'land') {
+      const a: Action =
+        s.phase.kind === 'setup_capital' ? { type: 'PLACE_CAPITAL', player: s.currentPlayer, tile: t } : { type: 'PICK_START_TILE', player: s.currentPlayer, tile: t };
+      const v = validateAction(s, a);
+      lines.push(h('div', { class: v.ok ? 'tip-good' : 'tip-bad' }, v.ok ? '▶ Tıkla' : v.reason));
     }
     // Moda özel ipucu
     if (this.isHumanTurn() && s.phase.kind === 'actions') {
@@ -1408,16 +1458,17 @@ export class GameScreen {
       body: h(
         'div',
         { class: 'rules' },
-        h('p', {}, `Her tur: madenler 1'er kaynak verir → sekizgen topacı bir kez çevir (sayı × ${c.spinMultiplier} akçe) → istediğin kadar eylem yap → turu bitir.`),
+        h('p', {}, `Kurulum: başkent ve 9 başlangıç toprağı madensiz karelerden seçilir. Her tur: madenler 1'er kaynak verir → sekizgen topacı bir kez çevir (sayı × ${c.spinMultiplier} akçe) → istediğin kadar eylem yap → turu bitir.`),
         h(
           'ul',
           {},
           h('li', {}, `Sahipsiz komşu toprak: ${c.claimCost} akçe. 1 altın = ${c.goldToAkce} akçe.`),
           h('li', {}, `Tersane ${c.shipyardCost} (denize kıyı), uçak fabrikası ${c.factoryCost}, askeri üs ${c.baseCost} akçe (başkente kurulamaz). Karede tek yapı.`),
           h('li', {}, `Gemi: ${c.shipIronCost} demir + ${c.shipAkceCost} akçe. Uçak: ${c.planeSteelCost} çelik + ${c.planeAkceCost} akçe. Kalıcıdırlar.`),
-          h('li', {}, 'Kara savaşı: iki taraf topaç çevirir. A > D ise saldıran ⌊(A − D) / 2⌋ toprak seçer; eşitlik ya da A < D sonuçsuz.'),
+          h('li', {}, 'Turda yalnızca 1 savaş (kara, gemi/uçakla saldırı, başkent ya da üs savaşı). Sahipsiz toprak almak savaş sayılmaz.'),
+          h('li', {}, 'Kara savaşı: iki taraf topaç çevirir. A > D ise saldıran A − D toprak seçer; A < D ise savunan karşı saldırıyla ⌈(D − A) / 2⌉ toprak seçer; eşitlik sonuçsuz.'),
           h('li', {}, `Başkent savaşı: ${c.capitalStreak} kez art arda yüksek at (eşitlik tekrar). Başkent düşerse oyuncu elenir, her şeyi saldırana geçer.`),
-          h('li', {}, `Askeri üs savaşı: ${c.baseStreak} kez art arda yüksek at.`),
+          h('li', {}, `Askeri üs savaşı: ${c.baseStreak} kez art arda yüksek at. Başkent/üs savaşını kaybetmenin toprak bedeli yok.`),
           h('li', {}, `Gemi seferi: ${c.shipOilCost} petrol, deniz yoluyla kıyı topraklarına. Uçak seferi: ${c.planeOilCost} petrol, her yere — düşman üslerinin ${c.baseBlockRadius} kare çevresi hariç.`),
           h('li', {}, `Sefer hedefi sahipsizse ${c.expeditionClaimCost} akçeyle alınır, sahipliyse savaş olur. Maden kareleri seferle doğrudan alınamaz.`),
           h('li', {}, 'Boğazın iki yakası da senin ise boğazı idare edersin: her oyuncu için geçiş izni ve vergi belirleyebilirsin.'),

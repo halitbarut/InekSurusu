@@ -5,6 +5,7 @@ import {
   createGame,
   createGameFromMap,
   dispatch,
+  fitsStartAreas,
   generateMap,
   mapFromAscii,
   mapProblems,
@@ -47,6 +48,7 @@ describe('harita üretici', () => {
       const m = generateMap({ width, height, seed, players, minesPerTypePerPlayer: 3, startTerritoryCount: 9 });
       expect(mapProblems(m, { players, startTerritoryCount: 9 })).toEqual([]);
       expect(m.straits.length).toBeGreaterThanOrEqual(3);
+      expect(fitsStartAreas(m, players, 9, 5)).toBe(true);
       for (const t of MINE_TYPES) expect(m.mines.filter((x) => x === t)).toHaveLength(players * 3);
       for (let i = 0; i < m.mines.length; i++) if (m.mines[i]) expect(m.terrain[i]).toBe('land');
       // Boğaz yakaları kara, boğaz kareleri deniz
@@ -61,6 +63,19 @@ describe('harita üretici', () => {
 describe('oyun başlangıcı', () => {
   const players = ['A', 'B', 'C'].map((name) => ({ name, color: '#000', kind: 'human' as const }));
   const OPEN = Array.from({ length: 12 }, () => '#####G######');
+
+  it('başlangıçta seçilecek komşu madensiz kare kalmayınca seçim kendiliğinden biter', () => {
+    // Başkentin tek kara komşusu maden
+    let s = createGameFromMap(mapFromAscii(['##G..', '..#..', '.....', '#######.#####', '#############'].map((r) => r.padEnd(13, '.'))), players);
+    s.phase = { kind: 'setup_territory', picksLeft: 9 };
+    s.owner[1] = 0;
+    s.structure[1] = 'capital';
+    s.players[0].capital = 1;
+    s = act(s, { type: 'PICK_START_TILE', player: 0, tile: 0 });
+    // P0'ın seçimi 9 dolmadan bitti (diğerlerinin hiç toprağı yok, onlar da atlanır)
+    expect(s.log.find((l) => l.event.type === 'setup_done')?.event).toEqual({ type: 'setup_done', player: 0, tiles: 2 });
+    expect(s.phase.kind).toBe('spin');
+  });
 
   it('başkent madensiz, sahipsiz kara olmalı ve diğer başkentlerden uzak olmalı', () => {
     let s = createGameFromMap(mapFromAscii(OPEN), players);
@@ -78,17 +93,19 @@ describe('oyun başlangıcı', () => {
     s = act(s, { type: 'PLACE_CAPITAL', player: 2, tile: 12 * 11 });
     expect(s.phase).toEqual({ kind: 'setup_territory', picksLeft: 9 });
     expect(validateAction(s, { type: 'PICK_START_TILE', player: 0, tile: 2 }).ok).toBe(false); // komşu değil
-    // Maden kareleri başlangıçta alınabilir
-    for (const t of [1, 2, 3, 4, 5, 6, 7, 8, 9]) s = act(s, { type: 'PICK_START_TILE', player: 0, tile: t });
-    expect(s.players[0].resources).toBeDefined();
+    for (const t of [1, 2, 3, 4]) s = act(s, { type: 'PICK_START_TILE', player: 0, tile: t });
+    // Maden kareleri başlangıçta seçilemez
+    expect(validateAction(s, { type: 'PICK_START_TILE', player: 0, tile: 5 })).toEqual({ ok: false, reason: 'Başlangıçta maden kareleri seçilemez' });
+    for (const t of [12, 13, 14, 15, 16]) s = act(s, { type: 'PICK_START_TILE', player: 0, tile: t });
     expect(s.currentPlayer).toBe(1);
     expect(validateAction(s, { type: 'PICK_START_TILE', player: 1, tile: 10 + 12 }).ok).toBe(false);
     s = act(s, { type: 'SKIP_START_PICKS', player: 1 });
     s = act(s, { type: 'SKIP_START_PICKS', player: 2 });
     expect(s.phase.kind).toBe('spin');
     expect(s.currentPlayer).toBe(0);
-    // Gelir aşaması otomatik: (5,0) altın madeni
-    expect(s.players[0].resources.gold).toBe(1);
+    // Madensiz başlangıç: gelir yok
+    expect(s.players[0].resources.gold).toBe(0);
+    expect(s.owner.some((o, i) => o !== null && s.map.mines[i])).toBe(false);
   });
 });
 

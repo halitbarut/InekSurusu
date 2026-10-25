@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { conquestCandidates, expectedLandGain, landBattleGain, seriesWinProbability, validateAction } from '../src/engine';
+import { conquestCandidates, expectedLandResult, landBattleOutcome, seriesWinProbability, validateAction } from '../src/engine';
 import { act, at, own, setCapital, testState } from './helpers';
 
 const FIELD = ['########', '########', '########', '########', '########', '########'];
@@ -20,16 +20,26 @@ function battlefield() {
 }
 
 describe('kara savaşı hesabı', () => {
-  it('floor((A − D) / 2) toprak verir', () => {
-    expect(landBattleGain(7, 2)).toBe(2);
-    expect(landBattleGain(8, 1)).toBe(3);
-    expect(landBattleGain(4, 3)).toBe(0);
-    expect(landBattleGain(5, 5)).toBe(0);
-    expect(landBattleGain(2, 7)).toBe(0);
+  it('A > D: saldıran A − D toprak alır', () => {
+    expect(landBattleOutcome(7, 2)).toEqual({ gain: 5, loss: 0 });
+    expect(landBattleOutcome(8, 1)).toEqual({ gain: 7, loss: 0 });
+    expect(landBattleOutcome(4, 3)).toEqual({ gain: 1, loss: 0 });
   });
 
-  it('beklenen kazanç ve seri olasılıkları', () => {
-    expect(expectedLandGain(8)).toBeCloseTo(34 / 64);
+  it('A < D: savunan ceil((D − A) / 2) toprak alır', () => {
+    expect(landBattleOutcome(2, 7)).toEqual({ gain: 0, loss: 3 }); // 2.5 → 3
+    expect(landBattleOutcome(3, 4)).toEqual({ gain: 0, loss: 1 }); // 0.5 → 1
+    expect(landBattleOutcome(1, 5)).toEqual({ gain: 0, loss: 2 });
+  });
+
+  it('A = D: sonuçsuz', () => {
+    expect(landBattleOutcome(5, 5)).toEqual({ gain: 0, loss: 0 });
+  });
+
+  it('beklenen kazanç/kayıp ve seri olasılıkları', () => {
+    const e = expectedLandResult(8);
+    expect(e.gain).toBeCloseTo(84 / 64);
+    expect(e.loss).toBeCloseTo(50 / 64);
     expect(seriesWinProbability(3)).toBe(1 / 8);
     expect(seriesWinProbability(2)).toBe(1 / 4);
   });
@@ -38,8 +48,8 @@ describe('kara savaşı hesabı', () => {
 describe('kara savaşı', () => {
   it('A > D: saldıran toprakları seçer, her seçim sınıra komşu olmalı', () => {
     let s = battlefield();
-    s = act(s, { type: 'ATTACK', player: 0, target: at(s, 2, 2) }, [8, 2]);
-    expect(s.phase).toMatchObject({ kind: 'conquest', attacker: 0, defender: 1, remaining: 3 });
+    s = act(s, { type: 'ATTACK', player: 0, target: at(s, 2, 2) }, [4, 1]);
+    expect(s.phase).toMatchObject({ kind: 'conquest', taker: 0, victim: 1, remaining: 3, counter: false });
     // (3,2) henüz sınırda değil
     expect(validateAction(s, { type: 'CONQUER_TILE', player: 0, tile: at(s, 3, 2) }).ok).toBe(false);
     s = act(s, { type: 'CONQUER_TILE', player: 0, tile: at(s, 2, 2) });
@@ -52,6 +62,58 @@ describe('kara savaşı', () => {
     expect(s.owner[at(s, 2, 3)]).toBe(0);
   });
 
+  it('7 – 2: saldıran 5 toprak alır', () => {
+    let s = battlefield();
+    s = act(s, { type: 'ATTACK', player: 0, target: at(s, 2, 2) }, [7, 2]);
+    expect(s.phase).toMatchObject({ kind: 'conquest', taker: 0, remaining: 5 });
+    const before = s.owner.filter((o) => o === 0).length;
+    for (let k = 0; k < 5; k++) s = act(s, { type: 'CONQUER_TILE', player: 0, tile: conquestCandidates(s)[0] });
+    expect(s.owner.filter((o) => o === 0).length).toBe(before + 5);
+    expect(s.phase.kind).toBe('actions');
+  });
+
+  it('2 – 7: savunan karşı saldırıyla 3 toprak alır, toprakları savunan seçer; sonra sıra saldıranda', () => {
+    let s = battlefield();
+    s = act(s, { type: 'ATTACK', player: 0, target: at(s, 2, 2) }, [2, 7]);
+    expect(s.phase).toMatchObject({ kind: 'conquest', taker: 1, victim: 0, remaining: 3, counter: true });
+    // Saldıran seçemez
+    expect(validateAction(s, { type: 'CONQUER_TILE', player: 0, tile: at(s, 1, 2) }).ok).toBe(false);
+    // Yalnızca savunana komşu saldıran toprakları; başkent hariç
+    const c = conquestCandidates(s);
+    expect(c).toContain(at(s, 1, 2));
+    expect(c).not.toContain(at(s, 0, 2));
+    expect(c).not.toContain(at(s, 0, 0));
+    s = act(s, { type: 'CONQUER_TILE', player: 1, tile: at(s, 1, 2) });
+    s = act(s, { type: 'CONQUER_TILE', player: 1, tile: at(s, 0, 2) }); // artık komşu
+    s = act(s, { type: 'CONQUER_TILE', player: 1, tile: at(s, 1, 3) });
+    expect(s.phase.kind).toBe('actions');
+    expect(s.currentPlayer).toBe(0);
+    expect(s.owner[at(s, 0, 2)]).toBe(1);
+  });
+
+  it('3 – 4: savunan 1 toprak alır', () => {
+    let s = battlefield();
+    s = act(s, { type: 'ATTACK', player: 0, target: at(s, 2, 2) }, [3, 4]);
+    expect(s.phase).toMatchObject({ kind: 'conquest', taker: 1, remaining: 1, counter: true });
+  });
+
+  it('karşı saldırıda yeterli toprak yoksa seçilebildiği kadar alınır', () => {
+    let s = battlefield();
+    // P0: başkent (0,0) + (0,1) + (1,1); P1'e komşu sıradan toprakları az
+    for (let y = 0; y < 6; y++) {
+      s.owner[at(s, 0, y)] = null;
+      s.owner[at(s, 1, y)] = null;
+    }
+    own(s, 0, [[0, 0], [0, 1], [1, 1]]);
+    s = act(s, { type: 'ATTACK', player: 0, target: at(s, 2, 1) }, [1, 8]);
+    expect(s.phase).toMatchObject({ kind: 'conquest', taker: 1, remaining: 4 });
+    s = act(s, { type: 'CONQUER_TILE', player: 1, tile: at(s, 1, 1) });
+    s = act(s, { type: 'CONQUER_TILE', player: 1, tile: at(s, 0, 1) });
+    // Geriye yalnızca başkent kaldı: 4 yerine 2 toprak alındı, fetih kendiliğinden bitti
+    expect(s.phase.kind).toBe('actions');
+    expect(s.owner[at(s, 0, 0)]).toBe(0);
+  });
+
   it('başkent ve askeri üs normal savaşla alınamaz', () => {
     let s = battlefield();
     s = act(s, { type: 'ATTACK', player: 0, target: at(s, 2, 1) }, [8, 1]);
@@ -61,13 +123,11 @@ describe('kara savaşı', () => {
     expect(c).toContain(at(s, 2, 5));
   });
 
-  it('eşitlikte ve A < D iken hiçbir şey olmaz, saldıran toprak kaybetmez', () => {
+  it('eşitlikte hiçbir şey olmaz', () => {
     const s0 = battlefield();
-    for (const spins of [[5, 5], [2, 7], [4, 3]]) {
-      const s = act(s0, { type: 'ATTACK', player: 0, target: at(s0, 2, 2) }, spins);
-      expect(s.phase.kind).toBe('actions');
-      expect(s.owner).toEqual(s0.owner);
-    }
+    const s = act(s0, { type: 'ATTACK', player: 0, target: at(s0, 2, 2) }, [5, 5]);
+    expect(s.phase.kind).toBe('actions');
+    expect(s.owner).toEqual(s0.owner);
   });
 
   it('sınır komşuluğu olmadan saldırılamaz', () => {
@@ -85,12 +145,40 @@ describe('kara savaşı', () => {
     expect(s.structure[at(s, 2, 3)]).toBe('factory');
     expect(s.units.find((u) => u.id === 99)!.owner).toBe(0);
   });
+});
 
-  it('tur başına saldırı sınırı ayarlanabilir', () => {
+describe('turda tek savaş', () => {
+  it('ikinci saldırı reddedilir, sonraki turda hak yenilenir', () => {
     let s = battlefield();
-    s.config.maxAttacksPerTurn = 1;
-    s = act(s, { type: 'ATTACK', player: 0, target: at(s, 2, 2) }, [1, 8]);
+    s = act(s, { type: 'ATTACK', player: 0, target: at(s, 2, 2) }, [5, 5]);
+    const v = validateAction(s, { type: 'ATTACK', player: 0, target: at(s, 2, 2) });
+    expect(v).toEqual({ ok: false, reason: 'Bu tur savaş hakkını kullandın' });
+    for (const p of [0, 1, 2]) {
+      s = act(s, { type: 'END_TURN', player: p });
+      s = act(s, { type: 'SPIN', player: (p + 1) % 3 }, [1]);
+    }
+    expect(validateAction(s, { type: 'ATTACK', player: 0, target: at(s, 2, 2) }).ok).toBe(true);
+  });
+
+  it('başkent/üs savaşı da hakkı kullanır; kaybedilirse karşı toprak kaybı yok', () => {
+    let s = battlefield();
+    const before = [...s.owner];
+    s = act(s, { type: 'ATTACK', player: 0, target: at(s, 2, 0) }, [2, 8]);
+    expect(s.owner).toEqual(before);
+    expect(s.phase.kind).toBe('actions');
     expect(validateAction(s, { type: 'ATTACK', player: 0, target: at(s, 2, 2) }).ok).toBe(false);
+  });
+
+  it('sahipsiz toprak almak savaş sayılmaz', () => {
+    const map = ['#########', '#########'];
+    let s = testState(map, 3);
+    own(s, 0, [[0, 0]]);
+    own(s, 1, [[2, 0]]);
+    s.players[0].resources.akce = 500;
+    s = act(s, { type: 'CLAIM_TILE', player: 0, tile: at(s, 0, 1) });
+    s = act(s, { type: 'CLAIM_TILE', player: 0, tile: at(s, 1, 0) });
+    expect(s.players[0].battlesThisTurn).toBe(0);
+    expect(validateAction(s, { type: 'ATTACK', player: 0, target: at(s, 2, 0) }).ok).toBe(true);
   });
 });
 
@@ -160,6 +248,7 @@ describe('kazanma koşulu', () => {
     own(s, 0, [[3, 4], [6, 0]]);
     s = act(s, { type: 'ATTACK', player: 0, target: at(s, 3, 5) }, [8, 1, 8, 1, 8, 1]);
     expect(s.phase.kind).toBe('actions');
+    s.players[0].battlesThisTurn = 0; // ikinci savaş için turu atla
     s = act(s, { type: 'ATTACK', player: 0, target: at(s, 7, 0) }, [8, 1, 8, 1, 8, 1]);
     expect(s.phase.kind).toBe('gameover');
     expect(s.winners).toEqual([0]);

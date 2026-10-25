@@ -32,8 +32,6 @@ export interface GameConfig {
   /** Askeri üssün uçakları engellediği yarıçap */
   baseBlockRadius: number;
   baseBlockMetric: 'chebyshev' | 'manhattan';
-  /** Bir turda en fazla saldırı (0 = sınırsız) */
-  maxAttacksPerTurn: number;
   /** Bir birimin bir turda en fazla sefer sayısı (0 = sınırsız) */
   maxSortiesPerUnitPerTurn: number;
   /** Oyuncu başına her maden türünden kaç adet */
@@ -64,11 +62,13 @@ export const DEFAULT_CONFIG: GameConfig = {
   baseStreak: 2,
   baseBlockRadius: 3,
   baseBlockMetric: 'chebyshev',
-  maxAttacksPerTurn: 0,
   maxSortiesPerUnitPerTurn: 0,
   minesPerTypePerPlayer: 3,
   maxPeaceRounds: 30,
 };
+
+/** Her oyuncu turunda yapılabilecek savaş sayısı (sabit kural) */
+export const BATTLES_PER_TURN = 1;
 
 export const MIN_PLAYERS = 3;
 export const MAX_PLAYERS = 8;

@@ -583,7 +583,8 @@ footer {
   transform: translate(1px, 1px);
   box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.2);
 }
-.action-btn:disabled {
+.action-btn:disabled,
+.action-btn.locked {
   opacity: 0.4;
   cursor: not-allowed;
 }
@@ -765,6 +766,9 @@ footer {
 }
 .battle-status.bad {
   color: var(--danger);
+}
+.battle-status.neutral {
+  color: var(--ink-soft);
 }
 .pass-screen .overlay-card {
   padding: 30px 40px;

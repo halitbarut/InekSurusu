@@ -17,7 +17,8 @@ npm test           # kural motoru testleri (Vitest)
 ## Nasıl oynanır
 
 1. **Yeni oyun:** oyuncu sayısı, ad, renk, İnsan/Bot; harita boyutu ve seed (önizlemeli); kural ayarları.
-2. **Kurulum:** herkes sırayla başkentini seçer (madensiz sahipsiz kara), sonra başkentine bitişik 9 toprak seçer.
+2. **Kurulum:** herkes sırayla başkentini seçer, sonra başkentine bitişik 9 toprak seçer. Bu aşamada maden
+   kareleri seçilemez (haritada kırmızı taranır); madenler oyun başladıktan sonra alınır.
 3. **Her tur:** madenler 1'er kaynak verir → sekizgen topacı çevir (sayı × 100 akçe) → istediğin kadar eylem yap → **Turu bitir**.
 
 Haritayı sürükleyerek kaydır, tekerlekle (ya da iki parmakla) yakınlaş. Bir eylem seçince geçerli hedefler
@@ -32,12 +33,18 @@ haritada vurgulanır; karelerin üzerine gelince bilgi ve neden yapılamadığı
 | Tersane / Uçak fabrikası / Askeri üs | 200 / 300 / 400 akçe. Tersane denize kıyı ister, üs başkente kurulamaz. Karede tek yapı |
 | Gemi / Uçak üret | 2 demir + 100 akçe / 2 çelik + 200 akçe. Birimler kalıcıdır |
 | Altın bozdur | 1 altın = 200 akçe |
-| Kara savaşı | Sınır komşuluğu. İki taraf topaç çevirir: A > D ise saldıran ⌊(A − D)/2⌋ toprak seçer; eşitlik ya da A < D sonuçsuz |
-| Başkent savaşı | Art arda 3 kez yüksek at (eşitlik tekrar). Kazanırsan rakip elenir, her şeyi sana geçer |
-| Askeri üs savaşı | Art arda 2 kez yüksek at |
+| **Turda tek savaş** | Kara savaşı, gemi/uçakla dolu toprağa saldırı, başkent ve üs savaşı — hepsinden turda yalnızca 1 tane |
+| Kara savaşı | Sınır komşuluğu. İki taraf topaç çevirir. A > D: saldıran A − D toprak seçer. A < D: savunan karşı saldırıyla ⌈(D − A)/2⌉ toprak seçer (saldıranın kendisine komşu topraklarından). A = D: sonuçsuz |
+| Başkent savaşı | Art arda 3 kez yüksek at (eşitlik tekrar). Kazanırsan rakip elenir, her şeyi sana geçer. Kaybedersen toprak kaybı yok |
+| Askeri üs savaşı | Art arda 2 kez yüksek at. Kaybedersen toprak kaybı yok |
 | Gemi seferi | 1 petrol; deniz yoluyla kıyı topraklarına. Kapalı/vergili boğazlara dikkat |
 | Uçak seferi | 2 petrol; her yere — düşman üslerinin 3 kare çevresi hariç |
-| Sefer hedefi | Sahipsizse 100 akçeyle alınır, sahipliyse savaş. Maden kareleri seferle doğrudan alınamaz |
+| Sefer hedefi | Sahipsizse 100 akçeyle alınır (savaş sayılmaz), sahipliyse savaş. Maden kareleri seferle doğrudan alınamaz. Seferle saldırıda kaybedersen savunan yalnızca kendisiyle sınırın olan topraklarından alabilir |
+
+Fetihte başkent ve askeri üs toprakları seçilemez; her seçilen toprak seçim anında seçenin toprağına komşu
+olmalıdır (seferle kazanılan savaşta hedef kare ve komşuları). Seçilecek toprak kalmazsa seçilebildiği kadar
+alınır. Karşı saldırıda toprakları savunan seçer: insan savunan için cihaz ona verilir ("Cihazı X oyuncusuna
+verin"), seçimden sonra sıra saldırana döner.
 
 - **Boğazlar:** Bir boğazın iki yakasındaki tüm kara kareleri senin ise boğazı idare edersin; "Boğazlarım"
   panelinden her oyuncu için geçiş izni ve vergi belirlersin. İdare kaybedilince ayarlar sıfırlanır.

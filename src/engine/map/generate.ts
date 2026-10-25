@@ -10,6 +10,8 @@ export interface MapGenOptions {
   players: number;
   minesPerTypePerPlayer: number;
   startTerritoryCount: number;
+  /** Başkentler arası en az mesafe (yerleşim kontrolü için, varsayılan 5) */
+  minCapitalDistance?: number;
 }
 
 /** Bu büyüklüğe kadar, haritanın kenarına değmeyen su kütleleri göl sayılır */
@@ -32,7 +34,7 @@ export function generateMap(opts: MapGenOptions): GameMap {
 }
 
 /** Harita gereksinimlerini kontrol eder; sorun yoksa boş dizi döner. */
-export function mapProblems(map: GameMap, opts: Pick<MapGenOptions, 'players' | 'startTerritoryCount'>): string[] {
+export function mapProblems(map: GameMap, opts: Pick<MapGenOptions, 'players' | 'startTerritoryCount' | 'minCapitalDistance'>): string[] {
   const problems: string[] = [];
   const land = map.terrain.filter((t) => t === 'land').length;
   const perPlayer = opts.startTerritoryCount + 1;
@@ -40,9 +42,48 @@ export function mapProblems(map: GameMap, opts: Pick<MapGenOptions, 'players' | 
   const big = labelComponents(map, (i) => map.terrain[i] === 'land').sizes.filter((s) => s >= perPlayer * 2);
   const bigLand = big.reduce((a, b) => a + b, 0);
   if (bigLand < opts.players * perPlayer * 2) problems.push('Başlangıç alanları için yeterli büyük kara parçası yok');
+  if (!fitsStartAreas(map, opts.players, opts.startTerritoryCount, opts.minCapitalDistance ?? 5)) {
+    problems.push('Her oyuncuya madensiz başlangıç alanı ayrılamıyor');
+  }
   if (map.straits.length < 3) problems.push('Yeterli boğaz yok');
   if (!map.terrain.includes('lake')) problems.push('Göl yok');
   return problems;
+}
+
+/**
+ * Her oyuncunun madensiz kareler üzerinden başkent + `startTerritory` bitişik toprak
+ * seçebileceği, birbirinden ayrık alanlar var mı? Açgözlü yerleştirme ile kontrol edilir
+ * (alanları sıkı paketlediği için temkinli bir kontroldür).
+ */
+export function fitsStartAreas(map: GameMap, players: number, startTerritory: number, minCapitalDistance: number): boolean {
+  const n = map.width * map.height;
+  const used = new Uint8Array(n);
+  const caps: number[] = [];
+  const need = startTerritory + 1;
+  const free = (i: number) => map.terrain[i] === 'land' && !map.mines[i] && !used[i];
+  for (let placed = 0; placed < players; placed++) {
+    let ok = false;
+    for (let i = 0; i < n && !ok; i++) {
+      if (!free(i) || caps.some((c) => chebyshev(map, c, i) < minCapitalDistance)) continue;
+      const area = [i];
+      const seen = new Set(area);
+      for (let k = 0; k < area.length && area.length < need; k++) {
+        for (const nb of neighbors4(map, area[k])) {
+          if (area.length >= need) break;
+          if (!seen.has(nb) && free(nb)) {
+            seen.add(nb);
+            area.push(nb);
+          }
+        }
+      }
+      if (area.length < need) continue;
+      for (const t of area) used[t] = 1;
+      caps.push(i);
+      ok = true;
+    }
+    if (!ok) return false;
+  }
+  return true;
 }
 
 function tryGenerate(opts: MapGenOptions, seed: number): GameMap {

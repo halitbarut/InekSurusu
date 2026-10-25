@@ -101,11 +101,36 @@ describe('gemi seferi', () => {
 
   it('düşman kıyısına seferde normal savaş; alınacaklar hedef ve komşularından seçilir', () => {
     let s = seaWorld();
-    s = act(s, ship(s, 10, 3), [8, 2]);
-    expect(s.phase).toMatchObject({ kind: 'conquest', remaining: 3, anchor: at(s, 10, 3) });
+    s = act(s, ship(s, 10, 3), [5, 2]);
+    expect(s.phase).toMatchObject({ kind: 'conquest', taker: 0, remaining: 3, anchor: at(s, 10, 3) });
     const c = conquestCandidates(s);
     expect(c.sort()).toEqual([at(s, 10, 3), at(s, 10, 4), at(s, 11, 3)].sort());
     expect(c).not.toContain(at(s, 12, 4));
+  });
+});
+
+describe('seferle savaşta karşı saldırı', () => {
+  it('savunanla sınır yoksa saldıran toprak kaybetmez', () => {
+    let s = seaWorld();
+    const before = [...s.owner];
+    s = act(s, ship(s, 10, 3), [2, 7]);
+    expect(s.phase.kind).toBe('actions');
+    expect(s.owner).toEqual(before);
+    expect(s.players[0].battlesThisTurn).toBe(1);
+  });
+
+  it('sınır varsa savunan, saldıranın kendisine komşu topraklarından seçer', () => {
+    let s = seaWorld();
+    own(s, 0, [[10, 2]]); // P2'nin (10,3) karesine komşu
+    s = act(s, ship(s, 10, 3), [2, 7]);
+    expect(s.phase).toMatchObject({ kind: 'conquest', taker: 2, victim: 0, remaining: 3, anchor: null, counter: true });
+    expect(conquestCandidates(s)).toEqual([at(s, 10, 2)]);
+  });
+
+  it('sahipsiz kıyıya sefer savaş sayılmaz', () => {
+    let s = seaWorld();
+    s = act(s, ship(s, 10, 1));
+    expect(s.players[0].battlesThisTurn).toBe(0);
   });
 });
 

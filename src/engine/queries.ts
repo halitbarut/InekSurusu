@@ -20,17 +20,22 @@ export function capitalCandidatesRaw(state: GameState, p: number, ignoreDistance
   return r;
 }
 
+/** Başlangıç seçiminde alınabilecek kareler (madenler hariç). */
 export function startPickCandidates(state: GameState, p: number): number[] {
+  return unownedNeighbours(state, p).filter((i) => !state.map.mines[i]);
+}
+
+export function claimableTiles(state: GameState, p: number): number[] {
+  if (state.players[p].resources.akce < state.config.claimCost) return [];
+  return unownedNeighbours(state, p);
+}
+
+function unownedNeighbours(state: GameState, p: number): number[] {
   const r: number[] = [];
   for (let i = 0; i < state.owner.length; i++) {
     if (state.owner[i] === null && state.map.terrain[i] === 'land' && touchesOwn(state, p, i)) r.push(i);
   }
   return r;
-}
-
-export function claimableTiles(state: GameState, p: number): number[] {
-  if (state.players[p].resources.akce < state.config.claimCost) return [];
-  return startPickCandidates(state, p);
 }
 
 export function buildableTiles(state: GameState, p: number, s: BuildableStructure): number[] {

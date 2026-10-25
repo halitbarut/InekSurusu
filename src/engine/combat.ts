@@ -6,15 +6,24 @@ export function spinTop(rng: Rng, faces: number): number {
   return rng.int(1, faces);
 }
 
-/** Kara (normal) savaşı: A > D ise floor((A − D) / 2) toprak. */
-export function landBattleGain(a: number, d: number): number {
-  return a > d ? Math.floor((a - d) / 2) : 0;
+export interface LandOutcome {
+  /** Saldıranın alacağı toprak (A > D ise A − D) */
+  gain: number;
+  /** Savunanın karşı saldırıyla alacağı toprak (A < D ise ceil((D − A) / 2)) */
+  loss: number;
 }
 
-export function resolveLandBattle(rng: Rng, faces: number): { rounds: SpinRound[]; gain: number } {
+/** Kara (normal) savaşı sonucu. Eşitlikte ikisi de 0. */
+export function landBattleOutcome(a: number, d: number): LandOutcome {
+  if (a > d) return { gain: a - d, loss: 0 };
+  if (a < d) return { gain: 0, loss: Math.ceil((d - a) / 2) };
+  return { gain: 0, loss: 0 };
+}
+
+export function resolveLandBattle(rng: Rng, faces: number): { rounds: SpinRound[] } & LandOutcome {
   const a = spinTop(rng, faces);
   const d = spinTop(rng, faces);
-  return { rounds: [{ a, d }], gain: landBattleGain(a, d) };
+  return { rounds: [{ a, d }], ...landBattleOutcome(a, d) };
 }
 
 /**
@@ -44,9 +53,18 @@ export function seriesWinProbability(streak: number): number {
   return Math.pow(0.5, streak);
 }
 
-/** Kara savaşında beklenen toprak kazancı. */
-export function expectedLandGain(faces: number): number {
-  let sum = 0;
-  for (let a = 1; a <= faces; a++) for (let d = 1; d <= faces; d++) sum += landBattleGain(a, d);
-  return sum / (faces * faces);
+/** Tüm topaç sonuçları üzerinden kara savaşı sonuç dağılımı (her biri 1/faces² olasılıklı). */
+export function landOutcomes(faces: number): LandOutcome[] {
+  const r: LandOutcome[] = [];
+  for (let a = 1; a <= faces; a++) for (let d = 1; d <= faces; d++) r.push(landBattleOutcome(a, d));
+  return r;
+}
+
+/** Kara savaşında beklenen kazanç ve kayıp (toprak sınırı olmadan). */
+export function expectedLandResult(faces: number): LandOutcome {
+  const all = landOutcomes(faces);
+  return {
+    gain: all.reduce((s, o) => s + o.gain, 0) / all.length,
+    loss: all.reduce((s, o) => s + o.loss, 0) / all.length,
+  };
 }

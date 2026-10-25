@@ -42,7 +42,8 @@ export interface Player {
   alive: boolean;
   capital: number | null;
   resources: Resources;
-  attacksThisTurn: number;
+  /** Bu oyuncu turunda yapılan savaş sayısı (turda tek savaş) */
+  battlesThisTurn: number;
   eliminatedBy: number | null;
 }
 
@@ -100,11 +101,15 @@ export type Phase =
   | { kind: 'actions' }
   | {
       kind: 'conquest';
-      attacker: number;
-      defender: number;
+      /** Toprakları seçen oyuncu (kazanan taraf) */
+      taker: number;
+      /** Toprak kaybeden oyuncu */
+      victim: number;
       remaining: number;
-      /** Gemi/uçak seferinde hedef kare; kara savaşında null */
+      /** Gemi/uçak seferinde saldıranın hedef karesi; aksi halde null (sınır kuralı) */
       anchor: number | null;
+      /** Savunanın karşı saldırısı mı? (seçimi savunan yapar, sıra saldıranda kalır) */
+      counter: boolean;
     }
   | { kind: 'vote'; proposer: number; votes: Record<number, boolean> }
   | { kind: 'gameover' };
@@ -147,7 +152,10 @@ export type GameEvent =
       target: number;
       rounds: SpinRound[];
       success: boolean;
+      /** Saldıranın alacağı toprak (başkent/üs savaşında başarıda 1) */
       gain: number;
+      /** Savunanın karşı saldırıyla alacağı toprak (yalnızca kara savaşı) */
+      loss: number;
       streakNeeded: number;
     }
   | { type: 'conquer'; player: number; from: number; tile: number }

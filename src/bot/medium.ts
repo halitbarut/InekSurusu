@@ -1,5 +1,8 @@
 import {
   allAliveAllied,
+  battleUsed,
+  landOutcomes,
+  seriesWinProbability,
   attackBlockReason,
   attackableTiles,
   buildableTiles,
@@ -35,18 +38,15 @@ const RESOURCE_VALUE: Record<ResourceKey, number> = { akce: 1, gold: 200, oil: 1
 
 /** Orta seviye bot ayarları; kolay/zor seviyeler farklı değerlerle türetilebilir. */
 export interface BotTuning {
-  landAttacksPerTurn: number;
-  capitalAttemptsPerTurn: number;
-  baseAttemptsPerTurn: number;
+  /** Savaşa girmek için gereken en düşük beklenen net kazanç (toprak değeri cinsinden) */
+  minBattleValue: number;
   maxShipsBase: number;
   maxPlanesBase: number;
   diplomacyEvery: number;
 }
 
 export const MEDIUM_TUNING: BotTuning = {
-  landAttacksPerTurn: 4,
-  capitalAttemptsPerTurn: 2,
-  baseAttemptsPerTurn: 1,
+  minBattleValue: 0.05,
   maxShipsBase: 2,
   maxPlanesBase: 2,
   diplomacyEvery: 3,
@@ -112,16 +112,18 @@ export class MediumBot implements BotBrain {
       case 'setup_capital':
         return this.pickCapital(state, p);
       case 'setup_territory': {
+        // Madenler başlangıçta seçilemez: madenlerin yanına yerleşmeyi tercih et
         const c = startPickCandidates(state, p);
         if (c.length === 0) return { type: 'SKIP_START_PICKS', player: p };
-        return { type: 'PICK_START_TILE', player: p, tile: best(c, (t) => tileScore(state, p, t)) };
+        return { type: 'PICK_START_TILE', player: p, tile: best(c, (t) => tileScore(state, p, t) + 2 * unownedMinesAround(state, t)) };
       }
       case 'spin':
         return { type: 'SPIN', player: p };
       case 'conquest': {
+        // Seçen taraf: saldıran ya da karşı saldırıdaki savunan
         const c = conquestCandidates(state);
-        if (c.length === 0) return { type: 'END_CONQUEST', player: p };
-        return { type: 'CONQUER_TILE', player: p, tile: best(c, (t) => conquestScore(state, p, t)) };
+        if (c.length === 0) return { type: 'END_CONQUEST', player: ph.taker };
+        return { type: 'CONQUER_TILE', player: ph.taker, tile: best(c, (t) => conquestScore(state, ph.taker, t)) };
       }
       case 'vote':
         return { type: 'CAST_VOTE', player: p, accept: true };
@@ -151,8 +153,9 @@ export class MediumBot implements BotBrain {
           const t = y * map.width + x;
           if (map.terrain[t] !== 'land' || state.owner[t] !== null) continue;
           s += 0.25;
+          // Madenler başlangıçta alınamaz ama yakında olmaları sonradan almayı kolaylaştırır
           const m = map.mines[t];
-          if (m && d <= 3) s += m === 'oil' ? 4 : 3;
+          if (m && d <= 3) s += (m === 'oil' ? 4 : 3) * (d <= 2 ? 1.3 : 1);
           if (d <= 2 && isCoastal(map, t)) coast = true;
         }
       }
@@ -215,13 +218,13 @@ export class MediumBot implements BotBrain {
       if (res.akce >= cfg.claimCost + reserve || state.map.mines[tile]) return { type: 'CLAIM_TILE', player: p, tile };
     }
 
-    // 6) Seferler: uzak sahipsiz topraklar, madenlerin yanı ya da zayıf rakipler
-    const exp = this.pickExpedition(state, p, reserve, claimable.length);
+    // 6) Seferle sahipsiz toprak: uzak topraklar ve madenlerin yanı (savaş sayılmaz)
+    const exp = this.pickExpeditionClaim(state, p, reserve, claimable.length);
     if (exp) return exp;
 
-    // 7) Kara saldırıları
-    const atk = this.pickAttack(state, p, turnEvents);
-    if (atk) return atk;
+    // 7) Turdaki tek savaş: beklenen net kazancı en yüksek seçenek
+    const battle = this.pickBattle(state, p);
+    if (battle) return battle;
 
     // 8) Diplomasi
     const dip = this.pickDiplomacy(state, p, turnEvents);
@@ -244,33 +247,19 @@ export class MediumBot implements BotBrain {
     return best(top, (t) => shipRoutes(state, p, t).targets.size * 0.05 + safe(t));
   }
 
-  private pickExpedition(state: GameState, p: number, reserve: number, claimableCount: number): Action | null {
+  private pickExpeditionClaim(state: GameState, p: number, reserve: number, claimableCount: number): Action | null {
     const me = state.players[p];
-    const myTiles = tileCount(state, p);
     for (const kind of ['ship', 'plane'] as const) {
       const units = readyUnits(state, p, kind);
       if (units.length === 0) continue;
       const unit = units[0];
-      const targets = expeditionTargets(state, p, unit.id);
       let bestT: number | null = null;
       let bestS = -Infinity;
-      for (const t of targets.values()) {
-        let s: number;
-        if (t.kind === 'claim') {
-          if (me.resources.akce < t.cost + reserve) continue;
-          const nearMine = neighbors4(state.map, t.tile).some((n) => state.map.mines[n] && state.owner[n] === null);
-          if (claimableCount >= 3 && !nearMine) continue;
-          s = tileScore(state, p, t.tile) + (nearMine ? 6 : 0) - t.cost / 100;
-        } else {
-          const o = state.owner[t.tile]!;
-          const oTiles = tileCount(state, o);
-          if (me.resources.akce < t.cost) continue;
-          if (t.kind === 'base') continue;
-          if (t.kind === 'capital' && oTiles > 12) continue;
-          if (oTiles >= myTiles) continue;
-          if (attackBlockReason(state, p, o)) continue;
-          s = (t.kind === 'capital' ? 8 : 2) + (myTiles - oTiles) * 0.05;
-        }
+      for (const t of expeditionTargets(state, p, unit.id).values()) {
+        if (t.kind !== 'claim' || me.resources.akce < t.cost + reserve) continue;
+        const nearMine = unownedMinesAround(state, t.tile) > 0;
+        if (claimableCount >= 3 && !nearMine) continue;
+        const s = tileScore(state, p, t.tile) + (nearMine ? 6 : 0) - t.cost / 100;
         if (s > bestS) {
           bestS = s;
           bestT = t.tile;
@@ -283,47 +272,69 @@ export class MediumBot implements BotBrain {
     return null;
   }
 
-  private pickAttack(state: GameState, p: number, turnEvents: GameEvent[]): Action | null {
-    const t = this.tuning;
-    const battles = turnEvents.filter((e): e is Extract<GameEvent, { type: 'battle' }> => e.type === 'battle' && e.attacker === p);
-    const tiles = attackableTiles(state, p);
-    if (tiles.length === 0) return null;
-    const myTiles = tileCount(state, p);
-    const byOwner = new Map<number, number[]>();
-    for (const tile of tiles) {
-      const o = state.owner[tile]!;
-      if (!byOwner.has(o)) byOwner.set(o, []);
-      byOwner.get(o)!.push(tile);
-    }
-    // Başkent savaşı: kazanma olasılığı düşük (1/8), yalnızca rakip zayıfsa dene
-    if (battles.filter((b) => b.kind === 'capital').length < t.capitalAttemptsPerTurn) {
-      for (const [o, ts] of byOwner) {
-        const cap = state.players[o].capital;
-        if (cap === null || !ts.includes(cap)) continue;
-        const oTiles = tileCount(state, o);
-        if (oTiles <= myTiles * 1.5 || oTiles <= 15) return { type: 'ATTACK', player: p, target: cap };
+  /**
+   * Turdaki tek savaş hakkı için en iyi seçeneği bulur. Kara savaşında beklenen değer
+   * = E[alınacak toprakların değeri] − E[karşı saldırıda kaybedileceklerin değeri];
+   * başkent/üs savaşında kayıp yoktur, kazanma olasılığı 1/2^seri.
+   */
+  private pickBattle(state: GameState, p: number): Action | null {
+    if (battleUsed(state, p)) return null;
+    const cfg = state.config;
+    const outcomes = landOutcomes(cfg.spinFaces);
+    const options: { action: Action; value: number }[] = [];
+    const enemies = state.players.filter((q) => q.alive && q.id !== p && !attackBlockReason(state, p, q.id)).map((q) => q.id);
+    if (enemies.length === 0) return null;
+
+    const myNormal = normalTiles(state, p);
+    for (const q of enemies) {
+      const qNormal = normalTiles(state, q);
+      const lossPool = poolValues(state, myNormal.filter((t) => touchesPlayer(state, q, t)), myNormal.length);
+      const allValue = ownedValue(state, q);
+      // Kara yoluyla
+      const border = attackableTiles(state, p).filter((t) => state.owner[t] === q);
+      if (border.length) {
+        const normalBorder = border.filter((t) => isNormal(state, t));
+        if (normalBorder.length) {
+          const gainPool = poolValues(state, normalBorder, qNormal.length);
+          options.push({ action: { type: 'ATTACK', player: p, target: normalBorder[0] }, value: landValue(outcomes, gainPool, lossPool) });
+        }
+        const cap = state.players[q].capital;
+        if (cap !== null && border.includes(cap)) {
+          options.push({ action: { type: 'ATTACK', player: p, target: cap }, value: seriesWinProbability(cfg.capitalStreak) * allValue });
+        }
+        const base = border.find((t) => state.structure[t] === 'base');
+        if (base !== undefined) {
+          options.push({ action: { type: 'ATTACK', player: p, target: base }, value: seriesWinProbability(cfg.baseStreak) * (tileValue(state, base) + 2) });
+        }
       }
     }
-    // Askeri üs savaşı (1/4)
-    if (battles.filter((b) => b.kind === 'base').length < t.baseAttemptsPerTurn) {
-      const base = tiles.find((tile) => state.structure[tile] === 'base');
-      if (base !== undefined) return { type: 'ATTACK', player: p, target: base };
-    }
-    if (battles.filter((b) => b.kind === 'land').length >= t.landAttacksPerTurn) return null;
-    let bestOwner: number | null = null;
-    let bestScore = -Infinity;
-    for (const [o, ts] of byOwner) {
-      const normal = ts.filter((tile) => state.structure[tile] !== 'capital' && state.structure[tile] !== 'base');
-      if (normal.length === 0) continue;
-      const score = normal.length * (myTiles / (tileCount(state, o) + 1));
-      if (score > bestScore) {
-        bestScore = score;
-        bestOwner = o;
+    // Gemi / uçakla
+    for (const kind of ['ship', 'plane'] as const) {
+      const unit = readyUnits(state, p, kind)[0];
+      if (!unit) continue;
+      const oilCost = kind === 'ship' ? cfg.shipOilCost : cfg.planeOilCost;
+      for (const t of expeditionTargets(state, p, unit.id).values()) {
+        if (t.kind === 'claim') continue;
+        const q = state.owner[t.tile]!;
+        if (!enemies.includes(q)) continue;
+        const type = kind === 'ship' ? ('SHIP_EXPEDITION' as const) : ('PLANE_EXPEDITION' as const);
+        const action: Action = { type, player: p, unitId: unit.id, target: t.tile };
+        let value: number;
+        if (t.kind === 'capital') value = seriesWinProbability(cfg.capitalStreak) * ownedValue(state, q);
+        else if (t.kind === 'base') value = seriesWinProbability(cfg.baseStreak) * (tileValue(state, t.tile) + 2);
+        else {
+          const around = [t.tile, ...neighbors4(state.map, t.tile)].filter((x) => state.owner[x] === q && isNormal(state, x));
+          const gainPool = poolValues(state, around, around.length);
+          // Karşı saldırıda yalnızca savunanla sınırı olan topraklar kaybedilebilir
+          const lossPool = poolValues(state, myNormal.filter((x) => touchesPlayer(state, q, x)), myNormal.length);
+          value = landValue(outcomes, gainPool, lossPool);
+        }
+        options.push({ action, value: value - oilCost * 0.3 - t.cost / 500 });
       }
     }
-    if (bestOwner === null) return null;
-    const target = byOwner.get(bestOwner)!.find((tile) => state.structure[tile] !== 'capital' && state.structure[tile] !== 'base')!;
-    return { type: 'ATTACK', player: p, target };
+    let bestOpt: { action: Action; value: number } | null = null;
+    for (const o of options) if (!bestOpt || o.value > bestOpt.value) bestOpt = o;
+    return bestOpt && bestOpt.value > this.tuning.minBattleValue ? bestOpt.action : null;
   }
 
   private pickDiplomacy(state: GameState, p: number, turnEvents: GameEvent[]): Action | null {
@@ -422,10 +433,70 @@ function tileScore(state: GameState, p: number, t: number): number {
 
 function conquestScore(state: GameState, p: number, t: number): number {
   let s = tileScore(state, p, t);
+  // Kendi bölgesini birleştiren kareler değerli
+  s += neighbors4(state.map, t).filter((n) => state.owner[n] === p).length * 0.8;
+  if (isCoastal(state.map, t)) s += 1;
   if (state.map.mines[t]) s += 5;
   if (state.structure[t]) s += 8;
   if (state.units.some((u) => u.tile === t)) s += 5;
   return s;
+}
+
+function unownedMinesAround(state: GameState, t: number): number {
+  return neighbors4(state.map, t).filter((n) => state.map.mines[n] && state.owner[n] === null).length;
+}
+
+function isNormal(state: GameState, t: number): boolean {
+  const s = state.structure[t];
+  return s !== 'capital' && s !== 'base';
+}
+
+function normalTiles(state: GameState, p: number): number[] {
+  const r: number[] = [];
+  for (let i = 0; i < state.owner.length; i++) if (state.owner[i] === p && isNormal(state, i)) r.push(i);
+  return r;
+}
+
+function touchesPlayer(state: GameState, q: number, t: number): boolean {
+  return neighbors4(state.map, t).some((n) => state.owner[n] === q);
+}
+
+/** Savaşta el değiştirebilecek bir toprağın kabaca değeri */
+function tileValue(state: GameState, t: number): number {
+  let v = 1;
+  if (state.map.mines[t]) v += 2;
+  if (state.structure[t]) v += 2;
+  if (state.units.some((u) => u.tile === t)) v += 2;
+  return v;
+}
+
+function ownedValue(state: GameState, p: number): number {
+  let v = 0;
+  for (let i = 0; i < state.owner.length; i++) if (state.owner[i] === p) v += tileValue(state, i);
+  return v;
+}
+
+/**
+ * Seçilebilecek toprakların değerleri, büyükten küçüğe. Önce sınırdakiler, sonra (içeri doğru
+ * ilerleme ile) `total` sayısına kadar 1 değerli sıradan topraklar.
+ */
+function poolValues(state: GameState, frontier: number[], total: number): number[] {
+  const vals = frontier.map((t) => tileValue(state, t)).sort((a, b) => b - a);
+  while (vals.length < total) vals.push(1);
+  return vals;
+}
+
+function landValue(outcomes: { gain: number; loss: number }[], gainPool: number[], lossPool: number[]): number {
+  const prefix = (arr: number[]) => {
+    const r = [0];
+    for (const v of arr) r.push(r[r.length - 1] + v);
+    return r;
+  };
+  const g = prefix(gainPool);
+  const l = prefix(lossPool);
+  let sum = 0;
+  for (const o of outcomes) sum += g[Math.min(o.gain, gainPool.length)] - l[Math.min(o.loss, lossPool.length)];
+  return sum / outcomes.length;
 }
 
 function best<T>(items: T[], score: (x: T) => number): T {

@@ -140,7 +140,10 @@ export function formatEvent(state: GameState, e: GameEvent): string | null {
     case 'battle': {
       const score = e.rounds.map((r) => `${r.a} – ${r.d}`).join(', ');
       const via = e.via === 'ship' ? ' (gemiyle)' : e.via === 'plane' ? ' (uçakla)' : '';
-      if (e.kind === 'land') return `⚔️ ${N(e.attacker)}, ${dat(N(e.defender))} saldırdı${via}: ${score} → ${e.gain > 0 ? `${e.gain} toprak` : 'sonuçsuz'}`;
+      if (e.kind === 'land') {
+        const res = e.gain > 0 ? `${e.gain} toprak` : e.loss > 0 ? `karşı saldırı: ${N(e.defender)} ${e.loss} toprak alır` : 'sonuçsuz';
+        return `⚔️ ${N(e.attacker)}, ${dat(N(e.defender))} saldırdı${via}: ${score} → ${res}`;
+      }
       const what = e.kind === 'capital' ? 'başkentine' : 'askeri üssüne';
       const res = e.success ? (e.kind === 'capital' ? 'BAŞKENT DÜŞTÜ!' : 'üs alındı!') : 'başarısız';
       return `💥 ${N(e.attacker)}, ${gen(N(e.defender))} ${what} saldırdı${via}: ${score} → ${res}`;

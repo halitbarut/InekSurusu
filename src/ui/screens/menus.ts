@@ -175,7 +175,6 @@ const CONFIG_FIELDS: ConfigField[] = [
   { key: 'capitalStreak', label: 'Başkent savaşı: art arda galibiyet', min: 1, max: 10 },
   { key: 'baseStreak', label: 'Üs savaşı: art arda galibiyet', min: 1, max: 10 },
   { key: 'baseBlockRadius', label: 'Üs uçak engeli yarıçapı', min: 0, max: 20 },
-  { key: 'maxAttacksPerTurn', label: 'Tur başına saldırı sınırı (0 = sınırsız)', min: 0, max: 100 },
   { key: 'maxSortiesPerUnitPerTurn', label: 'Birim başına tur içi sefer (0 = sınırsız)', min: 0, max: 100 },
   { key: 'minesPerTypePerPlayer', label: 'Oyuncu başına maden (her türden)', min: 0, max: 20 },
   { key: 'maxPeaceRounds', label: 'En uzun barış süresi (tur)', min: 1, max: 200 },

@@ -74,6 +74,7 @@ export function validateAction(state: GameState, action: Action): ValidationResu
       if (!validTile(state, action.tile)) return fail('Geçersiz kare');
       if (state.map.terrain[action.tile] !== 'land') return fail('Sadece kara kareleri seçilebilir');
       if (state.owner[action.tile] !== null) return fail('Bu kare sahipli');
+      if (state.map.mines[action.tile]) return fail('Başlangıçta maden kareleri seçilemez');
       if (!touchesOwn(state, action.player, action.tile)) return fail('Toprağınıza komşu olmalı');
       return OK;
     }
@@ -142,11 +143,11 @@ export function validateAction(state: GameState, action: Action): ValidationResu
       return r.ok ? OK : fail(r.reason);
     }
     case 'CONQUER_TILE':
-      if (ph.kind !== 'conquest' || ph.attacker !== action.player) return fail('Fetih aşamasında değilsiniz');
+      if (ph.kind !== 'conquest' || ph.taker !== action.player) return fail('Toprak seçme sırası sizde değil');
       if (!conquestCandidates(state).includes(action.tile)) return fail('Bu toprak alınamaz');
       return OK;
     case 'END_CONQUEST':
-      if (ph.kind !== 'conquest' || ph.attacker !== action.player) return fail('Fetih aşamasında değilsiniz');
+      if (ph.kind !== 'conquest' || ph.taker !== action.player) return fail('Toprak seçme sırası sizde değil');
       return OK;
     case 'SET_STRAIT_POLICY': {
       const st = state.straits[action.straitId];
@@ -355,7 +356,7 @@ export function applyAction(state: GameState, action: Action, rng: Rng): ApplyRe
       const ph = s.phase;
       if (ph.kind !== 'conquest') break;
       transferTile(s, action.tile, me.id);
-      ev.push({ type: 'conquer', player: me.id, from: ph.defender, tile: action.tile });
+      ev.push({ type: 'conquer', player: me.id, from: ph.victim, tile: action.tile });
       ph.remaining--;
       if (ph.remaining <= 0 || conquestCandidates(s).length === 0) s.phase = { kind: 'actions' };
       break;
@@ -443,12 +444,13 @@ export function dispatch(state: GameState, action: Action): ApplyResult {
 
 function startBattle(s: GameState, attacker: number, defender: number, target: number, via: AttackVia, rng: Rng, ev: GameEvent[]) {
   const cfg = s.config;
-  s.players[attacker].attacksThisTurn++;
+  s.players[attacker].battlesThisTurn++;
   const struct = s.structure[target];
   if (struct === 'capital' || struct === 'base') {
+    // Başkent / üs savaşında saldıran kaybederse karşı toprak kaybı yok
     const streak = struct === 'capital' ? cfg.capitalStreak : cfg.baseStreak;
     const r = resolveSeriesBattle(rng, cfg.spinFaces, streak);
-    ev.push({ type: 'battle', attacker, defender, kind: struct, via, target, rounds: r.rounds, success: r.success, gain: r.success ? 1 : 0, streakNeeded: streak });
+    ev.push({ type: 'battle', attacker, defender, kind: struct, via, target, rounds: r.rounds, success: r.success, gain: r.success ? 1 : 0, loss: 0, streakNeeded: streak });
     if (!r.success) return;
     if (struct === 'capital') eliminate(s, defender, attacker, ev);
     else {
@@ -458,11 +460,14 @@ function startBattle(s: GameState, attacker: number, defender: number, target: n
     return;
   }
   const r = resolveLandBattle(rng, cfg.spinFaces);
-  ev.push({ type: 'battle', attacker, defender, kind: 'land', via, target, rounds: r.rounds, success: r.gain > 0, gain: r.gain, streakNeeded: 1 });
+  ev.push({ type: 'battle', attacker, defender, kind: 'land', via, target, rounds: r.rounds, success: r.gain > 0, gain: r.gain, loss: r.loss, streakNeeded: 1 });
   if (r.gain > 0) {
-    s.phase = { kind: 'conquest', attacker, defender, remaining: r.gain, anchor: via === 'land' ? null : target };
-    if (conquestCandidates(s).length === 0) s.phase = { kind: 'actions' };
+    s.phase = { kind: 'conquest', taker: attacker, victim: defender, remaining: r.gain, anchor: via === 'land' ? null : target, counter: false };
+  } else if (r.loss > 0) {
+    // Karşı saldırı: savunan, kendi topraklarına komşu saldıran topraklarından seçer (seferde de sınır kuralı)
+    s.phase = { kind: 'conquest', taker: defender, victim: attacker, remaining: r.loss, anchor: null, counter: true };
   }
+  if (s.phase.kind === 'conquest' && conquestCandidates(s).length === 0) s.phase = { kind: 'actions' };
 }
 
 /** Başkenti düşen oyuncu elenir; her şeyi başkenti alan oyuncuya geçer. */
@@ -518,7 +523,7 @@ function resolveVoteIfComplete(s: GameState, ev: GameEvent[]) {
 function hasStartCandidates(s: GameState, p: number): boolean {
   for (let i = 0; i < s.owner.length; i++) {
     if (s.owner[i] !== p) continue;
-    for (const n of neighbors4(s.map, i)) if (s.owner[n] === null && s.map.terrain[n] === 'land') return true;
+    for (const n of neighbors4(s.map, i)) if (s.owner[n] === null && s.map.terrain[n] === 'land' && !s.map.mines[n]) return true;
   }
   return false;
 }
@@ -548,7 +553,7 @@ function finishSetupFor(s: GameState, ev: GameEvent[]) {
 
 function beginTurn(s: GameState, ev: GameEvent[]) {
   const p = s.players[s.currentPlayer];
-  p.attacksThisTurn = 0;
+  p.battlesThisTurn = 0;
   for (const u of s.units) if (u.owner === p.id) u.sortiesThisTurn = 0;
   ev.push({ type: 'turn_start', player: p.id, round: s.round });
   const gained: Partial<Resources> = {};

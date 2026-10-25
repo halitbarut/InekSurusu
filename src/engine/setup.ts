@@ -29,6 +29,7 @@ export function createGame(settings: NewGameSettings): GameState {
     players: n,
     minesPerTypePerPlayer: config.minesPerTypePerPlayer,
     startTerritoryCount: config.startTerritoryCount,
+    minCapitalDistance: config.minCapitalDistance,
   });
   return createGameFromMap(map, settings.players, config);
 }
@@ -45,7 +46,7 @@ export function createGameFromMap(map: GameMap, players: PlayerSetup[], config: 
     alive: true,
     capital: null,
     resources: { akce: config.startAkce, gold: 0, oil: 0, iron: 0, steel: 0 },
-    attacksThisTurn: 0,
+    battlesThisTurn: 0,
     eliminatedBy: null,
   }));
   return {

@@ -1,3 +1,4 @@
+import { BATTLES_PER_TURN } from './config';
 import { chebyshev, neighbors4 } from './grid';
 import type { GameEvent, GameState, Relation, StraitPolicy, Unit } from './types';
 
@@ -27,17 +28,23 @@ export function atPeace(state: GameState, a: number, b: number): boolean {
   return r.peaceUntilRound !== null && state.round <= r.peaceUntilRound;
 }
 
+export const BATTLE_USED = 'Bu tur savaş hakkını kullandın';
+
+/** Oyuncu bu turdaki tek savaş hakkını kullandı mı? */
+export function battleUsed(state: GameState, p: number): boolean {
+  return state.players[p].battlesThisTurn >= BATTLES_PER_TURN;
+}
+
 /** a, b'ye saldırabilir mi? Saldıramazsa nedenini döner. */
 export function attackBlockReason(state: GameState, a: number, b: number): string | null {
   if (a === b) return 'Kendinize saldıramazsınız';
   const pb = state.players[b];
   if (!pb || !pb.alive) return 'Bu oyuncu oyunda değil';
+  if (battleUsed(state, a)) return BATTLE_USED;
   const r = getRelation(state, a, b);
   if (r.allied) return 'Müttefikinize saldıramazsınız';
   if (atPeace(state, a, b)) return 'Barış anlaşması sürüyor';
   if (r.allianceBrokenAtTurn === state.turnCounter) return 'İttifak bu tur bozuldu; bir tur beklemelisiniz';
-  const max = state.config.maxAttacksPerTurn;
-  if (max > 0 && state.players[a].attacksThisTurn >= max) return 'Bu turdaki saldırı hakkınız doldu';
   return null;
 }
 
@@ -153,31 +160,31 @@ export function capitalProblem(state: GameState, p: number, tile: number, ignore
   while (stack.length && seen.size < need) {
     const c = stack.pop()!;
     for (const nb of neighbors4(map, c)) {
-      if (!seen.has(nb) && map.terrain[nb] === 'land' && state.owner[nb] === null) {
+      if (!seen.has(nb) && map.terrain[nb] === 'land' && state.owner[nb] === null && !map.mines[nb]) {
         seen.add(nb);
         stack.push(nb);
       }
     }
   }
-  if (seen.size < need) return 'Çevresinde başlangıç toprakları için yeterli boş kara yok';
+  if (seen.size < need) return 'Çevresinde başlangıç toprakları için yeterli madensiz boş kara yok';
   return null;
 }
 
-/** Fetih aşamasında seçilebilecek kareler. */
+/** Fetih aşamasında seçilebilecek kareler (seçen: taker, kaybeden: victim). */
 export function conquestCandidates(state: GameState): number[] {
   const ph = state.phase;
   if (ph.kind !== 'conquest') return [];
-  const { attacker, defender, anchor } = ph;
+  const { taker, victim, anchor } = ph;
   const map = state.map;
-  const pool = anchor === null ? ownedTiles(state, defender) : [anchor, ...neighbors4(map, anchor)];
+  const pool = anchor === null ? ownedTiles(state, victim) : [anchor, ...neighbors4(map, anchor)];
   return pool.filter((t) => {
-    if (state.owner[t] !== defender) return false;
+    if (state.owner[t] !== victim) return false;
     const s = state.structure[t];
     if (s === 'capital' || s === 'base') return false;
-    if (anchor === null) return touchesOwn(state, attacker, t);
+    if (anchor === null) return touchesOwn(state, taker, t);
     if (t === anchor) return true;
-    // Maden kareleri seferle doğrudan alınamaz: saldıranın toprağına komşu olmalı
-    if (map.mines[t]) return touchesOwn(state, attacker, t);
+    // Maden kareleri seferle doğrudan alınamaz: seçenin toprağına komşu olmalı
+    if (map.mines[t]) return touchesOwn(state, taker, t);
     return true;
   });
 }
