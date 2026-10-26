@@ -16,6 +16,7 @@ import {
   type LobbySeat,
   type Presence,
   type ChatSnapshot,
+  type ClockMessage,
 } from './protocol';
 import type { Conn, HostTransport } from './transport';
 
@@ -66,7 +67,7 @@ export interface HostRoomEvents {
  * bağlantı durumu ve bot devralma. Oyun durumunu kendisi tutmaz; hamleleri olay olarak
  * dışarı (oyun ekranına) verir, oyun ekranı da sonucu broadcastUpdate ile yayınlar.
  */
-type LobbySettings = Pick<LobbyInfo, 'width' | 'height' | 'seed' | 'rules' | 'mapName'>;
+type LobbySettings = Pick<LobbyInfo, 'width' | 'height' | 'seed' | 'rules' | 'mapName' | 'turnSeconds'>;
 
 export class HostRoom implements ChatChannel {
   readonly events: HostRoomEvents = {};
@@ -87,6 +88,8 @@ export class HostRoom implements ChatChannel {
   private identity: ChatIdentity | null = null;
   /** İzleyiciler genel kanala yazabilir mi */
   private spectatorChat = true;
+  /** Tur saati: son yayınlanan (yeni gelenlere de gönderilir) */
+  private clock: { players: number[]; deadline: number; limitMs: number } | null = null;
 
   constructor(
     readonly code: string,
@@ -171,6 +174,22 @@ export class HostRoom implements ChatChannel {
     }
   }
 
+  /** Tur saatini yayınlar (oda sahibi tutar, katılanlar yalnızca gösterir) */
+  sendClock(clock: ClockMessage | null) {
+    this.clock = clock ? { players: clock.players, deadline: Date.now() + clock.remainingMs, limitMs: clock.limitMs } : null;
+    for (const c of this.clients.values()) c.conn?.send({ t: 'clock', clock });
+  }
+
+  private clockNow(): ClockMessage | null {
+    const c = this.clock;
+    return c ? { players: c.players, remainingMs: Math.max(0, c.deadline - Date.now()), limitMs: c.limitMs } : null;
+  }
+
+  /** Süresi dolan oyunculara haber ver */
+  sendTimeout(players: number[]) {
+    for (const c of this.clients.values()) c.conn?.send({ t: 'timeout', players });
+  }
+
   reject(origin: { clientId: string; reqId: number }, reason: string) {
     this.clients.get(origin.clientId)?.conn?.send({ t: 'reject', reqId: origin.reqId, reason });
   }
@@ -248,6 +267,7 @@ export class HostRoom implements ChatChannel {
       }
       const st = this.getState();
       conn.send({ t: 'welcome', seat, lobby: null, state: st ? viewFor(st, seat) : null, presence: this.presence, chat: this.chatSnapshot(seat) });
+      conn.send({ t: 'clock', clock: this.clockNow() });
     } else {
       conn.send({ t: 'welcome', seat: c.seat, lobby: this.maskedLobby(), state: null, presence: {} });
       this.lobbyChanged();

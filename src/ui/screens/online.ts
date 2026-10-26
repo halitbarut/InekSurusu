@@ -234,7 +234,7 @@ function renderJoinLobby(host: HTMLElement, cb: OnlineCallbacks, room: ClientRoo
         ),
       );
     });
-    infoEl.textContent = `${lobby.mapName ? `Harita: ${lobby.mapName}` : `Harita ${lobby.width}×${lobby.height} · seed ${lobby.seed}`}${lobby.rules ? ` · Kurallar: ${lobby.rules}` : ''} · İzleyiciler: ${lobby.spectators.length ? lobby.spectators.join(', ') : '—'}`;
+    infoEl.textContent = `${lobby.mapName ? `Harita: ${lobby.mapName}` : `Harita ${lobby.width}×${lobby.height} · seed ${lobby.seed}`}${lobby.rules ? ` · Kurallar: ${lobby.rules}` : ''}${lobby.turnSeconds ? ` · Tur süresi: ${lobby.turnSeconds / 60} dk` : ''} · İzleyiciler: ${lobby.spectators.length ? lobby.spectators.join(', ') : '—'}`;
     statusEl.textContent = seat === null ? 'Şu an izleyicisin. Oynamak için boş bir koltuğa otur.' : `${seat + 1}. koltuktasın. Oda sahibinin başlatması bekleniyor…`;
   };
   room.events.onLobby = (lobby, seat) => draw(lobby, seat);

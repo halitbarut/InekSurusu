@@ -196,6 +196,12 @@ export interface LogEntry {
   event: GameEvent;
 }
 
+/** Kurallardan bağımsız maç ayarları. Motor kullanmaz; oyunu yürüten taraf (yerel oyun ya da oda sahibi) okur. */
+export interface MatchOptions {
+  /** Tur süresi (saniye); 0 = kapalı */
+  turnSeconds: number;
+}
+
 export interface GameState {
   version: 1;
   config: GameConfig;
@@ -221,6 +227,8 @@ export interface GameState {
   winners: number[] | null;
   /** Tur sonu istatistikleri ve toplam harcamalar (eski kayıtlarda yok) */
   stats?: GameStats;
+  /** Maç ayarları (eski kayıtlarda yok = hepsi kapalı) */
+  options?: MatchOptions;
 }
 
 export type Action =

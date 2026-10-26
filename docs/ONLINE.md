@@ -36,7 +36,7 @@ eylemi kendi durumuna göre doğruladığı için hiçbir etkisi olmaz (`tests/n
 
 ## Mesaj protokolü
 
-Sürüm `PROTOCOL_VERSION` (`src/net/protocol.ts`), şu an **4**. Katılan ilk mesajında (`hello`) sürümünü
+Sürüm `PROTOCOL_VERSION` (`src/net/protocol.ts`), şu an **5**. Katılan ilk mesajında (`hello`) sürümünü
 gönderir; farklıysa oda sahibi `refused` ile reddeder ("İki taraf da sayfayı yenilesin").
 
 | Sürüm | Değişiklik |
@@ -45,6 +45,7 @@ gönderir; farklıysa oda sahibi `refused` ile reddeder ("İki taraf da sayfayı
 | 2 | Geri alma isteği (`undo`), güncellemede geri alınabilir eylem sayısı |
 | 3 | Oyuncuya özel durum görünümü (gizli teklifler), lobide maskeli katılımcı kimlikleri |
 | 4 | Oyun içi sohbet: `key`, `chat`, `keys` mesajları; `welcome`/`start` içinde sohbet geçmişi |
+| 5 | Tur süresi: `clock`, `timeout` mesajları; lobide `turnSeconds` |
 
 Katılan → oda sahibi:
 
@@ -74,6 +75,8 @@ Oda sahibi → katılan:
 | `closed {reason}` | Oda kapandı |
 | `chat {msg}` | Yeni sohbet mesajı (yalnızca görebileceklere) |
 | `keys {keys}` | Koltukların sohbet açık anahtarları değişti |
+| `clock {clock}` | Tur saati: kimin süresi işliyor, ne kadar kaldı (`null` = kimsenin). Yeni bağlanana da gönderilir |
+| `timeout {players}` | Bu oyuncuların süresi doldu (açık pencerelerini kapatırlar) |
 | `ping` | Canlılık |
 
 Her `update` tam durumu taşır (fark değil). Bu, kopmalardan sonra tutarsızlığı imkânsız kılar; bedeli
@@ -110,6 +113,14 @@ Süzme oda sahibinde, gönderimden önce yapılır (`viewFor`, `eventsFor`): giz
    hiçbir alan sonucu etkileyemez.
 5. Ad (en fazla 16 karakter, denetim karakterleri silinir) ve renk (`#rrggbb`, değilse gri) temizlenir.
    Bozuk mesajlar bağlantıyı düşürmez, sessizce yok sayılır.
+
+## Tur süresi
+
+Tur süresi açıksa saat yalnızca oda sahibinde tutulur (`TurnClock`, `src/ui/game/turnClock.ts`). Etkin bölüm
+(kimin süresi işliyor) her değiştiğinde oda sahibi `clock` mesajıyla kalan süreyi gönderir; katılan bunu kendi
+saatine göre geri sayar (iki bilgisayarın saat farkı önemli değildir). Süre dolunca oda sahibi `timeout` gönderir ve
+otomatik eylemleri (topaç, zorunlu seçimler, tur sonu) oyuncu adına kendisi uygular; bunlar normal güncellemeler
+olarak yayınlanır. Katılanın gönderdiği hiçbir şey süreyi değiştiremez.
 
 ## Sohbet
 

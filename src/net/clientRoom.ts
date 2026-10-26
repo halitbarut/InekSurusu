@@ -7,6 +7,7 @@ import {
   PROTOCOL_VERSION,
   type ClientMessage,
   type HostMessage,
+  type ClockMessage,
   type LobbyInfo,
   type Presence,
 } from './protocol';
@@ -24,6 +25,10 @@ export interface ClientRoomEvents {
   onStatus?(status: ClientStatus, reason?: string): void;
   /** Yeni sohbet mesajı; null = geçmiş ya da anahtarlar yenilendi */
   onChat?(msg: ChatMessage | null): void;
+  /** Tur saati değişti */
+  onClock?(clock: ClockMessage | null): void;
+  /** Bu oyuncuların süresi doldu */
+  onTimeout?(players: number[]): void;
 }
 
 export interface ClientProfile {
@@ -46,6 +51,8 @@ export class ClientRoom implements ChatChannel {
   private keys: Record<number, string> = {};
   private identity: ChatIdentity | null = null;
   private spectatorChat = true;
+  /** Oda sahibinden gelen son tur saati (alındığı yerel zamanla) */
+  lastClock: (ClockMessage & { receivedAt: number }) | null = null;
   private conn: Conn<HostMessage, ClientMessage> | null = null;
   private nextReq = 1;
   private pending = new Map<number, (r: { ok: true } | { ok: false; reason: string }) => void>();
@@ -180,6 +187,13 @@ export class ClientRoom implements ChatChannel {
       case 'keys':
         this.keys = m.keys;
         this.events.onChat?.(null);
+        return;
+      case 'clock':
+        this.lastClock = m.clock ? { ...m.clock, receivedAt: Date.now() } : null;
+        this.events.onClock?.(m.clock);
+        return;
+      case 'timeout':
+        this.events.onTimeout?.(m.players);
         return;
       case 'notice':
         this.events.onNotice?.(m.text);

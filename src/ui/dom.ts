@@ -71,6 +71,13 @@ export interface ModalHandle {
   result: Promise<string>;
 }
 
+const openModals = new Set<ModalHandle>();
+
+/** Açık bütün pencereleri kapatır (ör. tur süresi dolunca); bekleyen result'lar value ile çözülür. */
+export function closeAllModals(value: string) {
+  for (const m of [...openModals]) m.close(value);
+}
+
 /** Basit modal pencere. Düğmeye basılınca ya da kapatılınca result çözülür. */
 export function openModal(opts: { title: string; icon?: IconName; body?: Child; buttons?: ModalButton[]; closable?: boolean; wide?: boolean; className?: string }): ModalHandle {
   let resolve!: (v: string) => void;
@@ -83,6 +90,7 @@ export function openModal(opts: { title: string; icon?: IconName; body?: Child; 
     closed = true;
     backdrop.remove();
     document.removeEventListener('keydown', onKey);
+    openModals.delete(handle);
     resolve(value);
   };
   const onKey = (e: KeyboardEvent) => {
@@ -113,7 +121,9 @@ export function openModal(opts: { title: string; icon?: IconName; body?: Child; 
   });
   document.addEventListener('keydown', onKey);
   document.body.appendChild(backdrop);
-  return { el: box, body, close, result };
+  const handle: ModalHandle = { el: box, body, close, result };
+  openModals.add(handle);
+  return handle;
 }
 
 export function download(filename: string, text: string) {

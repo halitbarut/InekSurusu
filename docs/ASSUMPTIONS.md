@@ -314,3 +314,26 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
     insana gönderilebilir, döndüğünde okur.
 93. Genel kanal mesajı en fazla 300 karakterdir; bir katılımcı 5 saniyede en fazla 6 mesaj gönderebilir.
 94. Davet linkiyle daha önce katılınan odaya link yeniden açılınca (ör. sayfa yenilenince) ad sorulmadan bağlanılır.
+
+## Tur süresi
+
+95. Tur süresi bir **maç ayarıdır** (kural değil): yeni oyun ekranında "Maç ayarları → Tur süresi" (Kapalı, 1, 2, 3,
+    5 dakika; varsayılan kapalı). Önayarları etkilemez, `GameState.options.turnSeconds` içinde kayda girer.
+96. Süre turun tamamı içindir (bakım, topaç, eylemler ve kendi fethi). Kurulumda her oyuncunun başkent seçimi ve
+    başlangıç toprağı seçimi için ayrı süre işler. Botlar için süre tutulmaz; bağlantısı kopan oyuncunun süresi işlemeye
+    devam eder (yerine bot geçince durur).
+97. Süre dolunca sırasıyla: topaç çevrilmemişse çevrilir; bekleyen zorunlu seçimler (bakımda birim dağıtma, kazanılan
+    savaşta toprak seçimi, kurulum seçimleri) Orta seviye bot mantığıyla yapılır; eylem aşamasına gelince tur biter.
+    Oyuncunun açık pencereleri kapanır ve seçili eylem iptal olur. Otomatik eylemler normal eylemler gibi kayda geçer.
+98. **Başkasının yanıtı beklenirken:** karşı saldırıda toprak seçen savunanın ve ittifakla bitirme oylamasında oyu
+    beklenenlerin **kendi** (tam) süresi işler; bu sırada sıradaki oyuncunun süresi durur ve sonra kaldığı yerden sürer.
+    Süresi dolan savunanın toprakları Orta bot gibi seçilir; oylamada Orta bot gibi oy verilir (Orta bot her zaman
+    "evet" der, yani süresi dolan oyuncu ittifakla bitirmeyi kabul etmiş sayılır).
+99. Hot-seat'te insandan insana teklifte alıcının kendi süresi işler. Teklif yanıtı zorunlu bir seçim olmadığı için süre
+    dolunca teklif reddedilmez, "Sonra yanıtla" gibi bekleyen tekliflerde kalır. Çevrimiçide teklifler oyunu bekletmez
+    (alıcı istediği an yanıtlar), bu yüzden teklif için ayrı süre yoktur.
+100. Hot-seat'te "Cihazı X'e verin" ekranı açıkken saat durur; süre "Hazırım"a basınca başlar.
+101. Çevrimiçide saat yalnızca oda sahibinde tutulur; katılanlara kalan süre gönderilir, onlar yalnızca gösterir.
+     Süre gerçek zamanda işler: topaç ve savaş animasyonları da süreden yer.
+102. Son 15 saniyede üst çubuktaki süre kırmızıya döner, kısa bir uyarı çıkar ve süresi işleyen oyuncunun cihazında her
+     saniye tık sesi çalar.

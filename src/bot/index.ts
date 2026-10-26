@@ -21,3 +21,4 @@ export function getBot(level: BotLevel): BotBrain {
 }
 
 export const BOT_LEVEL_NAME: Record<BotLevel, string> = { easy: 'Kolay', medium: 'Orta', hard: 'Zor' };
+export { timeoutAction } from './timeout';

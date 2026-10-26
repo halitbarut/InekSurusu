@@ -1,4 +1,4 @@
-import { BOT_LEVEL_NAME, getBot } from '../../bot';
+import { BOT_LEVEL_NAME, getBot, timeoutAction } from '../../bot';
 import {
   RESOURCE_KEYS,
   BATTLE_USED,
@@ -39,7 +39,7 @@ import {
   type ResourceKey,
   type UnitKind,
 } from '../../engine';
-import { append, clear, download, h, openModal, sleep, toast, type Child } from '../dom';
+import { append, clear, closeAllModals, download, h, openModal, sleep, toast, type Child } from '../dom';
 import {
   RES_ICON,
   RES_NAME,
@@ -68,6 +68,7 @@ import { cowMark, icon, type IconName } from '../icons';
 import { HATCH_NAME, playerHatch, playerSwatch } from '../playerStyle';
 import { renderSummary } from './summary';
 import { ChatPanel } from './chatPanel';
+import { CLOCK_WARN_MS, TurnClock, clockSegment, clockText, type ClockSegment } from './turnClock';
 import { play, playSpin, setMuted, soundControls } from '../sound';
 
 type Mode =
@@ -137,6 +138,15 @@ export class GameScreen {
   private prompted = new Set<string>();
   /** Çevrimiçi oyunda sohbet paneli (hot-seat ve bot oyunlarında yok) */
   private chat: ChatPanel | null = null;
+  /** Tur saati: yerel oyunda ve oda sahibinde tutulur; katılan yalnızca oda sahibinin gönderdiğini gösterir */
+  private clock: TurnClock | null = null;
+  private clockEl = h('span', { class: 'turn-clock hidden', role: 'timer', 'aria-live': 'off' });
+  private clockTimer: ReturnType<typeof setInterval> | null = null;
+  private lastTickSecond = -1;
+  /** Hot-seat: "Cihazı X'e verin" ekranı açık (saat durur) */
+  private handoff = false;
+  /** Hot-seat: teklifine yanıt beklenen oyuncunun kendi süresi */
+  private responseSeg: ClockSegment | null = null;
 
   private elTop!: HTMLElement;
   private elPlayers!: HTMLElement;
@@ -156,6 +166,9 @@ export class GameScreen {
   ) {
     this.state = state;
     if (net) this.chat = new ChatPanel(net.room, () => this.state);
+    const turnSeconds = state.options?.turnSeconds ?? 0;
+    if (turnSeconds > 0 && net?.kind !== 'client') this.clock = new TurnClock(turnSeconds * 1000);
+    if (turnSeconds > 0 || net?.kind === 'client') this.clockTimer = setInterval(() => this.tickClock(), 250);
     this.bindNet();
     this.root = this.buildLayout();
     host.appendChild(this.root);
@@ -170,6 +183,7 @@ export class GameScreen {
   destroy() {
     this.destroyed = true;
     if (this.presenceTimer) clearInterval(this.presenceTimer);
+    if (this.clockTimer) clearInterval(this.clockTimer);
     this.connEl?.remove();
     if (this.net?.kind === 'host') this.net.room.close();
     else if (this.net?.kind === 'client') this.net.room.leave();
@@ -329,7 +343,9 @@ export class GameScreen {
           } else if (this.mine(voter.id)) {
             if (!this.net && this.humanCount() > 1) await this.passDevice(voter.id, `${pname(s, ph.proposer)} oyunu ittifakla bitirmeyi önerdi. Oyunu ver.`);
             const accept = await this.askVote(voter.id);
-            await this.enqueue(() => this.commit({ type: 'CAST_VOTE', player: voter.id, accept }));
+            // Süre dolduysa oy otomatik verilir: o işin bitmesini bekle
+            if (accept !== null) await this.enqueue(() => this.commit({ type: 'CAST_VOTE', player: voter.id, accept }));
+            else await this.chain;
           } else {
             // Uzaktaki oyuncunun oyu bekleniyor
             this.render();
@@ -575,9 +591,14 @@ export class GameScreen {
     }
     if (from.kind === 'human') {
       await this.passDevice(to.id, `${from.name} sana bir teklif gönderdi.`);
+      // Yanıt bekleyen oyuncunun kendi süresi işler, teklif edenin süresi durur
+      this.responseSeg = { key: `offer-${offer.id}`, players: [to.id] };
+      this.syncClock();
       const answer = await this.askOffer(offer, true);
+      this.responseSeg = null;
+      this.syncClock();
       if (answer !== 'later') await this.commit({ type: 'RESPOND_OFFER', player: to.id, offerId: offer.id, accept: answer === 'accept' });
-      await this.passDevice(from.id, 'Teklif yanıtlandı, sıra yine sende.');
+      await this.passDevice(from.id, answer === 'later' ? `${to.name} teklifi sonra yanıtlayacak (Diplomasi'de bekliyor). Sıra yine sende.` : 'Teklif yanıtlandı, sıra yine sende.');
     }
     // Bot → insan teklifleri insanın sırasında yanıtlanır
   }
@@ -662,6 +683,11 @@ export class GameScreen {
       room.events.onNotice = (text) => toast(text, 'info', 4000);
       room.events.onStatus = (status, reason) => this.showConnection(status, reason);
       room.events.onChat = (m) => this.chat?.onMessage(m);
+      room.events.onClock = () => this.drawClock();
+      room.events.onTimeout = (players) => {
+        if (room.seat !== null && players.includes(room.seat)) this.timedOutHere();
+        else toast(`Süre doldu: ${players.map((p) => pname(this.state, p)).join(', ')}`, 'info', 3000);
+      };
     }
     // Geri sayım için bağlantı durumunu saniyede bir tazele
     this.presenceTimer = setInterval(() => {
@@ -687,7 +713,7 @@ export class GameScreen {
       const key = `vote-${s.turnCounter}-${ph.proposer}`;
       if (me !== null && s.players[me]?.alive && !(me in ph.votes) && !this.prompted.has(key)) {
         this.prompted.add(key);
-        void this.askVote(me).then((accept) => this.act({ type: 'CAST_VOTE', player: me, accept }));
+        void this.askVote(me).then((accept) => accept !== null && this.act({ type: 'CAST_VOTE', player: me, accept }));
       }
       return;
     }
@@ -719,6 +745,85 @@ export class GameScreen {
       });
       void m.result.then(() => this.cb.toMenu());
     }
+  }
+
+  // ------------------------------------------------------------------
+  // Tur süresi
+  // ------------------------------------------------------------------
+
+  /** Saati durumla eşitler (yalnızca saati tutan tarafta): kimin süresi işliyor, değiştiyse yayınla */
+  private syncClock() {
+    const clock = this.clock;
+    if (!clock || this.destroyed) return;
+    const seg = this.handoff ? null : (this.responseSeg ?? clockSegment(this.state, (p) => this.state.players[p]?.kind === 'human'));
+    if (!clock.set(seg)) return;
+    if (this.net?.kind === 'host') this.net.room.sendClock(clock.info());
+    this.drawClock();
+  }
+
+  private tickClock() {
+    if (this.destroyed) return;
+    const expired = this.clock?.poll();
+    if (expired) void this.onTimeout(expired);
+    this.drawClock();
+  }
+
+  /** Üst çubuktaki kalan süre */
+  private drawClock() {
+    const info = this.clock?.info();
+    let shown = info ? { players: info.players, deadline: Date.now() + info.remainingMs } : null;
+    if (this.net?.kind === 'client') {
+      const c = this.net.room.lastClock;
+      shown = c ? { players: c.players, deadline: c.receivedAt + c.remainingMs } : null;
+    }
+    const el = this.clockEl;
+    if (!shown || this.state.phase.kind === 'gameover') {
+      el.classList.add('hidden');
+      return;
+    }
+    const left = Math.max(0, shown.deadline - Date.now());
+    const warn = left <= CLOCK_WARN_MS;
+    const who = shown.players.length === 1 && shown.players[0] === this.actor() && this.state.phase.kind !== 'vote' ? '' : `${shown.players.map((p) => pname(this.state, p)).join(', ')} · `;
+    clear(el);
+    el.append(icon('clock'), `${who}${clockText(left)}`);
+    el.classList.remove('hidden');
+    el.classList.toggle('warn', warn);
+    el.title = `Tur süresi: ${who ? who.slice(0, -3) : 'kalan'} ${clockText(left)}. Süre dolunca topaç kendiliğinden çevrilir, bekleyen seçimler otomatik yapılır ve tur biter.`;
+    // Son 15 saniyede, süresi işleyen bu cihazdaki oyuncuysa her saniye tık
+    const sec = Math.ceil(left / 1000);
+    if (warn && left > 0 && sec !== this.lastTickSecond && shown.players.some((p) => this.mine(p))) {
+      this.lastTickSecond = sec;
+      play('tick');
+      if (sec === Math.ceil(CLOCK_WARN_MS / 1000)) toast('Son 15 saniye!', 'error', 2000);
+    }
+  }
+
+  /** Bu cihazdaki oyuncunun süresi doldu: açık pencereleri ve seçili eylemi kapat */
+  private timedOutHere() {
+    closeAllModals('timeout');
+    this.mode = { kind: 'none' };
+    play('timeUp');
+    toast('Süren doldu: bekleyen seçimler otomatik yapıldı.', 'error', 4000);
+    this.render();
+  }
+
+  /** Süre doldu (saati tutan tarafta): topaç, zorunlu seçimler ve tur sonu otomatik */
+  private async onTimeout(seg: ClockSegment) {
+    const names = seg.players.map((p) => pname(this.state, p)).join(', ');
+    if (this.net?.kind === 'host') this.net.room.sendTimeout(seg.players);
+    if (seg.players.some((p) => this.mine(p))) this.timedOutHere();
+    else toast(`Süre doldu: ${names}`, 'info', 3000);
+    // Hot-seat teklif yanıtı: pencere kapandı, teklif beklemede kalır; başka işlem yok
+    await this.enqueue(async () => {
+      for (const p of seg.players) {
+        for (let guard = 0; guard < 300; guard++) {
+          const a = timeoutAction(this.state, p);
+          if (!a || !(await this.commit(a, true))) break;
+        }
+      }
+    });
+    this.render();
+    void this.pump();
   }
 
   // ------------------------------------------------------------------
@@ -816,6 +921,8 @@ export class GameScreen {
   /** Hot-seat: cihazı başka oyuncuya verme ekranı. isTurn=false ise sıra değişmez (teklif, oylama). */
   private passDevice(p: number, message: string, isTurn = false): Promise<void> {
     const pl = this.state.players[p];
+    this.handoff = true;
+    this.syncClock();
     return new Promise((resolve) => {
       const btn = h('button', { class: 'btn btn-primary btn-big' }, 'Hazırım');
       const el = h(
@@ -833,6 +940,8 @@ export class GameScreen {
       );
       btn.addEventListener('click', () => {
         el.remove();
+        this.handoff = false;
+        this.syncClock();
         resolve();
       });
       document.body.appendChild(el);
@@ -840,7 +949,8 @@ export class GameScreen {
     });
   }
 
-  private async askVote(p: number): Promise<boolean> {
+  /** Oy sorar; süre dolup pencere kapandıysa null */
+  private async askVote(p: number): Promise<boolean | null> {
     const s = this.state;
     const ph = s.phase;
     const proposer = ph.kind === 'vote' ? pname(s, ph.proposer) : '?';
@@ -859,7 +969,8 @@ export class GameScreen {
       ],
       closable: false,
     });
-    return (await m.result) === 'yes';
+    const v = await m.result;
+    return v === 'timeout' ? null : v === 'yes';
   }
 
   private async askOffer(offer: Offer, allowLater: boolean): Promise<'accept' | 'reject' | 'later'> {
@@ -880,7 +991,9 @@ export class GameScreen {
       ],
       closable: false,
     });
-    return (await m.result) as 'accept' | 'reject' | 'later';
+    const v = await m.result;
+    // Süre dolarsa teklif bekleyen tekliflerde kalır
+    return v === 'timeout' ? 'later' : (v as 'accept' | 'reject' | 'later');
   }
 
   private victoryShown = false;
@@ -919,6 +1032,7 @@ export class GameScreen {
     this.renderTargets();
     this.map.setState(this.state);
     this.chat?.render();
+    this.syncClock();
   }
 
   private phaseText(): string {
@@ -985,6 +1099,7 @@ export class GameScreen {
         ),
       ),
       this.phaseSteps(),
+      this.clockEl,
       h(
         'div',
         { class: 'stats' },

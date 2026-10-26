@@ -5,8 +5,16 @@ import type { ChatMessage, ChatSend } from './chat';
  * Mesaj biçimi değişirse artırılır; farklı sürümler aynı odaya bağlanamaz.
  * 3: oyuncuya özel durum görünümü (gizli teklifler), lobide maskeli katılımcı kimlikleri.
  * 4: oyun içi sohbet (genel kanal, uçtan uca şifreli özel mesajlar, sohbet geçmişi).
+ * 5: tur süresi (clock, timeout mesajları).
  */
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
+
+/** Oda sahibinin tuttuğu tur saati: kimin süresi işliyor ve ne kadar kaldı (gönderildiği an) */
+export interface ClockMessage {
+  players: number[];
+  remainingMs: number;
+  limitMs: number;
+}
 
 /** Kopan oyuncunun dönmesi için beklenen süre; sonra bot devralır. */
 export const RECONNECT_GRACE_MS = 60_000;
@@ -39,6 +47,8 @@ export interface LobbyInfo {
   rules?: string;
   /** Kayıtlı harita kullanılıyorsa adı */
   mapName?: string;
+  /** Tur süresi (saniye; 0 ya da yok = kapalı) */
+  turnSeconds?: number;
 }
 
 /** Oyun sırasında insan koltuklarının bağlantı durumu */
@@ -83,6 +93,10 @@ export type HostMessage =
   | { t: 'closed'; reason: string }
   | { t: 'chat'; msg: ChatMessage }
   | { t: 'keys'; keys: Record<number, string> }
+  /** Tur saati değişti (null = kimsenin süresi işlemiyor) */
+  | { t: 'clock'; clock: ClockMessage | null }
+  /** Bu oyuncuların süresi doldu: açık pencerelerini kapatsınlar */
+  | { t: 'timeout'; players: number[] }
   | { t: 'ping' };
 
 /** Lobide katılanlara giden maskeli koltuk sahibi */

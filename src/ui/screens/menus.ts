@@ -26,6 +26,12 @@ import type { LobbyInfo, SeatKind } from '../../net/protocol';
 import { AUTOSAVE_ID, deleteSave, getSave, importState, listMaps, listSaves } from '../storage';
 import { inviteBox } from './online';
 import { clampInt, createRulesPanel } from './rulesPanel';
+import { TURN_TIME_CHOICES } from '../game/turnClock';
+
+/** "Kapalı", "1 dakika" … */
+export function turnTimeLabel(sec: number): string {
+  return sec <= 0 ? 'Kapalı' : `${sec / 60} dakika`;
+}
 
 export interface MenuCallbacks {
   start(state: GameState): void;
@@ -190,10 +196,17 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
     if (!room) return;
     room.setLobby(
       players.slice(0, count).map((p, i) => ({ name: p.name, color: p.color, kind: seatKinds[i], botLevel: seatKinds[i] === 'bot' ? seatBotLevels[i] : undefined })),
-      { width: clampInt(wIn.value, 20, 120), height: clampInt(hIn.value, 16, 90), seed: seedText, rules: rules.label(), mapName: savedMap()?.name },
+      { width: clampInt(wIn.value, 20, 120), height: clampInt(hIn.value, 16, 90), seed: seedText, rules: rules.label(), mapName: savedMap()?.name, turnSeconds: turnSeconds() },
     );
   };
   let seedText = String(Math.floor(Math.random() * 1_000_000));
+  // Maç ayarı: tur süresi (kurallardan bağımsız, önayarları etkilemez)
+  const timeSel = h(
+    'select',
+    { 'aria-label': 'Tur süresi', onChange: () => syncLobby() },
+    TURN_TIME_CHOICES.map((sec) => h('option', { value: sec, selected: sec === 0 }, turnTimeLabel(sec))),
+  );
+  const turnSeconds = () => Number(timeSel.value) || 0;
   const rules = createRulesPanel((what) => {
     if (what === 'size') {
       const size = rules.mapSize(count);
@@ -423,6 +436,7 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
           config,
         });
       }
+      if (turnSeconds() > 0) state.options = { turnSeconds: turnSeconds() };
       if (room) cb.startHost(state, room, 0);
       else cb.start(state);
     } catch (e) {
@@ -471,6 +485,18 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
             preview,
             previewInfo,
             mapWarn,
+          ),
+        ),
+        h(
+          'div',
+          { class: 'match-options' },
+          h('h3', {}, 'Maç ayarları'),
+          h(
+            'div',
+            { class: 'row' },
+            h('label', { title: 'Süre dolunca topaç kendiliğinden çevrilir, bekleyen zorunlu seçimler Orta bot gibi yapılır ve tur biter' }, icon('clock'), ' Tur süresi '),
+            timeSel,
+            h('span', { class: 'muted small' }, 'Süre dolunca topaç çevrilir, zorunlu seçimler otomatik yapılır, tur biter.'),
           ),
         ),
         rules.el,

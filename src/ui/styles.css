@@ -1775,3 +1775,43 @@ footer {
     bottom: 6px;
   }
 }
+
+/* ---------- tur süresi ---------- */
+.turn-clock {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  border: 2px solid var(--pencil);
+  border-radius: 999px;
+  background: #fff;
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.turn-clock .icon {
+  width: 20px;
+  height: 20px;
+}
+.turn-clock.warn {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: #ffe9e6;
+  animation: clock-pulse 1s ease-in-out infinite;
+}
+@keyframes clock-pulse {
+  50% {
+    transform: scale(1.06);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .turn-clock.warn {
+    animation: none;
+  }
+}
+.match-options {
+  margin: 6px 0 2px;
+}
+.match-options .row {
+  flex-wrap: wrap;
+}
