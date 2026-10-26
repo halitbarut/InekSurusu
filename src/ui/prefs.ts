@@ -10,10 +10,14 @@ export interface UiPrefs {
   volume: number;
   /** Sessiz mod */
   muted: boolean;
+  /** Savaştan önce önizleme (masraf, olasılık, sonuçlar) */
+  battlePreview: boolean;
+  /** Kullanılmamış savaş hakkıyla tur bitirirken hatırlat */
+  endTurnReminder: boolean;
 }
 
 const KEY = 'inek-surusu-prefs';
-const DEFAULTS: UiPrefs = { animSpeed: 'normal', fastBots: false, passScreen: true, volume: 0.7, muted: false };
+const DEFAULTS: UiPrefs = { animSpeed: 'normal', fastBots: false, passScreen: true, volume: 0.7, muted: false, battlePreview: true, endTurnReminder: true };
 
 let cache: UiPrefs | null = null;
 

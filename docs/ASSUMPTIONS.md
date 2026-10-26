@@ -383,3 +383,31 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
      değiştirilemez; "Kopyasını düzenle" kullanıcının haritalarına "(kopya)" adıyla yeni bir harita açar.
 116. Kara oranı rastgele haritalardan (%50) biraz yüksektir (Anadolu %56, Büyük kıta %53); oyuncu başına toprak
      rastgele haritalardan fazla olduğu için oyunlar biraz uzun sürer (docs/MAPS.md).
+
+## Sade arayüz ve geri bildirim
+
+117. **Kare menüsü** yalnızca eylem aşamasında, sıra bu cihazdaki oyuncudayken ve bir eylem modu seçili değilken açılır;
+     kurulum, fetih ve modlar eskisi gibi doğrudan tıklamayla çalışır. Aynı kareye ikinci tıklama, Esc, haritayı
+     kaydırmak/yakınlaştırmak ya da durumun değişmesi menüyü kapatır. Menüdeki eylemler: sahipsiz karede toprak al,
+     gemiyle/uçakla al; kendi boş karende tersane/fabrika/üs kur; tersane/fabrikada üret ve sefer; üste yık; başka
+     oyuncunun karesinde saldır (türüne göre), gemiyle/uçakla saldır, teklif hazırla ve (çevrimiçi) özel mesaj;
+     idarendeki boğazda geçiş izni. Gemiyle/uçakla eylemleri yalnızca o türden birimin varsa görünür.
+118. Eylem çubuğunda kareye bağlı altı eylem "Hedef seç" düğmesinin açtığı listeye taşındı (1–6 tuşları da çalışır);
+     eski "önce eylem, sonra hedef" akışı aynen sürer. Çubukta kalanlar: Diplomasi, Altın bozdur, Boğazlarım, Geri al,
+     Turu bitir.
+119. **Savaş önizlemesi** her savaştan (kara, başkent, üs, gemi/uçakla saldırı) önce açılır; hem kare menüsünden hem mod
+     akışından. Olasılıklar topacın yüz sayısından hesaplanır (8 yüzde kara savaşı %44 kazanma, %44 kaybetme, %12,5
+     berabere; kazanınca ortalama 3, kaybedince ortalama 1,8 toprak). Seferle saldırıda ortak sınır yoksa "toprak
+     kaybetmezsin" yazar. "Bir daha gösterme" ile ve ayarlardan kapatılabilir.
+120. **Kaynak değişimleri** yalnızca bu cihazda oynayan ve üst çubukta görünen oyuncu için uçan sayılarla gösterilir
+     (botların ve uzaktaki oyuncuların değişimleri gürültü olmasın diye gösterilmez). Değişen bütün kareler (sahiplik
+     ya da yapı) yeni sahibinin renginde kısa süre parlar.
+121. **Kenar bildirimleri:** bu cihazdaki oyuncunun karıştığı savaşlar (sana saldırı dahil), gelen teklif ve yanıtı,
+     ödenen bakım ve bakım yüzünden dağıtılan birim, elenmeler (herkes için), idareye geçen boğaz, kurulan ittifak/barış.
+     Hot-seat'te birden çok insan varsa "sen" yerine adlar yazılır. Bildirime tıklamak haritada ilgili kareye gider.
+122. Hata mesajları kaynak eksikse "Yetersiz demir: 1 demir daha lazım" biçimindedir; komşuluk, kıyı, tek savaş hakkı,
+     maden/başkent seferi, kapalı boğaz ve üs engeli için ne yapılacağını söyleyen metinler eklendi. Çevrimiçide oda
+     sahibinin ret nedeni de bu biçimde gider.
+123. **Tur sonu hatırlatması:** turu bitirirken bu tur hiç savaşılmadıysa ve karadan ya da gemi/uçakla saldırılabilecek
+     bir hedef varsa sorulur. "Bir daha hatırlatma" ile ve ayarlardan kapatılabilir. Süre dolunca otomatik biten turda
+     sorulmaz.

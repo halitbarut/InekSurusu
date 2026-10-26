@@ -24,6 +24,7 @@ import { PLAYER_COLORS } from '../playerStyle';
 import { BUILTIN_MAPS, findBuiltinMap, type BuiltinMap } from '../../maps/builtin';
 import { getPrefs, setPrefs } from '../prefs';
 import { soundControls } from '../sound';
+import { guidanceControls } from '../settings';
 import type { HostRoom } from '../../net/hostRoom';
 import type { LobbyInfo, SeatKind } from '../../net/protocol';
 import { AUTOSAVE_ID, deleteSave, getSave, importSave, listMaps, listSaves } from '../storage';
@@ -119,6 +120,7 @@ function openSettings() {
       fast,
       h('label', {}, 'Hot-seat sıra geçiş ekranı ("Sıra: X")'),
       pass,
+      ...guidanceControls(),
       soundControls(),
     ),
     buttons: [{ label: 'Tamam', value: 'ok', primary: true }],

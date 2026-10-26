@@ -31,6 +31,9 @@ import {
   validateAction,
   UndoHistory,
   ReplayRecorder,
+  expeditionCheck,
+  neighbors4,
+  seriesWinProbability,
   redactReplay,
   type ReplayData,
   type Action,
@@ -50,6 +53,7 @@ import {
   STRUCT_NAME,
   UNIT_ICON,
   actionLabel,
+  dat,
   eventIcon,
   fmtNum,
   formatEvent,
@@ -73,7 +77,10 @@ import { HATCH_NAME, playerHatch, playerSwatch } from '../playerStyle';
 import { renderSummary } from './summary';
 import { ChatPanel } from './chatPanel';
 import { CLOCK_WARN_MS, TurnClock, clockSegment, clockText, type ClockSegment } from './turnClock';
+import { TileMenu, tileMenuModel, type RoutePreview, type TileAction } from './tileMenu';
+import { actionCost, clearNotices, dec, explainProblem, floatText, landOdds, notify, pct, shortfall } from './feedback';
 import { play, playSpin, setMuted, soundControls } from '../sound';
+import { guidanceControls } from '../settings';
 
 type Mode =
   | { kind: 'none' }
@@ -120,6 +127,9 @@ export interface GameScreenCallbacks {
 
 const zeroRes = (): Record<ResourceKey, number> => ({ akce: 0, gold: 0, oil: 0, iron: 0, steel: 0 });
 
+/** Kareye bağlı eylem modları (eylem çubuğunda "Hedef seç" altında; 1–6 tuşları) */
+const MODE_ACTIONS = ['claim', 'build', 'produce', 'attack', 'ship', 'plane'];
+
 export class GameScreen {
   state: GameState;
   private root: HTMLElement;
@@ -153,6 +163,17 @@ export class GameScreen {
   private responseSeg: ClockSegment | null = null;
   /** Oyun tekrarı kaydı: oyunu yürüten tarafta (yerel oyun, oda sahibi) */
   private recorder: ReplayRecorder | null = null;
+  /** Kare menüsü (eylem aşamasında mod seçili değilken kareye tıklayınca) */
+  private tileMenu = new TileMenu();
+  /** Menüde ya da sefer modunda üzerine gelinen hedefin rotası */
+  private hoverRoute: RoutePreview | null = null;
+  /** Son çizilen hedef vurgusu (rota önizlemesi bunun üstüne eklenir) */
+  private lastHl: Highlight = {};
+  /** Üst çubuktaki kaynak sayıları (uçan "+300 akçe" yazıları için) */
+  private statEls = new Map<ResourceKey, HTMLElement>();
+  /** Eylem çubuğunda "Hedef seç" açılır listesi açık mı */
+  private modesOpen = false;
+  private elModesPop = h('div', { class: 'modes-pop hidden', role: 'menu', 'aria-label': 'Hedef seç' });
   /** Açık tekrar oynatıcısı (zafer ekranından) */
   private replayView: { screen: ReplayScreen; layer: HTMLElement } | null = null;
 
@@ -187,8 +208,14 @@ export class GameScreen {
     this.root = this.buildLayout();
     host.appendChild(this.root);
     this.map = new MapView(this.elMapWrap);
-    this.map.onTileClick = (t) => void this.onTileClick(t);
+    this.map.onTileClick = (t, x, y) => void this.onTileClick(t, x, y);
     this.map.onHover = (t, x, y) => this.onHover(t, x, y);
+    this.map.onViewChange = () => this.tileMenu.close();
+    this.tileMenu.onPick = (a) => this.pickTileAction(a);
+    this.tileMenu.onFocusAction = (a) => {
+      this.hoverRoute = a?.route ?? null;
+      this.applyHighlight();
+    };
     document.addEventListener('keydown', this.keyHandler);
     this.render();
     void this.pump();
@@ -201,6 +228,7 @@ export class GameScreen {
     if (this.presenceTimer) clearInterval(this.presenceTimer);
     if (this.clockTimer) clearInterval(this.clockTimer);
     this.connEl?.remove();
+    clearNotices();
     if (this.net?.kind === 'host') this.net.room.close();
     else if (this.net?.kind === 'client') this.net.room.leave();
     document.removeEventListener('keydown', this.keyHandler);
@@ -270,6 +298,7 @@ export class GameScreen {
           this.elMapWrap,
           this.elBanner,
           this.elTip,
+          this.tileMenu.el,
           this.chat?.el,
           h(
             'div',
@@ -287,7 +316,7 @@ export class GameScreen {
           h('section', { class: 'log-section' }, h('h3', {}, 'Olay günlüğü'), this.elLog),
         ),
       ),
-      h('footer', {}, this.elActions),
+      h('footer', { class: 'game-footer' }, this.elModesPop, this.elActions),
       this.elActionTip,
     );
   }
@@ -455,7 +484,9 @@ export class GameScreen {
     const entry = this.history.undo();
     if (!entry) return;
     this.recorder?.pop();
+    const prev = this.state;
     this.state = entry.state;
+    this.feedback(prev, this.state, []);
     this.targetCache = null;
     if (this.mode.kind === 'offerTiles') this.mode = { kind: 'none' };
     if (this.net?.kind === 'host') this.net.room.broadcastUpdate(this.state, [], origin, this.undoCount(this.state));
@@ -473,13 +504,17 @@ export class GameScreen {
   /** İnsan eylemi: doğrula, uygula (ya da oda sahibine gönder), animasyonları oynat, akışı sürdür. */
   async act(action: Action): Promise<boolean> {
     if (this.busy) return false;
+    this.tileMenu.close();
+    // Savaştan önce önizleme: masraf, olasılık, kazanınca/kaybedince
+    if (this.isBattle(action) && getPrefs().battlePreview && validateAction(this.state, action).ok && !(await this.confirmBattle(action))) return false;
+    if (this.busy) return false;
     this.busy = true;
     let ok = false;
     try {
       const net = this.net;
       if (net?.kind === 'client') {
         const v = validateAction(this.state, action);
-        if (!v.ok) toast(v.reason, 'error');
+        if (!v.ok) toast(explainProblem(this.state, action, v.reason), 'error');
         else {
           const r = await net.room.sendAction(action);
           if (!r.ok) toast(r.reason, 'error');
@@ -500,8 +535,9 @@ export class GameScreen {
   private async commit(action: Action, byBot = false, origin?: { clientId: string; reqId: number }): Promise<boolean> {
     const v = validateAction(this.state, action);
     if (!v.ok) {
-      this.lastError = v.reason;
-      if (!byBot && !origin) toast(v.reason, 'error');
+      // Ne yapılması gerektiğini söyleyen metin (katılana da bu gider)
+      this.lastError = explainProblem(this.state, action, v.reason);
+      if (!byBot && !origin) toast(this.lastError, 'error');
       return false;
     }
     const r = dispatch(this.state, action);
@@ -512,9 +548,11 @@ export class GameScreen {
     if (this.net?.kind === 'host') this.net.room.broadcastUpdate(r.state, r.events, origin, this.undoCount(r.state));
     // Animasyonlar (topaç, savaş, sefer) eski durum üzerinde oynar, sonuç sonra görünür
     await this.animate(r.events, byBot, r.state);
+    const prev = this.state;
     this.state = r.state;
     this.targetCache = null;
     this.render();
+    this.feedback(prev, r.state, r.events);
     for (const e of r.events) {
       if (e.type !== 'offer_made') continue;
       if (this.mine(e.offer.to) && this.state.players[e.offer.to].kind === 'human') play('offer');
@@ -522,6 +560,238 @@ export class GameScreen {
     }
     if (action.type === 'END_TURN' || r.events.some((e) => e.type === 'game_over')) this.autosave();
     return true;
+  }
+
+  // ------------------------------------------------------------------
+  // Eylem sonrası geri bildirim
+  // ------------------------------------------------------------------
+
+  /** Durum değişti: değişen kareler parlar, kaynak değişimleri uçan sayılarla, önemli olaylar kenar bildirimiyle */
+  private feedback(prev: GameState, next: GameState, events: GameEvent[]) {
+    if (this.destroyed) return;
+    this.tileMenu.close();
+    const byColor = new Map<string, number[]>();
+    for (let i = 0; i < next.owner.length; i++) {
+      if (prev.owner[i] === next.owner[i] && prev.structure[i] === next.structure[i]) continue;
+      const o = next.owner[i];
+      const col = o === null ? '#3b3a36' : next.players[o].color;
+      const list = byColor.get(col) ?? [];
+      list.push(i);
+      byColor.set(col, list);
+    }
+    for (const [col, tiles] of byColor) this.map.flash(tiles, col);
+    // Kaynak değişimleri: üst çubukta görünen, bu cihazda oynayan oyuncu için
+    const p = this.actorOf(next);
+    if (this.mine(p) && next.players[p]?.kind === 'human' && prev.players[p]) {
+      let k = 0;
+      for (const key of RESOURCE_KEYS) {
+        const d = next.players[p].resources[key] - prev.players[p].resources[key];
+        const el = this.statEls.get(key);
+        if (d && el) floatText(el, `${d > 0 ? '+' : '−'}${fmtNum(Math.abs(d))} ${RES_NAME[key].toLocaleLowerCase('tr')}`, d > 0 ? 'good' : 'bad', 140 * k++);
+      }
+    }
+    for (const e of events) this.noticeFor(next, e);
+  }
+
+  /** Önemli olaylar ekranın kenarında kısa bildirim olarak */
+  private noticeFor(s: GameState, e: GameEvent) {
+    const mine = (p: number) => this.mine(p) && s.players[p]?.kind === 'human';
+    const N = (p: number) => pname(s, p);
+    // Hot-seat'te birden çok insan varsa "sen" yerine adlar
+    const named = !this.net && this.humanCount() > 1;
+    switch (e.type) {
+      case 'battle': {
+        const atk = mine(e.attacker);
+        const def = mine(e.defender);
+        if (!atk && !def) return;
+        const aWon = e.kind === 'land' ? e.gain > 0 : e.success;
+        const dWon = e.kind === 'land' ? e.loss > 0 : !e.success;
+        const meAtk = atk;
+        const won = meAtk ? aWon : dWon;
+        const lost = meAtk ? dWon : aWon;
+        const what = e.kind === 'capital' ? 'Başkent savaşı' : e.kind === 'base' ? 'Üs savaşı' : 'Savaş';
+        const text =
+          e.kind === 'land'
+            ? e.gain > 0
+              ? `${e.rounds[0].a}–${e.rounds[0].d}: ${N(e.attacker)} ${e.gain} toprak alıyor`
+              : e.loss > 0
+                ? `${e.rounds[0].a}–${e.rounds[0].d}: karşı saldırı, ${N(e.defender)} ${e.loss} toprak alıyor`
+                : `${e.rounds[0].a}–${e.rounds[0].d}: berabere, kimse toprak almadı`
+            : e.success
+              ? e.kind === 'capital'
+                ? `${N(e.defender)} elendi`
+                : 'Üs ele geçirildi'
+              : `${e.kind === 'capital' ? 'Başkent' : 'Üs'} dayandı`;
+        const title = named
+          ? `${N(e.attacker)} → ${N(e.defender)}: ${what.toLocaleLowerCase('tr')}`
+          : def && !atk
+            ? `${N(e.attacker)} sana saldırdı!`
+            : won
+              ? `${what} kazandın`
+              : lost
+                ? `${what} kaybettin`
+                : `${what} berabere`;
+        notify({ icon: e.kind === 'land' ? 'attack' : STRUCT_ICON[e.kind], title, text, kind: named ? 'info' : won ? 'good' : lost ? 'bad' : 'info', onClick: () => this.map.centerOn(e.target) });
+        return;
+      }
+      case 'offer_made':
+        if (mine(e.offer.to)) notify({ icon: 'diplomacy', title: `${gen(N(e.offer.from))} teklifi${named ? ` → ${N(e.offer.to)}` : ''}`, text: offerText(s, e.offer) || undefined, kind: 'info' });
+        return;
+      case 'offer_response':
+        if (mine(e.from) && !mine(e.to) && !e.failedReason) notify({ icon: 'diplomacy', title: `${N(e.to)} teklifi ${e.accepted ? 'kabul etti' : 'reddetti'}`, kind: e.accepted ? 'good' : 'info' });
+        if (mine(e.from) && e.failedReason) notify({ icon: 'warning', title: 'Teklif geçersiz oldu', text: e.failedReason, kind: 'bad' });
+        return;
+      case 'upkeep':
+        if (mine(e.player)) {
+          const parts = [e.ships ? `${e.ships} gemi` : '', e.planes ? `${e.planes} uçak` : '', e.bases ? `${e.bases} üs` : ''].filter(Boolean).join(', ');
+          notify({ icon: 'upkeep', title: `${named ? `${N(e.player)}: b` : 'B'}akım ödendi: ${fmtNum(e.amount)} akçe`, text: parts, kind: 'info', ms: 4000 });
+        }
+        return;
+      case 'disband':
+        if (mine(e.player) && !e.voluntary) notify({ icon: 'upkeep', title: 'Bakım ödenemedi', text: formatEvent(s, e) ?? undefined, kind: 'bad', onClick: () => this.map.centerOn(e.tile) });
+        return;
+      case 'eliminated':
+        notify({ icon: 'eliminated', title: `${N(e.player)} elendi`, text: `Her şeyi ${dat(N(e.by))} geçti`, kind: mine(e.player) ? 'bad' : mine(e.by) ? 'good' : 'info', ms: 8000 });
+        return;
+      case 'strait_control':
+        if (e.controller !== null && mine(e.controller)) notify({ icon: 'strait', title: `${straitLabel(e.straitId)} boğazı ${named ? N(e.controller) : 'senin'} idarende`, text: 'Boğazlar panelinden geçiş izni ve vergi belirleyebilirsin', kind: 'good', onClick: () => this.map.centerOn(s.map.straits[e.straitId].tiles[0]) });
+        return;
+      case 'alliance_formed':
+      case 'peace_made':
+        if (mine(e.a) || mine(e.b)) notify({ icon: e.type === 'alliance_formed' ? 'alliance' : 'peace', title: formatEvent(s, e) ?? '', kind: 'good' });
+        return;
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // Savaş önizlemesi
+  // ------------------------------------------------------------------
+
+  /** Savaş başlatan eylem mi? (kara saldırısı ya da sahipli toprağa sefer) */
+  private isBattle(a: Action): a is Extract<Action, { type: 'ATTACK' | 'SHIP_EXPEDITION' | 'PLANE_EXPEDITION' }> {
+    if (a.type === 'ATTACK') return true;
+    return (a.type === 'SHIP_EXPEDITION' || a.type === 'PLANE_EXPEDITION') && this.state.owner[a.target] !== null;
+  }
+
+  /** Masraf, kazanınca/kaybedince ne olacağı ve olasılık; oyuncu onaylarsa true */
+  private async confirmBattle(a: Extract<Action, { type: 'ATTACK' | 'SHIP_EXPEDITION' | 'PLANE_EXPEDITION' }>): Promise<boolean> {
+    const s = this.state;
+    const c = s.config;
+    const me = a.player;
+    const def = s.owner[a.target]!;
+    const kind = battleKindAt(s, a.target);
+    const via = a.type === 'ATTACK' ? '' : a.type === 'SHIP_EXPEDITION' ? ' (gemiyle)' : ' (uçakla)';
+    const cost = actionCost(s, a);
+    const costText = cost
+      ? (['akce', 'iron', 'steel', 'oil'] as const)
+          .filter((k) => cost[k])
+          .map((k) => `${fmtNum(cost[k]!)} ${RES_NAME[k].toLocaleLowerCase('tr')}`)
+          .join(' + ')
+      : '';
+    // Seferde rota ve boğazlar
+    let routeRow: Child = null;
+    if (a.type !== 'ATTACK') {
+      const unit = s.units.find((u) => u.id === a.unitId);
+      const chk = expeditionCheck(s, a);
+      if (unit && chk.ok) {
+        this.hoverRoute = { from: unit.tile, path: chk.route.path, tolls: chk.route.tolls };
+        this.applyHighlight();
+        const crossed = routeStraits(s, me, chk.route.path, chk.route.tolls);
+        routeRow = row('strait', 'Rota', crossed.length ? crossed.join(' · ') : `${chk.route.path.length} kare, boğaz yok`);
+      }
+    }
+    const odds = landOdds(c.spinFaces);
+    const streak = kind === 'capital' ? c.capitalStreak : c.baseStreak;
+    const sw = seriesWinProbability(streak);
+    // Seferle saldırıda kaybedince savunan yalnızca ortak sınırdan toprak alabilir
+    let border = a.type === 'ATTACK';
+    if (!border) for (let i = 0; i < s.owner.length && !border; i++) if (s.owner[i] === me && neighbors4(s.map, i).some((n) => s.owner[n] === def)) border = true;
+    const win =
+      kind === 'capital'
+        ? `${pname(s, def)} elenir: bütün toprakları, birimleri ve kaynakları sana geçer.`
+        : kind === 'base'
+          ? 'Askeri üs ve karesi senin olur.'
+          : `Fark kadar toprak alırsın: 1–${odds.maxGain}, ortalama ${dec(odds.avgGain)}.${a.type === 'ATTACK' ? '' : ' Hedef kare ve yanındakilerden seçersin.'}`;
+    const lose =
+      kind !== 'land'
+        ? 'Toprak kaybın yok; yalnızca masraf gider.'
+        : border
+          ? `${pname(s, def)} farkın yarısı kadar (yukarı yuvarlanır) toprağını alır: 1–${odds.maxLoss}, ortalama ${dec(odds.avgLoss)}.`
+          : `Ortak sınırınız olmadığı için toprak kaybetmezsin; yalnızca masraf gider.`;
+    const chance = kind === 'land' ? `${pct(odds.win)} kazanma · ${pct(odds.lose)} kaybetme · ${pct(odds.tie)} berabere` : `${streak} kez art arda yüksek atmalısın: 1/${Math.round(1 / sw)} (${pct(sw)})`;
+    const dont = h('input', { type: 'checkbox' });
+    const m = openModal({
+      title: `${kind === 'capital' ? 'Başkent savaşı' : kind === 'base' ? 'Üs savaşı' : 'Savaş'}${via}`,
+      icon: kind === 'land' ? 'attack' : STRUCT_ICON[kind],
+      body: h(
+        'div',
+        { class: 'battle-preview' },
+        row('tiles', 'Hedef', `${pname(s, def)} · ${tileLabel(s, a.target)}`),
+        row('akce', 'Masraf', `${costText || 'masrafsız'} (sonuç ne olursa olsun ödenir)`),
+        routeRow,
+        row('check', 'Kazanırsan', win, 'good'),
+        row('warning', 'Kaybedersen', lose, 'bad'),
+        kind === 'land' ? row('spin', 'Berabere', `${pct(odds.tie)}: kimse toprak almaz.`) : null,
+        row('dice', 'Olasılık', chance),
+        h('p', { class: 'muted small' }, 'Bu, bu turdaki tek savaş hakkın.'),
+        h('label', { class: 'small' }, dont, ' Bir daha gösterme (ayarlardan açılır)'),
+      ),
+      buttons: [
+        { label: 'Vazgeç', value: 'no' },
+        { label: 'Saldır', value: 'yes', primary: true },
+      ],
+    });
+    const ok = (await m.result) === 'yes';
+    if (dont.checked) setPrefs({ battlePreview: false });
+    this.hoverRoute = null;
+    this.applyHighlight();
+    return ok;
+  }
+
+  // ------------------------------------------------------------------
+  // Kare menüsü ve rota önizlemesi
+  // ------------------------------------------------------------------
+
+  private openTileMenu(t: number, cx: number, cy: number) {
+    const model = tileMenuModel(this.state, this.actor(), t, { chat: (seat) => !!this.chat && !!this.net && this.net.room.privateProblem(seat) === null });
+    if (!model) {
+      this.tileMenu.close();
+      return;
+    }
+    this.tileMenu.open(t, model, cx, cy, this.elMapWrap.getBoundingClientRect());
+  }
+
+  private pickTileAction(a: TileAction) {
+    const p = a.pick;
+    switch (p.kind) {
+      case 'act':
+        void this.act(p.action);
+        return;
+      case 'expeditionMode':
+        this.setMode({ kind: 'expedition', unit: p.unit, unitId: p.unitId });
+        return;
+      case 'composer':
+        this.openComposer(this.newDraft(p.to));
+        return;
+      case 'chat':
+        this.chat?.openPrivate(p.to);
+        return;
+      case 'straits':
+        this.openStraits();
+        return;
+    }
+  }
+
+  /** Son hedef vurgusu + (varsa) üzerine gelinen seferin rotası ve boğaz vergileri */
+  private applyHighlight() {
+    const r = this.hoverRoute;
+    if (!r) {
+      this.map.setHighlight(this.lastHl);
+      return;
+    }
+    const m = this.state.map;
+    const labels = r.tolls.map((t) => ({ tile: r.path.find((x) => m.straitOf[x] === t.straitId) ?? m.straits[t.straitId].tiles[0], text: `${t.amount} akçe` }));
+    this.map.setHighlight({ ...this.lastHl, route: [r.from, ...r.path], labels });
   }
 
   private async animate(events: GameEvent[], byBot: boolean, s: GameState) {
@@ -575,17 +845,6 @@ export class GameScreen {
           break;
         case 'eliminated':
           play('capitalFall');
-          toast(formatEvent(s, e) ?? '', 'error', 4500);
-          break;
-        case 'offer_response':
-          if (mine(e.from) && (this.net || !isHuman(e.to))) toast(formatEvent(s, e) ?? '', e.accepted ? 'good' : 'info', 3500);
-          break;
-        case 'alliance_formed':
-        case 'peace_made':
-          if (mine(e.a) || mine(e.b)) toast(formatEvent(s, e) ?? '', 'good', 3500);
-          break;
-        case 'income':
-          if (mine(e.player) && !getPrefs().fastBots) toast(formatEvent(s, e) ?? '', 'info', 2500);
           break;
       }
     }
@@ -679,9 +938,11 @@ export class GameScreen {
         void this.enqueue(async () => {
           const byBot = state.players[this.actorOf(state)]?.kind === 'bot';
           await this.animate(events, byBot, state);
+          const prev = this.state;
           this.state = state;
           this.targetCache = null;
           this.render();
+          this.feedback(prev, state, events);
           for (const e of events) {
             if (e.type !== 'offer_made' || !this.mine(e.offer.to)) continue;
             play('offer');
@@ -1229,6 +1490,11 @@ export class GameScreen {
     const res = p.resources;
     clear(this.elTop);
     const stat = (ic: IconName, value: Child, title: string, cls = '') => h('span', { class: `stat ${cls}`, title, 'aria-label': `${title}: ${typeof value === 'string' || typeof value === 'number' ? value : ''}` }, icon(ic), h('b', {}, value));
+    const resStat = (k: ResourceKey) => {
+      const el = stat(RES_ICON[k], fmtNum(res[k]), RES_NAME[k]);
+      this.statEls.set(k, el);
+      return el;
+    };
     this.elTop.append(
       h(
         'div',
@@ -1246,7 +1512,7 @@ export class GameScreen {
       h(
         'div',
         { class: 'stats' },
-        RESOURCE_KEYS.map((k) => stat(RES_ICON[k], fmtNum(res[k]), RES_NAME[k])),
+        RESOURCE_KEYS.map((k) => resStat(k)),
         h('span', { class: 'stat-sep', 'aria-hidden': 'true' }),
         stat('tiles', st.tiles, 'Toprak'),
         stat('ship', st.ships, 'Gemi'),
@@ -1377,7 +1643,7 @@ export class GameScreen {
       const own = kind === 'ship' ? ships : planes;
       const oil = kind === 'ship' ? c.shipOilCost : c.planeOilCost;
       if (own.length === 0) return kind === 'ship' ? 'Gemin yok: tersane kurup gemi üret' : 'Uçağın yok: uçak fabrikası kurup uçak üret';
-      if (res.oil < oil) return `Sefer için ${oil} petrol gerekli (sende ${res.oil})`;
+      if (res.oil < oil) return `${shortfall(res, { oil })} (sefer başına ${oil} petrol)`;
       if (readyUnits(s, me, kind).length === 0) return 'Bu tur sefere çıkabilecek birim kalmadı';
       return null;
     };
@@ -1398,7 +1664,7 @@ export class GameScreen {
         icon: 'claim',
         label: 'Toprak al',
         desc: `Toprağına komşu sahipsiz bir kareyi ${c.claimCost} akçeye al. Savaş sayılmaz.`,
-        reason: only(res.akce < c.claimCost ? `${c.claimCost} akçe gerekli (sende ${fmtNum(res.akce)})` : claimableTiles(s, me).length === 0 ? 'Toprağına komşu sahipsiz kara yok' : null),
+        reason: only(res.akce < c.claimCost ? shortfall(res, { akce: c.claimCost }) : claimableTiles(s, me).length === 0 ? 'Toprağına komşu sahipsiz kara yok: gemi ya da uçakla uzaktaki karaları alabilirsin' : null),
         active: m.kind === 'claim',
         onClick: toggle({ kind: 'claim' }),
       },
@@ -1407,7 +1673,7 @@ export class GameScreen {
         icon: 'build',
         label: 'İnşa et',
         desc: `Tersane ${c.shipyardCost}, uçak fabrikası ${c.factoryCost}, askeri üs ${c.baseCost} akçe.`,
-        reason: only(res.akce < cheapest ? `En ucuz yapı ${cheapest} akçe (sende ${fmtNum(res.akce)})` : null),
+        reason: only(res.akce < cheapest ? `${shortfall(res, { akce: cheapest })} (en ucuz yapı ${cheapest} akçe)` : null),
         active: m.kind === 'build',
         onClick: () => this.openBuildDialog(),
       },
@@ -1420,7 +1686,7 @@ export class GameScreen {
           !hasYard
             ? 'Önce tersane ya da uçak fabrikası kur'
             : producibleTiles(s, me, 'ship').length + producibleTiles(s, me, 'plane').length === 0
-              ? 'Kaynak yetersiz (demir/çelik ve akçe)'
+              ? shortfall(res, { iron: c.shipIronCost, akce: c.shipAkceCost }) ?? shortfall(res, { steel: c.planeSteelCost, akce: c.planeAkceCost }) ?? 'Kaynak yetersiz'
               : null,
         ),
         active: m.kind === 'produce',
@@ -1456,7 +1722,7 @@ export class GameScreen {
       {
         id: 'exchange',
         icon: 'exchange',
-        label: 'Bozdur',
+        label: 'Altın bozdur',
         desc: `Altını akçeye çevir: 1 altın = ${c.goldToAkce} akçe.`,
         reason: !human ? phaseReason : ph !== 'actions' && ph !== 'spin' && ph !== 'upkeep' ? phaseReason : res.gold <= 0 ? 'Bozdurulacak altının yok' : null,
         onClick: () => this.openGoldDialog(),
@@ -1473,7 +1739,7 @@ export class GameScreen {
       {
         id: 'strait',
         icon: 'strait',
-        label: 'Boğazlar',
+        label: 'Boğazlarım',
         desc: 'Boğazların durumu; idarendekiler için geçiş izni ve vergi.',
         reason: human && ph !== 'setup_capital' && ph !== 'setup_territory' ? null : phaseReason,
         onClick: () => this.openStraits(),
@@ -1500,7 +1766,36 @@ export class GameScreen {
 
   private renderActions() {
     clear(this.elActions);
-    for (const a of this.actionInfos()) {
+    const infos = this.actionInfos();
+    const modes = infos.filter((a) => MODE_ACTIONS.includes(a.id));
+    // Genel eylemler görev sırasıyla: diplomasi, altın bozdur, boğazlarım, geri al, turu bitir
+    const order = ['diplomacy', 'exchange', 'strait', 'undo', 'end'];
+    const general = infos.filter((a) => !MODE_ACTIONS.includes(a.id)).sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+    // Kareye bağlı eylemlerin eski "önce eylem, sonra hedef" akışı: Hedef seç listesinde
+    const activeMode = modes.find((a) => a.active);
+    const modesBtn: ActionInfo = {
+      id: 'modes',
+      icon: activeMode?.icon ?? 'claim',
+      label: activeMode ? activeMode.label : 'Hedef seç',
+      desc: 'Önce eylemi seç, sonra haritada hedefini: Toprak al, İnşa et, Üret, Saldır, Gemi ve Uçak seferi (1–6 tuşları). Kareye tıklamak da aynı eylemleri gösterir.',
+      reason: modes.every((a) => a.reason) ? modes[0]?.reason ?? null : null,
+      active: this.modesOpen || !!activeMode,
+      cls: 'modes-btn',
+      onClick: () => {
+        this.modesOpen = !this.modesOpen;
+        this.tileMenu.close();
+        this.renderActions();
+      },
+    };
+    const list = [modesBtn, ...general];
+    clear(this.elModesPop);
+    this.elModesPop.classList.toggle('hidden', !this.modesOpen);
+    if (this.modesOpen) modes.forEach((a, i) => this.elModesPop.append(this.actionButton(a, `${i + 1}`)));
+    for (const a of list) this.elActions.appendChild(this.actionButton(a));
+  }
+
+  private actionButton(a: ActionInfo, key?: string): HTMLElement {
+    {
       const b = h(
         'button',
         {
@@ -1514,6 +1809,7 @@ export class GameScreen {
         },
         icon(a.icon, { cls: 'ab-icon' }),
         h('span', { class: 'ab-label' }, a.label),
+        key ? h('kbd', { class: 'ab-key' }, key) : null,
         a.badge ? h('span', { class: 'badge', 'aria-label': `${a.badge} bekleyen teklif` }, a.badge) : null,
       );
       const show = () => this.showActionTip(b, a);
@@ -1521,7 +1817,7 @@ export class GameScreen {
       b.addEventListener('focus', show);
       b.addEventListener('pointerleave', () => this.elActionTip.classList.add('hidden'));
       b.addEventListener('blur', () => this.elActionTip.classList.add('hidden'));
-      this.elActions.appendChild(b);
+      return b;
     }
   }
 
@@ -1539,13 +1835,54 @@ export class GameScreen {
 
   private setMode(mode: Mode) {
     this.mode = mode;
+    this.modesOpen = false;
+    this.tileMenu.close();
     this.targetCache = null;
     this.render();
   }
 
   private async endTurn() {
     this.mode = { kind: 'none' };
-    await this.act({ type: 'END_TURN', player: this.state.currentPlayer });
+    const s = this.state;
+    const me = s.currentPlayer;
+    if (getPrefs().endTurnReminder && this.isHumanTurn() && s.phase.kind === 'actions' && !battleUsed(s, me)) {
+      const targets = this.attackOptions(me);
+      if (targets.land + targets.sea > 0 && !(await this.askEndTurn(targets))) return;
+    }
+    await this.act({ type: 'END_TURN', player: me });
+  }
+
+  /** Bu tur hâlâ saldırabileceği hedefler: karadan ve gemi/uçakla */
+  private attackOptions(me: number): { land: number; sea: number } {
+    const s = this.state;
+    const land = attackableTiles(s, me).filter((t) => validateAction(s, { type: 'ATTACK', player: me, target: t }).ok).length;
+    const sea = new Set<number>();
+    for (const kind of ['ship', 'plane'] as const) {
+      for (const u of readyUnits(s, me, kind)) for (const t of expeditionTargets(s, me, u.id).values()) if (t.kind !== 'claim') sea.add(t.tile);
+    }
+    return { land, sea: sea.size };
+  }
+
+  /** Kullanılmamış savaş hakkı için hafif hatırlatma; turu bitirmek istiyorsa true */
+  private async askEndTurn(targets: { land: number; sea: number }): Promise<boolean> {
+    const dont = h('input', { type: 'checkbox' });
+    const m = openModal({
+      title: 'Savaş hakkın duruyor',
+      icon: 'attack',
+      body: h(
+        'div',
+        {},
+        h('p', {}, `Bu tur hiç savaşmadın. Saldırabileceğin yerler var: ${[targets.land ? `karadan ${targets.land} kare` : '', targets.sea ? `gemi/uçakla ${targets.sea} kare` : ''].filter(Boolean).join(', ')}. Savaş hakkı sonraki tura birikmez.`),
+        h('label', { class: 'small' }, dont, ' Bir daha hatırlatma (ayarlardan açılır)'),
+      ),
+      buttons: [
+        { label: 'Geri dön', value: 'back' },
+        { label: 'Turu bitir', value: 'end', primary: true },
+      ],
+    });
+    const v = await m.result;
+    if (dont.checked) setPrefs({ endTurnReminder: false });
+    return v === 'end';
   }
 
   private setBanner(text: Child, buttons: { label: string; onClick: () => void; primary?: boolean; icon?: IconName }[] = [], ic?: IconName) {
@@ -1586,13 +1923,15 @@ export class GameScreen {
     this.elBanner.classList.add('hidden');
     if (s.phase.kind === 'gameover') {
       this.setBanner('Oyun bitti.', [{ label: 'Ana menü', onClick: () => this.cb.toMenu() }], 'trophy');
-      this.map.setHighlight(hl);
+      this.lastHl = hl;
+      this.applyHighlight();
       return;
     }
     if (!this.isHumanTurn()) {
       const a = this.state.players[this.actor()];
       this.setBanner(this.waitingText(), [], this.state.phase.kind === 'vote' ? 'vote' : a?.kind === 'bot' ? 'bot' : 'hourglass');
-      this.map.setHighlight(hl);
+      this.lastHl = hl;
+      this.applyHighlight();
       return;
     }
     const cancel = { label: 'İptal', onClick: () => this.setMode({ kind: 'none' }) };
@@ -1646,7 +1985,7 @@ export class GameScreen {
       const mode = this.mode;
       switch (mode.kind) {
         case 'none':
-          this.setBanner('Aşağıdan bir eylem seç ya da turu bitir. Haritayı sürükleyerek kaydır, tekerlekle yakınlaş.', [], 'build');
+          this.setBanner('Bir kareye tıkla: o karede yapabileceklerin ve bedelleri çıkar. Diplomasi, bozdurma ve tur sonu aşağıda.', [], 'build');
           break;
         case 'claim': {
           const t = claimableTiles(s, me);
@@ -1757,7 +2096,10 @@ export class GameScreen {
         }
       }
     }
-    this.map.setHighlight(hl);
+    this.lastHl = hl;
+    // Menü kapalıyken ve sefer modunda değilken eski rota önizlemesi kalmasın
+    if (!this.tileMenu.isOpen && this.mode.kind !== 'expedition') this.hoverRoute = null;
+    this.applyHighlight();
   }
 
   // ------------------------------------------------------------------
@@ -1767,7 +2109,26 @@ export class GameScreen {
   private onKey(e: KeyboardEvent) {
     if (document.querySelector('.modal-backdrop, .overlay, .replay-layer')) return;
     if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
+    if (e.key === 'Escape' && this.tileMenu.isOpen) {
+      this.tileMenu.close();
+      return;
+    }
+    if (e.key === 'Escape' && this.modesOpen) {
+      this.modesOpen = false;
+      this.renderActions();
+      return;
+    }
     if (e.key === 'Escape' && this.mode.kind !== 'none') this.setMode({ kind: 'none' });
+    // 1–6: kareye bağlı eylem modları (Toprak al, İnşa, Üret, Saldır, Gemi, Uçak)
+    if (/^[1-6]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const a = this.actionInfos().filter((x) => MODE_ACTIONS.includes(x.id))[Number(e.key) - 1];
+      if (a) {
+        e.preventDefault();
+        if (a.reason) toast(a.reason, 'error');
+        else a.onClick();
+      }
+      return;
+    }
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
       e.preventDefault();
       void this.undoLast();
@@ -1779,7 +2140,7 @@ export class GameScreen {
     }
   }
 
-  private async onTileClick(t: number) {
+  private async onTileClick(t: number, cx = 0, cy = 0) {
     if (this.busy || !this.isHumanTurn()) return;
     const s = this.state;
     const me = this.actor();
@@ -1789,6 +2150,12 @@ export class GameScreen {
     if (ph.kind === 'conquest') return void this.act({ type: 'CONQUER_TILE', player: me, tile: t });
     if (ph.kind !== 'actions') return;
     const mode = this.mode;
+    // Mod seçili değilken: o karede yapılabilecekleri gösteren menü (aynı kareye ikinci tıklama kapatır)
+    if (mode.kind === 'none') {
+      if (this.tileMenu.isOpen && this.tileMenu.tile === t) this.tileMenu.close();
+      else this.openTileMenu(t, cx, cy);
+      return;
+    }
     switch (mode.kind) {
       case 'claim':
         await this.act({ type: 'CLAIM_TILE', player: me, tile: t });
@@ -1832,8 +2199,6 @@ export class GameScreen {
         this.render();
         break;
       }
-      case 'none':
-        break;
     }
   }
 
@@ -1887,13 +2252,24 @@ export class GameScreen {
       if (mode.kind === 'claim') hint = { type: 'CLAIM_TILE', player: me, tile: t };
       if (mode.kind === 'attack') hint = { type: 'ATTACK', player: me, target: t };
       if (mode.kind === 'build') hint = { type: 'BUILD', player: me, tile: t, structure: mode.structure };
+      if (mode.kind === 'none' && (m.terrain[t] === 'land' || m.straitOf[t] >= 0)) lines.push(h('div', { class: 'tip-good' }, '▶ Tıkla: bu karede yapabileceklerin'));
       if (mode.kind === 'expedition' && mode.unitId !== null) {
         hint = { type: mode.unit === 'ship' ? 'SHIP_EXPEDITION' : 'PLANE_EXPEDITION', player: me, unitId: mode.unitId, target: t };
-        const extra = this.targetCache?.extra as { targets?: Map<number, { kind: string; cost: number; route: { toll: number } }> } | undefined;
+        const extra = this.targetCache?.extra as { targets?: Map<number, { kind: string; cost: number; route: { toll: number; path: number[]; tolls: RoutePreview['tolls'] } }> } | undefined;
         const info = extra?.targets?.get(t);
+        const unit = s.units.find((u) => u.id === mode.unitId);
+        // Rota haritada çizilir; geçilen boğazlar ve vergileri ipucunda
+        const route = info && unit ? { from: unit.tile, path: info.route.path, tolls: info.route.tolls } : null;
+        if (route?.path.join() !== this.hoverRoute?.path.join()) {
+          this.hoverRoute = route;
+          this.applyHighlight();
+        }
         if (info) {
           const k = info.kind === 'claim' ? 'Sahipsiz toprak' : info.kind === 'land' ? 'Kara savaşı' : info.kind === 'capital' ? 'Başkent savaşı' : 'Askeri üs savaşı';
-          lines.push(h('div', { class: 'tip-good' }, `▶ ${k}${info.cost ? ` · ${info.cost} akçe` : ''}${info.route.toll ? ` (vergi ${info.route.toll})` : ''}`));
+          lines.push(h('div', { class: 'tip-good' }, `▶ ${k}${info.cost ? ` · ${info.cost} akçe` : ''}${info.route.toll ? ` (vergi ${info.route.toll} dahil)` : ''}`));
+          const crossed = routeStraits(s, me, info.route.path, info.route.tolls);
+          if (crossed.length) lines.push(h('div', { class: 'tip-line' }, icon('strait'), crossed.join(' · ')));
+          lines.push(h('div', { class: 'muted' }, `Rota: ${info.route.path.length} kare`));
           hint = null;
         }
       }
@@ -2397,6 +2773,7 @@ export class GameScreen {
         anim,
         h('label', {}, 'Sıra değişince "Sıra: X" ekranı (hot-seat)'),
         pass,
+        ...guidanceControls(),
         soundControls(),
       ),
       buttons: [{ label: 'Tamam', value: 'ok', primary: true }],
@@ -2440,4 +2817,24 @@ export class GameScreen {
       ),
     });
   }
+}
+
+/** Savaş önizlemesinde bir satır: ikon, başlık, açıklama */
+function row(ic: IconName, label: string, text: string, cls = ''): HTMLElement {
+  return h('div', { class: `bp-row ${cls}` }, icon(ic), h('b', {}, label), h('span', {}, text));
+}
+
+/** Rotanın geçtiği boğazlar: "B1 (Ali): 50 akçe vergi", "B2: serbest" */
+function routeStraits(s: GameState, me: number, path: number[], tolls: { straitId: number; amount: number }[]): string[] {
+  const seen: number[] = [];
+  for (const t of path) {
+    const id = s.map.straitOf[t];
+    if (id >= 0 && !seen.includes(id)) seen.push(id);
+  }
+  return seen.map((id) => {
+    const ctl = s.straits[id].controller;
+    const toll = tolls.filter((t) => t.straitId === id).reduce((a, t) => a + t.amount, 0);
+    const who = ctl === null ? '' : ctl === me ? ' (senin)' : ` (${pname(s, ctl)})`;
+    return `${straitLabel(id)}${who}: ${toll ? `${toll} akçe vergi` : 'vergisiz'}`;
+  });
 }

@@ -12,6 +12,8 @@ export interface Highlight {
   danger?: Uint8Array | null;
   selected?: Set<number> | null;
   route?: number[] | null;
+  /** Kareye iliştirilmiş küçük etiketler (ör. rotadaki boğaz vergisi) */
+  labels?: { tile: number; text: string }[] | null;
 }
 
 const PAPER = '#fbf8ef';
@@ -67,8 +69,10 @@ export class MapView {
   /** Kullanıcı kaydırdı/yakınlaştırdıysa boyut değişince otomatik sığdırma yapılmaz */
   private userMoved = false;
 
-  onTileClick: ((tile: number) => void) | null = null;
+  onTileClick: ((tile: number, clientX: number, clientY: number) => void) | null = null;
   onHover: ((tile: number, clientX: number, clientY: number) => void) | null = null;
+  /** Harita kaydırıldı ya da yakınlaştırıldı */
+  onViewChange: (() => void) | null = null;
 
   constructor(private host: HTMLElement) {
     this.canvas = document.createElement('canvas');
@@ -245,6 +249,7 @@ export class MapView {
     this.scale = ns;
     this.userMoved = true;
     this.dirty = true;
+    this.onViewChange?.();
   }
 
   private bindInput() {
@@ -276,6 +281,7 @@ export class MapView {
             this.offY += dy;
             this.userMoved = true;
             this.dirty = true;
+            this.onViewChange?.();
           }
         } else if (this.pointers.size === 2) {
           this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -299,7 +305,7 @@ export class MapView {
       this.pointers.delete(e.pointerId);
       if (wasSingle && this.dragStart && !this.dragStart.moved && e.type === 'pointerup') {
         const t = this.tileAt(e.clientX, e.clientY);
-        if (t >= 0) this.onTileClick?.(t);
+        if (t >= 0) this.onTileClick?.(t, e.clientX, e.clientY);
       }
       if (this.pointers.size === 0) this.dragStart = null;
     };
@@ -599,6 +605,26 @@ export class MapView {
       });
       ctx.stroke();
       ctx.setLineDash([]);
+      // Uç: hedef karesine ok başı yerine halka
+      const end = this.hl.route[this.hl.route.length - 1];
+      ctx.beginPath();
+      ctx.arc((end % m.width) + 0.5, Math.floor(end / m.width) + 0.5, 0.38, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    for (const l of this.hl.labels ?? []) {
+      const lx = (l.tile % m.width) + 0.5;
+      const ly = Math.floor(l.tile / m.width) - 0.15;
+      ctx.font = `bold 0.5px "Patrick Hand", sans-serif`;
+      const w = ctx.measureText(l.text).width + 0.3;
+      ctx.fillStyle = '#fff8c9';
+      ctx.strokeStyle = PENCIL;
+      ctx.lineWidth = 0.05;
+      ctx.fillRect(lx - w / 2, ly - 0.32, w, 0.62);
+      ctx.strokeRect(lx - w / 2, ly - 0.32, w, 0.62);
+      ctx.fillStyle = PENCIL;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(l.text, lx, ly);
     }
 
     // Değişen kareler için parlama
