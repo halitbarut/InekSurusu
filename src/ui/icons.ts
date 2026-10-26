@@ -101,6 +101,11 @@ const ICONS = {
   lock: `<rect x="5.4" y="10.4" width="13.2" height="9.6" rx="1.8" fill="${F.paper}"/><path d="M8.4 10.4V7.6a3.6 3.6 0 0 1 7.2 0v2.8M12 14v2.2"/>`,
   send: `<path d="M3.6 11.6 20.4 4l-5.8 16.4-3.4-6.6z" fill="${F.paper}"/><path d="m11.2 13.8 9.2-9.8"/>`,
   clock: `<circle cx="12" cy="12.8" r="7.8" fill="${F.paper}"/><path d="M12 8.4v4.6l3 2M9.6 2.8h4.8M12 2.8V5"/>`,
+  replay: `<path d="M4.6 12a7.4 7.4 0 1 0 2.2-5.2M4.4 3.8v3.4h3.4"/><path d="M10.2 9.2v5.6l4.6-2.8z" fill="currentColor"/>`,
+  play: `<path d="M7.4 4.8v14.4L19 12z" fill="currentColor"/>`,
+  pause: `<path d="M7.4 5h3v14h-3zM13.6 5h3v14h-3z" fill="currentColor"/>`,
+  stepBack: `<path d="M6.4 5v14M18.6 5.4v13.2L8.8 12z" fill="currentColor"/>`,
+  stepFwd: `<path d="M17.6 5v14M5.4 5.4v13.2L15.2 12z" fill="currentColor"/>`,
   wand: `<path d="M4 20 15.6 8.4M14 4.2v2.4M18.6 9.4h2.4M17.6 5.6l1.6-1.6M10.6 5.6 9 4"/>`,
 } as const;
 

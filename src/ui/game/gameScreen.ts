@@ -30,6 +30,9 @@ import {
   unitsAt,
   validateAction,
   UndoHistory,
+  ReplayRecorder,
+  redactReplay,
+  type ReplayData,
   type Action,
   type BuildableStructure,
   type GameEvent,
@@ -58,7 +61,8 @@ import {
   tileLabel,
 } from '../format';
 import { animFactor, getPrefs, setPrefs } from '../prefs';
-import { autosave, exportState, saveGame } from '../storage';
+import { autosave, exportReplay, exportState, saveGame } from '../storage';
+import { ReplayScreen } from '../replay/replayScreen';
 import type { ClientRoom } from '../../net/clientRoom';
 import type { HostRoom } from '../../net/hostRoom';
 import type { Presence } from '../../net/protocol';
@@ -147,6 +151,10 @@ export class GameScreen {
   private handoff = false;
   /** Hot-seat: teklifine yanıt beklenen oyuncunun kendi süresi */
   private responseSeg: ClockSegment | null = null;
+  /** Oyun tekrarı kaydı: oyunu yürüten tarafta (yerel oyun, oda sahibi) */
+  private recorder: ReplayRecorder | null = null;
+  /** Açık tekrar oynatıcısı (zafer ekranından) */
+  private replayView: { screen: ReplayScreen; layer: HTMLElement } | null = null;
 
   private elTop!: HTMLElement;
   private elPlayers!: HTMLElement;
@@ -166,8 +174,11 @@ export class GameScreen {
     state: GameState,
     private cb: GameScreenCallbacks,
     private net: NetMode = null,
+    replay?: ReplayData,
   ) {
     this.state = state;
+    // Kayıtla saklanmış tekrar varsa oradan sürer; yoksa şimdiden başlar (oyunun ortasıysa yarım kayıt)
+    if (net?.kind !== 'client') this.recorder = replay ? ReplayRecorder.from(replay) : ReplayRecorder.start(state);
     if (net) this.chat = new ChatPanel(net.room, () => this.state);
     const turnSeconds = state.options?.turnSeconds ?? 0;
     if (turnSeconds > 0 && net?.kind !== 'client') this.clock = new TurnClock(turnSeconds * 1000);
@@ -185,6 +196,8 @@ export class GameScreen {
 
   destroy() {
     this.destroyed = true;
+    this.replayView?.screen.destroy();
+    this.replayView?.layer.remove();
     if (this.presenceTimer) clearInterval(this.presenceTimer);
     if (this.clockTimer) clearInterval(this.clockTimer);
     this.connEl?.remove();
@@ -441,6 +454,7 @@ export class GameScreen {
   private applyUndo(origin?: { clientId: string; reqId: number }) {
     const entry = this.history.undo();
     if (!entry) return;
+    this.recorder?.pop();
     this.state = entry.state;
     this.targetCache = null;
     if (this.mode.kind === 'offerTiles') this.mode = { kind: 'none' };
@@ -491,6 +505,7 @@ export class GameScreen {
       return false;
     }
     const r = dispatch(this.state, action);
+    this.recorder?.record(action);
     // Botlar geri almayı kullanmaz; diğer eylemler geri alınabilir mi kendisi karar verir
     if (byBot) this.history.clear();
     else this.history.record(this.state, action, r.state);
@@ -505,7 +520,7 @@ export class GameScreen {
       if (this.mine(e.offer.to) && this.state.players[e.offer.to].kind === 'human') play('offer');
       await this.routeOffer(e.offer);
     }
-    if (action.type === 'END_TURN' || r.events.some((e) => e.type === 'game_over')) autosave(this.state);
+    if (action.type === 'END_TURN' || r.events.some((e) => e.type === 'game_over')) this.autosave();
     return true;
   }
 
@@ -638,6 +653,7 @@ export class GameScreen {
           const st = structuredClone(this.state);
           st.players[seat].kind = toBot ? 'bot' : 'human';
           this.state = st;
+          this.recorder?.record({ type: 'SET_PLAYER_KIND', player: seat, kind: st.players[seat].kind });
           this.history.clear();
           room.broadcastUpdate(st, []);
           this.render();
@@ -658,6 +674,7 @@ export class GameScreen {
       room.events.onViewers = () => this.renderViewers();
     } else {
       const room = net.room;
+      room.events.onReplay = () => this.updateReplayButtons();
       room.events.onUpdate = (state, events) => {
         void this.enqueue(async () => {
           const byBot = state.players[this.actorOf(state)]?.kind === 'bot';
@@ -1003,17 +1020,77 @@ export class GameScreen {
   }
 
   private victoryShown = false;
+  private replayButtons: HTMLButtonElement[] = [];
+
+  /** Otomatik kayıt (tekrar kaydıyla birlikte; katılan kaydetmez) */
+  private autosave() {
+    if (this.net?.kind === 'client') return;
+    autosave(this.state, this.recorder?.data());
+  }
+
+  /** Bu cihazın görebileceği tekrar kaydı: oyunu yürüten tarafta tam kayıt, katılanda oda sahibinin paylaştığı */
+  private replayData(): ReplayData | null {
+    if (this.net?.kind === 'client') return this.net.room.replay;
+    return this.recorder?.data() ?? null;
+  }
+
+  private updateReplayButtons() {
+    const ok = this.replayData() !== null;
+    for (const b of this.replayButtons) {
+      b.disabled = !ok;
+      b.title = ok ? '' : 'Tekrar kaydı oda sahibinden bekleniyor…';
+    }
+  }
+
+  /** Tekrar oynatıcısını oyunun üstünde açar (çevrimiçi oda kapanmaz) */
+  private openReplay(round?: number) {
+    const data = this.replayData();
+    if (!data || this.replayView) return;
+    const layer = h('div', { class: 'replay-layer' });
+    document.body.appendChild(layer);
+    // Yerel oyunda her şey görünür; çevrimiçide günlükteki teklif satırları kendi koltuğunun gözünden
+    const viewer = this.net ? this.mySeat() : 'all';
+    const screen = new ReplayScreen(layer, {
+      data,
+      viewer,
+      startRound: round,
+      onClose: () => {
+        layer.remove();
+        this.replayView = null;
+      },
+    });
+    this.replayView = { screen, layer };
+  }
+
   private showVictory() {
     if (this.victoryShown) return;
     this.victoryShown = true;
     const s = this.state;
     const winners = s.winners ?? [];
+    // Çevrimiçi oda sahibi: paylaşılan kopyayı (kabul edilmemiş teklif içerikleri çıkarılmış) herkese gönder
+    if (this.net?.kind === 'host' && this.recorder) this.net.room.sendReplay(redactReplay(this.recorder.data()));
+    const watch = h('button', { class: 'btn btn-primary', onClick: () => this.openReplay() }, icon('replay'), 'Oyunu baştan izle');
+    const save = h(
+      'button',
+      {
+        class: 'btn',
+        onClick: () => {
+          const d = this.replayData();
+          if (d) download(`inek-surusu-tekrar-${s.map.name ? s.map.name.replace(/\s+/g, '-') : s.map.seed}.json`, exportReplay(d));
+        },
+      },
+      icon('download'),
+      'Replay indir',
+    );
+    this.replayButtons = [watch, save];
+    this.updateReplayButtons();
     const el = this.overlay(
       h('div', { class: 'trophy' }, icon('trophy')),
       h('h1', {}, winners.length > 1 ? 'İttifak kazandı!' : `${pname(s, winners[0])} kazandı!`),
       h('p', {}, winners.length > 1 ? winners.map((w) => pname(s, w)).join(', ') : 'Dünyada tek bir devlet kaldı.'),
       h('p', { class: 'muted' }, `${s.round} tur sürdü · ${s.map.name ? `Harita: ${s.map.name}` : `Seed ${s.map.seed}`}`),
-      renderSummary(s),
+      renderSummary(s, (round) => this.openReplay(round)),
+      h('div', { class: 'row-buttons' }, watch, save),
       h(
         'div',
         { class: 'row-buttons' },
@@ -1688,7 +1765,7 @@ export class GameScreen {
   // ------------------------------------------------------------------
 
   private onKey(e: KeyboardEvent) {
-    if (document.querySelector('.modal-backdrop, .overlay')) return;
+    if (document.querySelector('.modal-backdrop, .overlay, .replay-layer')) return;
     if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
     if (e.key === 'Escape' && this.mode.kind !== 'none') this.setMode({ kind: 'none' });
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
@@ -2255,7 +2332,7 @@ export class GameScreen {
     void m.result.then((v) => {
       if (v === 'save') {
         try {
-          saveGame(this.state, input.value.trim() || 'Kayıt');
+          saveGame(this.state, input.value.trim() || 'Kayıt', undefined, this.recorder?.data());
           toast('Oyun kaydedildi', 'good');
         } catch (e) {
           toast((e as Error).message, 'error', 5000);
@@ -2265,7 +2342,7 @@ export class GameScreen {
   }
 
   private exportJson() {
-    download(`inek-surusu-${this.state.map.seed}-tur${this.state.round}.json`, exportState(this.state));
+    download(`inek-surusu-${this.state.map.seed}-tur${this.state.round}.json`, exportState(this.state, this.recorder?.data()));
   }
 
   private openGameMenu() {
@@ -2285,7 +2362,7 @@ export class GameScreen {
             class: 'choice',
             onClick: () => {
               m.close();
-              autosave(this.state);
+              this.autosave();
               this.cb.toMenu();
             },
           },

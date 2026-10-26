@@ -31,7 +31,7 @@ interface Series {
 }
 
 /** Elenme anlarını işaretleyen, üzerine gelince tur değerlerini gösteren çizgi grafiği */
-function lineChart(rounds: number[], series: Series[], unit: string): HTMLElement {
+function lineChart(rounds: number[], series: Series[], unit: string, onRound?: (round: number) => void): HTMLElement {
   const W = 720;
   const H = 300;
   const m = { l: 56, r: 92, t: 14, b: 34 };
@@ -87,7 +87,7 @@ function lineChart(rounds: number[], series: Series[], unit: string): HTMLElemen
   // Üzerine gelme: dikey çizgi + ipucu
   const cross = s('line', { y1: m.t, y2: m.t + ih, class: 'chart-cross', visibility: 'hidden' });
   svg.append(cross);
-  const hit = s('rect', { x: m.l, y: m.t, width: iw, height: ih, fill: 'transparent' });
+  const hit = s('rect', { x: m.l, y: m.t, width: iw, height: ih, fill: 'transparent', class: onRound ? 'chart-hit-click' : '' });
   svg.append(hit);
   const tip = h('div', { class: 'chart-tip hidden' });
   const wrap = h('div', { class: 'chart-wrap' }, svg, tip);
@@ -102,10 +102,19 @@ function lineChart(rounds: number[], series: Series[], unit: string): HTMLElemen
     tip.append(h('div', { class: 'tip-head' }, `${rounds[i]}. tur`));
     const rows = series.map((sr) => ({ sr, v: sr.values[i] })).sort((a, b) => (b.v ?? -1) - (a.v ?? -1));
     for (const { sr, v } of rows) tip.append(h('div', {}, h('span', { class: 'dot small', style: { background: sr.color } }), ` ${sr.name}: `, h('b', {}, v === null ? 'elendi' : `${fmtNum(v)}${unit}`)));
+    if (onRound) tip.append(h('div', { class: 'muted small' }, 'Tıkla: tekrarda bu tura git'));
     tip.classList.remove('hidden');
     const left = ((X(i) / W) * r.width) + 14;
     tip.style.left = `${Math.min(left, r.width - tip.offsetWidth - 4)}px`;
   });
+  if (onRound) {
+    hit.addEventListener('click', (e) => {
+      const r = svg.getBoundingClientRect();
+      const px = ((e.clientX - r.left) / r.width) * W;
+      const i = Math.max(0, Math.min(rounds.length - 1, Math.round(((px - m.l) / iw) * n)));
+      onRound(rounds[i]);
+    });
+  }
   hit.addEventListener('pointerleave', () => {
     cross.setAttribute('visibility', 'hidden');
     tip.classList.add('hidden');
@@ -168,12 +177,13 @@ export function summaryJson(state: GameState) {
 }
 
 /** Zafer ekranının özet bölümü: sekmeli grafikler ve tablo */
-export function renderSummary(state: GameState): HTMLElement {
+/** onRound verilirse grafikte bir tura tıklanınca çağrılır (tekrarda o ana gitmek için) */
+export function renderSummary(state: GameState, onRound?: (round: number) => void): HTMLElement {
   const st = state.stats;
   const body = h('div', { class: 'summary-body' });
   const tabs: [string, () => HTMLElement][] = [
-    ['Toprak', () => chartPanel(state, 'tiles', '', 'Her oyuncunun tur sonundaki toprak sayısı. × elenme anı.')],
-    ['Akçe', () => chartPanel(state, 'akce', ' akçe', 'Tur sonundaki akçe stoku.')],
+    ['Toprak', () => chartPanel(state, 'tiles', '', 'Her oyuncunun tur sonundaki toprak sayısı. × elenme anı.', onRound)],
+    ['Akçe', () => chartPanel(state, 'akce', ' akçe', 'Tur sonundaki akçe stoku.', onRound)],
     ['Özet tablo', () => table(state)],
   ];
   const tabBar = h('div', { class: 'tabs', role: 'tablist' });
@@ -202,14 +212,14 @@ export function renderSummary(state: GameState): HTMLElement {
   );
 }
 
-function chartPanel(state: GameState, key: keyof PlayerSnapshot, unit: string, caption: string): HTMLElement {
+function chartPanel(state: GameState, key: keyof PlayerSnapshot, unit: string, caption: string, onRound?: (round: number) => void): HTMLElement {
   const { rounds, series } = seriesFor(state, key);
   const legend = h(
     'div',
     { class: 'chart-legend' },
     series.map((sr) => h('span', { class: 'legend-item' }, legendSwatch(sr.color, sr.dash), sr.name)),
   );
-  return h('div', {}, h('p', { class: 'muted small' }, caption), legend, rounds.length ? lineChart(rounds, series, unit) : h('p', { class: 'muted' }, 'Veri yok.'));
+  return h('div', {}, h('p', { class: 'muted small' }, caption), legend, rounds.length ? lineChart(rounds, series, unit, onRound) : h('p', { class: 'muted' }, 'Veri yok.'));
 }
 
 function legendSwatch(color: string, dash: string): SVGElement {

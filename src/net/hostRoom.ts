@@ -1,4 +1,4 @@
-import { parseAction, type Action, type GameEvent, type GameState } from '../engine';
+import { parseAction, type Action, type GameEvent, type GameState, type ReplayData } from '../engine';
 import { CHAT_HISTORY, ChatIdentity, RateLimit, cleanChatText, validBox, type ChatBox, type ChatMessage, type ChatSend } from './chat';
 import {
   CLAIMED_MASK,
@@ -94,6 +94,8 @@ export class HostRoom implements ChatChannel {
   /** İzleyiciler genel kanala yazabilir mi */
   private spectatorChat = true;
   private lastViewers = '';
+  /** Oyun bittiyse paylaşılan tekrar kaydı (sonradan gelenlere de gönderilir) */
+  private replay: ReplayData | null = null;
   /** Tur saati: son yayınlanan (yeni gelenlere de gönderilir) */
   private clock: { players: number[]; deadline: number; limitMs: number } | null = null;
 
@@ -227,6 +229,12 @@ export class HostRoom implements ChatChannel {
     return c ? { players: c.players, remainingMs: Math.max(0, c.deadline - Date.now()), limitMs: c.limitMs } : null;
   }
 
+  /** Oyun bitti: tekrar kaydını herkese gönder (paylaşılan kopya, gizli teklif içerikleri çıkarılmış olmalı) */
+  sendReplay(data: ReplayData) {
+    this.replay = data;
+    for (const c of this.clients.values()) c.conn?.send({ t: 'replay', data });
+  }
+
   /** Süresi dolan oyunculara haber ver */
   sendTimeout(players: number[]) {
     for (const c of this.clients.values()) c.conn?.send({ t: 'timeout', players });
@@ -312,6 +320,7 @@ export class HostRoom implements ChatChannel {
       conn.send({ t: 'clock', clock: this.clockNow() });
       conn.send({ t: 'chatcfg', spectatorChat: this.spectatorChat });
       conn.send({ t: 'viewers', viewers: this.viewers() });
+      if (this.replay) conn.send({ t: 'replay', data: this.replay });
       this.refreshViewers();
     } else {
       conn.send({ t: 'welcome', seat: c.seat, lobby: this.maskedLobby(), state: null, presence: {} });

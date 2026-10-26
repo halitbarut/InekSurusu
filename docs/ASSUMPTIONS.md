@@ -348,3 +348,21 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
 105. İzleyici sohbeti varsayılan olarak açıktır. Oda sahibi lobide ("İzleyiciler genel sohbete yazabilsin") ya da
      oyunda sohbet panelinin başlığından kapatıp açabilir; kapalıyken izleyiciler okur ama yazamaz. Bu kural elenmiş
      oyuncular için de geçerlidir.
+
+## Oyun tekrarı (replay)
+
+106. Kayıt oyunu yürüten tarafta tutulur (yerel oyunda bu cihaz, çevrimiçide oda sahibi) ve oyun durumunun dışındadır
+     (`ReplayRecorder`): başlangıç durumu (harita, seed, RNG durumu) + uygulanan bütün eylemler. Geri alınan eylem
+     kayıttan çıkarılır. Eylem olmayan iki değişiklik de adım olarak yazılır: koltuğun bota geçmesi/geri dönmesi ve
+     paylaşılan kopyada içeriği gizlenmiş teklif.
+107. Kayıt, otomatik kayıt ve adlandırılmış kayıtlarla birlikte saklanır ve oyun JSON'una eklenir; yüklenen oyunda kayıt
+     kaldığı yerden sürer. Kaydı olmayan eski bir kayıttan devam edilirse tekrar o turdan başlar ("yarım kayıt").
+     Depolama yetmezse kayıt tekrar verisi olmadan yapılır.
+108. Tekrar dosyası (`inek-surusu-replay`, sürüm 1) eylemleri biçim denetiminden geçirerek okunur; oynatılamayan bir
+     adıma gelinirse oynatıcı o noktaya kadar gösterir.
+109. Oynatıcıda 1x hız adım başına 0,65 saniyedir (2x, 4x, 8x katları). Tur çubuğu ve grafikteki tura tıklama o turun
+     ilk adımına gider. Geri sarma tur başlarında ve her 40 adımda saklanan ara durumlardan hesaplanır.
+110. Çevrimiçi oyun bitince herkes paylaşılan kopyayı alır (#87'deki gizlilik nedeniyle kabul edilmemiş tekliflerin
+     içeriği çıkarılmış). Oda sahibinin "Replay indir" ile aldığı dosya tam kayıttır ve bütün teklifleri içerir;
+     oynatıcısında günlük yine onun gözünden gösterilir. Oda sahibi tam kaydı paylaşırsa teklifler görünür.
+111. Sohbet tekrara girmez.

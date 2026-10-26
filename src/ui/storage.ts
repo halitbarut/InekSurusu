@@ -1,4 +1,4 @@
-import type { GameConfig, GameState } from '../engine';
+import { parseReplay, type GameConfig, type GameState, type ReplayData } from '../engine';
 
 const KEY = 'inek-surusu-saves';
 export const AUTOSAVE_ID = 'auto';
@@ -10,6 +10,8 @@ export interface SaveSlot {
   round: number;
   players: string[];
   state: GameState;
+  /** Oyun tekrarı kaydı (eski kayıtlarda yok) */
+  replay?: ReplayData;
 }
 
 function readAll(): SaveSlot[] {
@@ -31,7 +33,7 @@ export function listSaves(): SaveSlot[] {
 }
 
 /** Kaydeder; depolama doluysa hata fırlatır. */
-export function saveGame(state: GameState, name: string, id = `s${Date.now()}`): SaveSlot {
+export function saveGame(state: GameState, name: string, id = `s${Date.now()}`, replay?: ReplayData): SaveSlot {
   const slot: SaveSlot = {
     id,
     name,
@@ -39,20 +41,23 @@ export function saveGame(state: GameState, name: string, id = `s${Date.now()}`):
     round: state.round,
     players: state.players.map((p) => p.name),
     state,
+    ...(replay ? { replay } : {}),
   };
   const slots = readAll().filter((s) => s.id !== id);
   slots.push(slot);
   try {
     writeAll(slots);
   } catch {
+    // Yer yetmiyorsa tekrar kaydı olmadan dene (oyun yine sürdürülebilsin)
+    if (replay) return saveGame(state, name, id);
     throw new Error('Tarayıcı depolama alanı dolu. Eski kayıtları silip tekrar deneyin.');
   }
   return slot;
 }
 
-export function autosave(state: GameState) {
+export function autosave(state: GameState, replay?: ReplayData) {
   try {
-    saveGame(state, 'Otomatik kayıt', AUTOSAVE_ID);
+    saveGame(state, 'Otomatik kayıt', AUTOSAVE_ID, replay);
   } catch {
     // otomatik kayıt sessizce başarısız olabilir
   }
@@ -70,8 +75,24 @@ export function deleteSave(id: string) {
   }
 }
 
-export function exportState(state: GameState): string {
-  return JSON.stringify({ app: 'inek-surusu', exportedAt: new Date().toISOString(), state });
+export function exportState(state: GameState, replay?: ReplayData): string {
+  return JSON.stringify({ app: 'inek-surusu', exportedAt: new Date().toISOString(), state, ...(replay ? { replay } : {}) });
+}
+
+/** Dışa aktarılmış oyunu okur; içinde tekrar kaydı varsa onu da döner. */
+export function importSave(text: string): { state: GameState; replay?: ReplayData } {
+  const state = importState(text);
+  try {
+    const raw = (JSON.parse(text) as { replay?: unknown }).replay;
+    if (raw) return { state, replay: parseReplay(JSON.stringify(raw)) };
+  } catch {
+    // bozuk tekrar kaydı: oyun yine açılır
+  }
+  return { state };
+}
+
+export function exportReplay(data: ReplayData): string {
+  return JSON.stringify(data);
 }
 
 /** JSON metninden oyun durumunu okur ve temel biçim kontrolü yapar. */

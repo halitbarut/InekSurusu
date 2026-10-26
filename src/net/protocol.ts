@@ -1,4 +1,4 @@
-import type { Action, BotLevel, GameEvent, GameState } from '../engine';
+import type { Action, BotLevel, GameEvent, GameState, ReplayData } from '../engine';
 import type { ChatMessage, ChatSend } from './chat';
 
 /**
@@ -7,8 +7,9 @@ import type { ChatMessage, ChatSend } from './chat';
  * 4: oyun içi sohbet (genel kanal, uçtan uca şifreli özel mesajlar, sohbet geçmişi).
  * 5: tur süresi (clock, timeout mesajları).
  * 6: izleyiciler: izleyici listesi (viewers), izleyici sohbeti ayarı (chatcfg).
+ * 7: oyun bitince tekrar kaydı (replay; kabul edilmemiş teklif içerikleri çıkarılmış).
  */
-export const PROTOCOL_VERSION = 6;
+export const PROTOCOL_VERSION = 7;
 
 /** Oyunu izleyen biri: oturmamış katılımcı ya da elenmiş oyuncu */
 export interface ViewerInfo {
@@ -111,6 +112,8 @@ export type HostMessage =
   | { t: 'viewers'; viewers: ViewerInfo[] }
   /** İzleyiciler genel sohbete yazabilir mi */
   | { t: 'chatcfg'; spectatorChat: boolean }
+  /** Oyun bitti: paylaşılan tekrar kaydı */
+  | { t: 'replay'; data: ReplayData }
   | { t: 'ping' };
 
 /** Lobide katılanlara giden maskeli koltuk sahibi */

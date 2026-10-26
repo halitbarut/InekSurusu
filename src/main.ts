@@ -6,24 +6,41 @@ import { renderLoadScreen, renderMainMenu, renderNewGame, type MenuCallbacks } f
 import { renderMapList } from './ui/screens/mapEditor';
 import { renderOnlineMenu } from './ui/screens/online';
 import { bindClickSounds } from './ui/sound';
+import { parseReplay, type ReplayData } from './engine';
+import { ReplayScreen } from './ui/replay/replayScreen';
+import { pickFile, toast } from './ui/dom';
 
 const host = document.getElementById('app')!;
 bindClickSounds();
 let game: GameScreen | null = null;
+let replay: ReplayScreen | null = null;
 
 function leaveGame() {
   game?.destroy();
   game = null;
+  replay?.destroy();
+  replay = null;
   clear(host);
 }
 
-function startGame(state: GameState, net: NetMode = null) {
+function startGame(state: GameState, net: NetMode = null, rec?: ReplayData) {
   leaveGame();
-  game = new GameScreen(host, state, { toMenu: () => cb.menu(), newGame: () => cb.newGame() }, net);
+  game = new GameScreen(host, state, { toMenu: () => cb.menu(), newGame: () => cb.newGame() }, net, rec);
 }
 
 const cb: MenuCallbacks = {
-  start: (state) => startGame(state),
+  start: (state, rec) => startGame(state, null, rec),
+  async openReplay() {
+    const f = await pickFile('application/json,.json');
+    if (!f) return;
+    try {
+      const data = parseReplay(await f.text());
+      leaveGame();
+      replay = new ReplayScreen(host, { data, viewer: 'all', onClose: () => cb.menu() });
+    } catch (e) {
+      toast((e as Error).message, 'error', 5000);
+    }
+  },
   newGame(mapId) {
     leaveGame();
     renderNewGame(host, cb, undefined, mapId);

@@ -1,4 +1,4 @@
-import type { Action, GameEvent, GameState } from '../engine';
+import type { Action, GameEvent, GameState, ReplayData } from '../engine';
 import { ChatIdentity, cleanChatText, type ChatBox, type ChatMessage } from './chat';
 import { privateProblemFor, type ChatChannel } from './hostRoom';
 import {
@@ -32,6 +32,8 @@ export interface ClientRoomEvents {
   onTimeout?(players: number[]): void;
   /** İzleyici listesi değişti */
   onViewers?(viewers: ViewerInfo[]): void;
+  /** Oyun bitince oda sahibinin paylaştığı tekrar kaydı geldi */
+  onReplay?(data: ReplayData): void;
 }
 
 export interface ClientProfile {
@@ -54,6 +56,8 @@ export class ClientRoom implements ChatChannel {
   private keys: Record<number, string> = {};
   private identity: ChatIdentity | null = null;
   private spectatorChat = true;
+  /** Oyun bitince gelen tekrar kaydı */
+  replay: ReplayData | null = null;
   /** Oyunu izleyenler (oda sahibinin son bildirdiği) */
   viewers: ViewerInfo[] = [];
   /** Oda sahibinden gelen son tur saati (alındığı yerel zamanla) */
@@ -203,6 +207,10 @@ export class ClientRoom implements ChatChannel {
       case 'viewers':
         this.viewers = m.viewers;
         this.events.onViewers?.(m.viewers);
+        return;
+      case 'replay':
+        this.replay = m.data;
+        this.events.onReplay?.(m.data);
         return;
       case 'chatcfg':
         this.spectatorChat = m.spectatorChat;

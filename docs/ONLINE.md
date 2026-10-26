@@ -36,7 +36,7 @@ eylemi kendi durumuna göre doğruladığı için hiçbir etkisi olmaz (`tests/n
 
 ## Mesaj protokolü
 
-Sürüm `PROTOCOL_VERSION` (`src/net/protocol.ts`), şu an **6**. Katılan ilk mesajında (`hello`) sürümünü
+Sürüm `PROTOCOL_VERSION` (`src/net/protocol.ts`), şu an **7**. Katılan ilk mesajında (`hello`) sürümünü
 gönderir; farklıysa oda sahibi `refused` ile reddeder ("İki taraf da sayfayı yenilesin").
 
 | Sürüm | Değişiklik |
@@ -47,6 +47,7 @@ gönderir; farklıysa oda sahibi `refused` ile reddeder ("İki taraf da sayfayı
 | 4 | Oyun içi sohbet: `key`, `chat`, `keys` mesajları; `welcome`/`start` içinde sohbet geçmişi |
 | 5 | Tur süresi: `clock`, `timeout` mesajları; lobide `turnSeconds` |
 | 6 | İzleyiciler: `viewers` (izleyici listesi), `chatcfg` (izleyici sohbeti açık mı); lobide `spectatorChat` |
+| 7 | Oyun bitince `replay` (paylaşılan tekrar kaydı) |
 
 Katılan → oda sahibi:
 
@@ -80,6 +81,7 @@ Oda sahibi → katılan:
 | `timeout {players}` | Bu oyuncuların süresi doldu (açık pencerelerini kapatırlar) |
 | `viewers {viewers}` | Oyunu izleyenler: oturmamış katılımcılar ve elenmiş oyuncular |
 | `chatcfg {spectatorChat}` | İzleyiciler genel sohbete yazabilir mi |
+| `replay {data}` | Oyun bitti: paylaşılan tekrar kaydı (sonradan bağlanana da gönderilir) |
 | `ping` | Canlılık |
 
 Her `update` tam durumu taşır (fark değil). Bu, kopmalardan sonra tutarsızlığı imkânsız kılar; bedeli
@@ -99,6 +101,7 @@ mesaj boyutudur (yerel ağda ve WebRTC'de sorun olmadı).
 | Genel sohbet mesajları | Herkese (izleyiciler dahil); izleyicinin mesajı "izleyici" olarak işaretlenir |
 | Özel sohbet mesajları | Yalnızca iki tarafa, **şifreli**. Oda sahibi taraf değilse yalnızca şifreli metni görür ve aktarır |
 | Sohbet açık anahtarları | Herkese (açık anahtar gizli değildir) |
+| Tekrar kaydı (oyun bitince) | Herkese, **kabul edilmemiş tekliflerin içeriği çıkarılmış** kopya. Tam kayıt yalnızca oda sahibinde |
 
 Süzme oda sahibinde, gönderimden önce yapılır (`viewFor`, `eventsFor`): gizli veri hiçbir zaman ağa
 çıkmaz; "herkese gönderip arayüzde gizleme" yapılmaz.
@@ -128,6 +131,15 @@ Süzme oda sahibinde, gönderimden önce yapılır (`viewFor`, `eventsFor`): giz
   Oda sahibi lobide ya da oyunda sohbet panelinden izleyici sohbetini kapatabilir; kapalıyken izleyici mesajları
   oda sahibinde reddedilir.
 - İzleyici listesi lobide ve oyunda (kenar çubuğu) görünür; oda sahibi her bağlanma/kopma ve elenmede yayınlar.
+
+## Oyun tekrarı
+
+Kaydı oyunu yürüten taraf tutar (oda sahibi): başlangıç durumu ve uygulanan her eylem (botlarınki ve süre dolunca
+yapılan otomatik eylemler dahil), koltuğun bota geçmesi/dönmesi. Oyun bitince oda sahibi kaydın paylaşılan kopyasını
+(`redactReplay`) herkese gönderir: reddedilen, geri çekilen, yanıtsız kalan ya da kabulde geçersiz olan tekliflerin
+kalemleri çıkarılır (yerine içeriksiz bir "gizli teklif" adımı konur). Kabul edilen tekliflerin sonucu zaten herkesin
+gördüğü bir değişiklik olduğu için kalemleri kalır; kopya oyunu yine aynı sonuca götürür. Katılanın tekrar
+oynatıcısında günlükteki teklif satırları kendi gözünden gösterilir.
 
 ## Tur süresi
 

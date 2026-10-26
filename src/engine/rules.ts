@@ -33,7 +33,7 @@ import {
   type ValidationResult,
 } from './types';
 
-const MAX_LOG = 600;
+export const MAX_LOG = 600;
 const OK: ValidationResult = { ok: true };
 const fail = (reason: string): ValidationResult => ({ ok: false, reason });
 

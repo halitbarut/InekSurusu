@@ -162,7 +162,8 @@ export function formatEvent(state: GameState, e: GameEvent): string | null {
     case 'strait_policy':
       return `${N(e.player)}, ${straitLabel(e.straitId)} boğazında ${N(e.target)} için: ${e.allow ? 'geçiş açık' : 'geçiş kapalı'}${e.allow ? `, vergi ${e.toll}` : ''}`;
     case 'offer_made':
-      return `${N(e.offer.from)}, ${dat(N(e.offer.to))} teklif gönderdi: ${offerText(state, e.offer)}`;
+      // Tekrar dosyasında kabul edilmemiş tekliflerin içeriği çıkarılır
+      return `${N(e.offer.from)}, ${dat(N(e.offer.to))} teklif gönderdi: ${e.offer.items.length ? offerText(state, e.offer) : '(içeriği gizli)'}`;
     case 'offer_response':
       if (e.failedReason) return `${gen(N(e.from))} teklifi geçersiz oldu: ${e.failedReason}`;
       return `${N(e.to)}, ${gen(N(e.from))} teklifini ${e.accepted ? 'kabul etti' : 'reddetti'}`;

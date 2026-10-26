@@ -12,6 +12,7 @@ import {
   type BotLevel,
   type GameState,
   type PlayerSetup,
+  type ReplayData,
 } from '../../engine';
 import { BOT_LEVEL_NAME } from '../../bot';
 import { clear, h, openModal, pickFile, toast } from '../dom';
@@ -23,7 +24,7 @@ import { getPrefs, setPrefs } from '../prefs';
 import { soundControls } from '../sound';
 import type { HostRoom } from '../../net/hostRoom';
 import type { LobbyInfo, SeatKind } from '../../net/protocol';
-import { AUTOSAVE_ID, deleteSave, getSave, importState, listMaps, listSaves } from '../storage';
+import { AUTOSAVE_ID, deleteSave, getSave, importSave, listMaps, listSaves } from '../storage';
 import { inviteBox } from './online';
 import { clampInt, createRulesPanel } from './rulesPanel';
 import { TURN_TIME_CHOICES } from '../game/turnClock';
@@ -34,7 +35,10 @@ export function turnTimeLabel(sec: number): string {
 }
 
 export interface MenuCallbacks {
-  start(state: GameState): void;
+  /** replay: kayıtla birlikte saklanmış tekrar verisi (varsa kayıt oradan sürer) */
+  start(state: GameState, replay?: ReplayData): void;
+  /** Tekrar dosyası aç (ana menü) */
+  openReplay(): void;
   /** mapId verilirse kayıtlı harita seçili açılır */
   newGame(mapId?: string): void;
   /** Harita editörü (kayıtlı haritalar listesi) */
@@ -72,11 +76,12 @@ export function renderMainMenu(host: HTMLElement, cb: MenuCallbacks) {
           'div',
           { class: 'menu-buttons' },
           auto && auto.state.phase.kind !== 'gameover'
-            ? h('button', { class: 'btn btn-primary btn-big', onClick: () => cb.start(auto.state) }, `▶ Devam et (${auto.round > 0 ? `${auto.round}. tur` : 'kurulum'})`)
+            ? h('button', { class: 'btn btn-primary btn-big', onClick: () => cb.start(auto.state, auto.replay) }, `▶ Devam et (${auto.round > 0 ? `${auto.round}. tur` : 'kurulum'})`)
             : null,
           h('button', { class: `btn btn-big ${auto ? '' : 'btn-primary'}`, onClick: () => cb.newGame() }, icon('newGame'), 'Yeni oyun'),
           h('button', { class: 'btn btn-big', onClick: () => cb.online() }, icon('online'), 'Çevrimiçi oyun'),
           h('button', { class: 'btn btn-big', onClick: () => cb.load() }, icon('load'), 'Kayıtlı oyunu yükle'),
+          h('button', { class: 'btn btn-big', onClick: () => cb.openReplay() }, icon('replay'), 'Replay aç'),
           h('button', { class: 'btn btn-big', onClick: () => cb.editor() }, icon('map'), 'Harita Editörü'),
           h('button', { class: 'btn btn-big', onClick: () => openSettings() }, icon('settings'), 'Ayarlar'),
         ),
@@ -147,7 +152,7 @@ export function renderLoadScreen(host: HTMLElement, cb: MenuCallbacks) {
               },
               'Sil',
             ),
-            h('button', { class: 'btn btn-small btn-primary', onClick: () => cb.start(s.state) }, 'Yükle'),
+            h('button', { class: 'btn btn-small btn-primary', onClick: () => cb.start(s.state, s.replay) }, 'Yükle'),
           ),
         ),
       );
@@ -162,7 +167,8 @@ export function renderLoadScreen(host: HTMLElement, cb: MenuCallbacks) {
         const f = await pickFile('application/json,.json');
         if (!f) return;
         try {
-          cb.start(importState(await f.text()));
+          const r = importSave(await f.text());
+          cb.start(r.state, r.replay);
         } catch (e) {
           toast((e as Error).message, 'error', 5000);
         }

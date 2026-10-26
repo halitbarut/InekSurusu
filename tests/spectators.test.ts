@@ -94,3 +94,19 @@ describe('izleyiciler', () => {
     expect(room.viewers().map((x) => x.name)).toEqual(['İzleyen']);
   });
 });
+
+describe('tekrar paylaşımı', () => {
+  it('oyun bitince paylaşılan kopya herkese ve sonradan bağlanana gider', async () => {
+    const { net, room, a, v, get } = await setup();
+    const { ReplayRecorder, redactReplay } = await import('../src/engine');
+    const data = redactReplay(ReplayRecorder.start(get()).data());
+    room.sendReplay(data);
+    await flush();
+    expect(a.replay?.redacted).toBe(true);
+    expect(v.replay?.app).toBe('inek-surusu-replay');
+    const late = new ClientRoom('WATCH', net.clientTransport(), { clientId: 'client-l-0003', name: 'Geç', color: '#111111' });
+    await late.connect();
+    await flush();
+    expect(late.replay?.redacted).toBe(true);
+  });
+});
