@@ -1,8 +1,6 @@
 import { atPeace, isAllied, mutRelation, refreshStraits, transferTile } from './helpers';
 import { RESOURCE_KEYS, type GameEvent, type GameState, type Offer, type OfferItem } from './types';
 
-const MAX_ITEMS = 24;
-
 function sideToPlayer(offerFrom: number, offerTo: number, side: 'from' | 'to'): number {
   return side === 'from' ? offerFrom : offerTo;
 }
@@ -46,7 +44,6 @@ export function offerProblem(state: GameState, from: number, to: number, items: 
   const target = state.players[to];
   if (!target || !target.alive) return 'Bu oyuncu oyunda değil';
   if (!Array.isArray(items) || items.length === 0) return 'Teklif boş';
-  if (items.length > MAX_ITEMS) return 'Teklifte çok fazla kalem var';
   if (items.filter((i) => i.kind === 'alliance').length > 1) return 'Birden fazla ittifak kalemi';
   if (items.filter((i) => i.kind === 'peace').length > 1) return 'Birden fazla barış kalemi';
   const tiles = items.filter((i) => i.kind === 'tile').map((i) => (i as { tile: number }).tile);

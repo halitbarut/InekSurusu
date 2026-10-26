@@ -282,3 +282,10 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
     tek etiketle gösterilir. Seed üst çubuktan kaldırıldı (zafer ekranında ve kayıt adında duruyor).
 85. Hot-seat sıra geçiş ekranı artık tüm ekranı oyuncu rengine boyamıyor; diğer pencerelerle aynı kart, üstünde oyuncu
     renginde şerit ve desen örneği. Hot-seat'te bilgiler zaten gizli değil (#36).
+
+## Teklifler
+
+86. Bir teklifteki kalem sayısının sınırı yoktur (eskiden 24'tü): istediğin kadar toprak, kaynak ve boğaz iznini
+    tek teklifte birleştirebilirsin. Geçerlilik kontrolleri sürer: verilen kaynak verenin elinde olmalı, toprak
+    verenin olmalı, başkent devredilemez, aynı toprak iki kez eklenemez, en fazla bir ittifak ve bir barış kalemi
+    olur, barış süresi en uzun barış ayarını aşamaz.

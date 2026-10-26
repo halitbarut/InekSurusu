@@ -210,6 +210,30 @@ describe('tur akışı', () => {
 });
 
 describe('diplomasi', () => {
+  it('teklifteki kalem sayısı sınırsız: büyük toprak + kaynak takası kabul edilir', () => {
+    let s = neighbours3();
+    s.players[0].resources = { akce: 900, gold: 3, oil: 2, iron: 4, steel: 1 };
+    s.players[1].resources = { akce: 500, gold: 1, oil: 1, iron: 1, steel: 6 };
+    const give = [0, 1, 2, 3, 4, 5].flatMap((y) => [at(s, 0, y), at(s, 1, y)]).filter((t) => s.structure[t] !== 'capital');
+    const take = [0, 1, 2, 3, 4, 5].flatMap((y) => [at(s, 2, y), at(s, 3, y)]).filter((t) => s.structure[t] !== 'capital');
+    const items = [
+      { kind: 'alliance' as const },
+      { kind: 'peace' as const, rounds: 5 },
+      ...give.map((tile) => ({ kind: 'tile' as const, giver: 'from' as const, tile })),
+      ...take.map((tile) => ({ kind: 'tile' as const, giver: 'to' as const, tile })),
+      ...(['akce', 'gold', 'oil', 'iron', 'steel'] as const).map((resource) => ({ kind: 'resource' as const, giver: 'from' as const, resource, amount: 1 })),
+      ...(['akce', 'gold', 'oil', 'iron', 'steel'] as const).map((resource) => ({ kind: 'resource' as const, giver: 'to' as const, resource, amount: 1 })),
+    ];
+    expect(items.length).toBeGreaterThan(30);
+    expect(validateAction(s, { type: 'PROPOSE_OFFER', player: 0, to: 1, items }).ok).toBe(true);
+    s = act(s, { type: 'PROPOSE_OFFER', player: 0, to: 1, items });
+    s = act(s, { type: 'RESPOND_OFFER', player: 1, offerId: s.offers[0].id, accept: true });
+    for (const t of give) expect(s.owner[t]).toBe(1);
+    for (const t of take) expect(s.owner[t]).toBe(0);
+    expect(s.players[0].resources.steel).toBe(1);
+    expect(s.players[1].resources.akce).toBe(500);
+  });
+
   it('ittifak kabul edilince saldırı yasak; bozulduğu tur da yasak, sonraki turda serbest', () => {
     let s = neighbours3();
     s = act(s, { type: 'PROPOSE_OFFER', player: 0, to: 1, items: [{ kind: 'alliance' }] });
