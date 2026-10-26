@@ -41,8 +41,8 @@ export interface MenuCallbacks {
   editor(): void;
   load(): void;
   menu(): void;
-  /** Çevrimiçi oyun menüsü (oda kur / katıl); code verilirse katılma ekranı açılır */
-  online(code?: string): void;
+  /** Çevrimiçi oyun menüsü (oda kur / katıl); code verilirse katılma ekranı açılır, spectate: izleyici linki */
+  online(code?: string, spectate?: boolean): void;
   /** Oda sahibi olarak çevrimiçi oyunu başlat */
   startHost(state: GameState, room: HostRoom, mySeat: number): void;
 }
@@ -498,6 +498,15 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
             timeSel,
             h('span', { class: 'muted small' }, 'Süre dolunca topaç çevrilir, zorunlu seçimler otomatik yapılır, tur biter.'),
           ),
+          room
+            ? h(
+                'label',
+                { class: 'row', title: 'Kapalıyken izleyiciler (oturmayanlar ve elenenler) sohbeti okur ama yazamaz. Oyun sırasında sohbet panelinden de değiştirilebilir.' },
+                h('input', { type: 'checkbox', checked: room.spectatorChatOpen(), onChange: (e: Event) => room.setSpectatorChat((e.target as HTMLInputElement).checked) }),
+                icon('eye'),
+                ' İzleyiciler genel sohbete yazabilsin',
+              )
+            : null,
         ),
         rules.el,
         h(
@@ -537,7 +546,7 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
           if (color) color.value = x.color;
         });
       const seated = l.seats.filter((x) => x.claimedBy).map((x) => x.name);
-      peopleEl.textContent = `Oturanlar: ${seated.length ? seated.join(', ') : '—'} · İzleyiciler: ${l.spectators.length ? l.spectators.join(', ') : '—'}`;
+      peopleEl.textContent = `Oturanlar: ${seated.length ? seated.join(', ') : '—'} · İzleyiciler (${l.spectators.length}): ${l.spectators.length ? l.spectators.join(', ') : '—'}`;
     };
     syncLobby();
   }

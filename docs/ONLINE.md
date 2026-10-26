@@ -15,7 +15,7 @@ Kod: `src/net/` (protokol, taşıyıcı, oda sahibi ve katılan tarafı), oyun a
 - Kopan oyuncunun yerine bot oynatır, oyunu her tur sonunda kendi tarayıcısına otomatik kaydeder.
 
 **Katılan (client)** davet linkiyle (`?oda=KOD`) bağlanır. Lobide boş bir "davetli" koltuğa oturursa oyuncu,
-oturmazsa **izleyici** olur. Katılan yalnızca:
+oturmazsa **izleyici** olur. İzleyici linki (`?oda=KOD&izle=1`) katılma ekranını "Odayı izle" olarak açar. Katılan yalnızca:
 
 - kendi koltuğu adına eylem *ister* (sonucu oda sahibi belirler),
 - kendi turundaki son eylemini geri almayı *ister*,
@@ -36,7 +36,7 @@ eylemi kendi durumuna göre doğruladığı için hiçbir etkisi olmaz (`tests/n
 
 ## Mesaj protokolü
 
-Sürüm `PROTOCOL_VERSION` (`src/net/protocol.ts`), şu an **5**. Katılan ilk mesajında (`hello`) sürümünü
+Sürüm `PROTOCOL_VERSION` (`src/net/protocol.ts`), şu an **6**. Katılan ilk mesajında (`hello`) sürümünü
 gönderir; farklıysa oda sahibi `refused` ile reddeder ("İki taraf da sayfayı yenilesin").
 
 | Sürüm | Değişiklik |
@@ -46,6 +46,7 @@ gönderir; farklıysa oda sahibi `refused` ile reddeder ("İki taraf da sayfayı
 | 3 | Oyuncuya özel durum görünümü (gizli teklifler), lobide maskeli katılımcı kimlikleri |
 | 4 | Oyun içi sohbet: `key`, `chat`, `keys` mesajları; `welcome`/`start` içinde sohbet geçmişi |
 | 5 | Tur süresi: `clock`, `timeout` mesajları; lobide `turnSeconds` |
+| 6 | İzleyiciler: `viewers` (izleyici listesi), `chatcfg` (izleyici sohbeti açık mı); lobide `spectatorChat` |
 
 Katılan → oda sahibi:
 
@@ -77,6 +78,8 @@ Oda sahibi → katılan:
 | `keys {keys}` | Koltukların sohbet açık anahtarları değişti |
 | `clock {clock}` | Tur saati: kimin süresi işliyor, ne kadar kaldı (`null` = kimsenin). Yeni bağlanana da gönderilir |
 | `timeout {players}` | Bu oyuncuların süresi doldu (açık pencerelerini kapatırlar) |
+| `viewers {viewers}` | Oyunu izleyenler: oturmamış katılımcılar ve elenmiş oyuncular |
+| `chatcfg {spectatorChat}` | İzleyiciler genel sohbete yazabilir mi |
 | `ping` | Canlılık |
 
 Her `update` tam durumu taşır (fark değil). Bu, kopmalardan sonra tutarsızlığı imkânsız kılar; bedeli
@@ -113,6 +116,18 @@ Süzme oda sahibinde, gönderimden önce yapılır (`viewFor`, `eventsFor`): giz
    hiçbir alan sonucu etkileyemez.
 5. Ad (en fazla 16 karakter, denetim karakterleri silinir) ve renk (`#rrggbb`, değilse gri) temizlenir.
    Bozuk mesajlar bağlantıyı düşürmez, sessizce yok sayılır.
+
+## İzleyiciler
+
+- İzleyici: oturmamış katılımcı, oyun başladıktan sonra gelen katılımcı ya da **elenmiş oyuncu**. Elenen oyuncu
+  bağlantısını korur, bir kez "Elendin, artık izleyicisin" bildirimi görür ve oyundan çıkmak zorunda kalmaz.
+  Oda sahibi elenirse oyun yine onun tarayıcısında sürer (o da izleyiciye döner).
+- İzleyici haritayı, oyuncu panellerini, olay günlüğünü ve genel sohbeti görür; durum ona `viewFor(state, null)`
+  ile (elenmişse kendi koltuğunun görünümüyle) gider: teklifleri ve özel mesajları hiç almaz.
+- İzleyici hamle yapamaz, özel mesaj gönderemez; genel kanala yazabilir, mesajı "izleyici" olarak işaretlenir.
+  Oda sahibi lobide ya da oyunda sohbet panelinden izleyici sohbetini kapatabilir; kapalıyken izleyici mesajları
+  oda sahibinde reddedilir.
+- İzleyici listesi lobide ve oyunda (kenar çubuğu) görünür; oda sahibi her bağlanma/kopma ve elenmede yayınlar.
 
 ## Tur süresi
 

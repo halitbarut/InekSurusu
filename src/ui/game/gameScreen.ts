@@ -151,6 +151,9 @@ export class GameScreen {
   private elTop!: HTMLElement;
   private elPlayers!: HTMLElement;
   private elLog!: HTMLElement;
+  /** Çevrimiçi: izleyici listesi */
+  private elViewers = h('div', { class: 'viewer-list muted small' });
+  private eliminatedShown = false;
   private elActions!: HTMLElement;
   private elBanner!: HTMLElement;
   private elTip!: HTMLElement;
@@ -267,6 +270,7 @@ export class GameScreen {
           'aside',
           { class: 'sidebar' },
           h('section', {}, h('h3', {}, 'Devletler'), this.elPlayers),
+          this.net ? h('section', { class: 'viewers-section' }, this.elViewers) : null,
           h('section', { class: 'log-section' }, h('h3', {}, 'Olay günlüğü'), this.elLog),
         ),
       ),
@@ -651,6 +655,7 @@ export class GameScreen {
       };
       room.events.onNotice = (text) => toast(text, 'info', 4000);
       room.events.onChat = (m) => this.chat?.onMessage(m);
+      room.events.onViewers = () => this.renderViewers();
     } else {
       const room = net.room;
       room.events.onUpdate = (state, events) => {
@@ -684,6 +689,7 @@ export class GameScreen {
       room.events.onStatus = (status, reason) => this.showConnection(status, reason);
       room.events.onChat = (m) => this.chat?.onMessage(m);
       room.events.onClock = () => this.drawClock();
+      room.events.onViewers = () => this.renderViewers();
       room.events.onTimeout = (players) => {
         if (room.seat !== null && players.includes(room.seat)) this.timedOutHere();
         else toast(`Süre doldu: ${players.map((p) => pname(this.state, p)).join(', ')}`, 'info', 3000);
@@ -1033,6 +1039,66 @@ export class GameScreen {
     this.map.setState(this.state);
     this.chat?.render();
     this.syncClock();
+    this.renderViewers();
+    this.checkEliminated();
+  }
+
+  /** Bu cihazın çevrimiçi koltuğu (izleyicide null) */
+  private mySeat(): number | null {
+    const net = this.net;
+    return !net ? null : net.kind === 'host' ? net.mySeat : net.room.seat;
+  }
+
+  /** Çevrimiçi: bu cihaz izleyici mi (oturmamış ya da elenmiş)? */
+  private spectating(): boolean {
+    if (!this.net) return false;
+    const seat = this.mySeat();
+    return seat === null || !this.state.players[seat]?.alive;
+  }
+
+  private lastViewersSig = '';
+  private renderViewers() {
+    const net = this.net;
+    if (!net) return;
+    // Oda sahibinde: elenen oyuncu izleyiciye dönüşür, liste değiştiyse herkese yayınlanır
+    if (net.kind === 'host') net.room.refreshViewers();
+    const list = net.kind === 'host' ? net.room.viewers() : net.room.viewers;
+    const sig = JSON.stringify(list);
+    if (sig === this.lastViewersSig) return;
+    this.lastViewersSig = sig;
+    clear(this.elViewers);
+    this.elViewers.append(
+      h('div', { class: 'viewers-head' }, icon('eye'), ` İzleyiciler (${list.length})`),
+      list.length
+        ? h('div', {}, list.map((v, i) => [i ? ', ' : '', h('span', {}, v.name), v.seat !== null ? h('span', { class: 'muted' }, ' (elendi)') : null]))
+        : h('div', {}, 'Şu an izleyen yok.'),
+    );
+  }
+
+  /** Çevrimiçi: bu cihazın oyuncusu elendiyse bir kez bildir; oyundan çıkmadan izlemeye devam edebilir */
+  private checkEliminated() {
+    const seat = this.mySeat();
+    if (this.eliminatedShown || seat === null || this.state.players[seat]?.alive !== false || this.state.phase.kind === 'gameover') return;
+    this.eliminatedShown = true;
+    const host = this.net?.kind === 'host';
+    const p = this.state.players[seat];
+    const m = openModal({
+      title: 'Elendin',
+      icon: 'eliminated',
+      body: h(
+        'div',
+        {},
+        h('p', {}, `${p.name}, başkentin düştü${p.eliminatedBy !== null ? ` (${pname(this.state, p.eliminatedBy)})` : ''}. Artık izleyicisin: haritayı, oyuncuları, günlüğü ve genel sohbeti görmeye devam edersin.`),
+        host ? h('p', { class: 'muted' }, 'Oda sahibi olduğun için oyun senin tarayıcında sürüyor: diğerleri bitirene kadar bu sekmeyi kapatma.') : null,
+      ),
+      buttons: host
+        ? [{ label: 'İzlemeye devam et', value: 'stay', primary: true }]
+        : [
+            { label: 'Ana menü', value: 'menu' },
+            { label: 'İzlemeye devam et', value: 'stay', primary: true },
+          ],
+    });
+    void m.result.then((v) => v === 'menu' && this.cb.toMenu());
   }
 
   private phaseText(): string {
@@ -1417,7 +1483,7 @@ export class GameScreen {
   /** Sıra bu cihazda değilken bilgi şeridi metni */
   private waitingText(): string {
     const s = this.state;
-    const spectator = this.net?.kind === 'client' && this.net.room.seat === null ? 'İzliyorsun · ' : '';
+    const spectator = this.spectating() ? 'İzliyorsun · ' : '';
     if (s.phase.kind === 'vote') {
       const ph = s.phase;
       const waiting = s.players.filter((p) => p.alive && !(p.id in ph.votes)).map((p) => p.name);

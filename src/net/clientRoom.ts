@@ -10,6 +10,7 @@ import {
   type ClockMessage,
   type LobbyInfo,
   type Presence,
+  type ViewerInfo,
 } from './protocol';
 import type { ClientTransport, Conn } from './transport';
 
@@ -29,6 +30,8 @@ export interface ClientRoomEvents {
   onClock?(clock: ClockMessage | null): void;
   /** Bu oyuncuların süresi doldu */
   onTimeout?(players: number[]): void;
+  /** İzleyici listesi değişti */
+  onViewers?(viewers: ViewerInfo[]): void;
 }
 
 export interface ClientProfile {
@@ -51,6 +54,8 @@ export class ClientRoom implements ChatChannel {
   private keys: Record<number, string> = {};
   private identity: ChatIdentity | null = null;
   private spectatorChat = true;
+  /** Oyunu izleyenler (oda sahibinin son bildirdiği) */
+  viewers: ViewerInfo[] = [];
   /** Oda sahibinden gelen son tur saati (alındığı yerel zamanla) */
   lastClock: (ClockMessage & { receivedAt: number }) | null = null;
   private conn: Conn<HostMessage, ClientMessage> | null = null;
@@ -194,6 +199,14 @@ export class ClientRoom implements ChatChannel {
         return;
       case 'timeout':
         this.events.onTimeout?.(m.players);
+        return;
+      case 'viewers':
+        this.viewers = m.viewers;
+        this.events.onViewers?.(m.viewers);
+        return;
+      case 'chatcfg':
+        this.spectatorChat = m.spectatorChat;
+        this.events.onChat?.(null);
         return;
       case 'notice':
         this.events.onNotice?.(m.text);

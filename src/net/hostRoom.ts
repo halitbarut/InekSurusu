@@ -17,6 +17,7 @@ import {
   type Presence,
   type ChatSnapshot,
   type ClockMessage,
+  type ViewerInfo,
 } from './protocol';
 import type { Conn, HostTransport } from './transport';
 
@@ -45,6 +46,8 @@ export interface ChatChannel {
   openBox(box: ChatBox): Promise<string | null>;
   /** Genel kanala izleyiciler yazabilir mi */
   spectatorChatOpen(): boolean;
+  /** Yalnızca oda sahibinde: izleyici sohbetini aç/kapat */
+  setSpectatorChat?(open: boolean): void;
 }
 
 export interface HostRoomEvents {
@@ -60,6 +63,8 @@ export interface HostRoomEvents {
   onNotice?(text: string): void;
   /** Oda sahibinin görebildiği yeni sohbet mesajı; null = liste ya da anahtarlar değişti */
   onChat?(msg: ChatMessage | null): void;
+  /** İzleyici listesi değişti */
+  onViewers?(viewers: ViewerInfo[]): void;
 }
 
 /**
@@ -88,6 +93,7 @@ export class HostRoom implements ChatChannel {
   private identity: ChatIdentity | null = null;
   /** İzleyiciler genel kanala yazabilir mi */
   private spectatorChat = true;
+  private lastViewers = '';
   /** Tur saati: son yayınlanan (yeni gelenlere de gönderilir) */
   private clock: { players: number[]; deadline: number; limitMs: number } | null = null;
 
@@ -124,7 +130,41 @@ export class HostRoom implements ChatChannel {
       seats: this.seats.map((s) => ({ ...s })),
       spectators: [...this.clients.values()].filter((c) => c.seat === null && c.conn).map((c) => c.name),
       ...this.settings,
+      spectatorChat: this.spectatorChat,
     };
+  }
+
+  /** Oyunu izleyenler: bağlı ve oturmamış katılımcılar, bağlı elenmiş oyuncular (oda sahibi dahil) */
+  viewers(): ViewerInfo[] {
+    const st = this.getState();
+    const out: ViewerInfo[] = [];
+    if (st && this.hostSeat !== null && !st.players[this.hostSeat]?.alive) out.push({ name: st.players[this.hostSeat].name, seat: this.hostSeat });
+    for (const c of this.clients.values()) {
+      if (!c.conn) continue;
+      if (c.seat === null) out.push({ name: c.name, seat: null });
+      else if (st && !st.players[c.seat]?.alive) out.push({ name: st.players[c.seat].name, seat: c.seat });
+    }
+    return out;
+  }
+
+  /** İzleyici listesini değiştiyse yayınlar (bağlantılar ve elenmeler değişince çağrılır) */
+  refreshViewers() {
+    if (!this.inGame) return;
+    const v = this.viewers();
+    const sig = JSON.stringify(v);
+    if (sig === this.lastViewers) return;
+    this.lastViewers = sig;
+    for (const c of this.clients.values()) c.conn?.send({ t: 'viewers', viewers: v });
+    this.events.onViewers?.(v);
+  }
+
+  /** Oda sahibi izleyicilerin genel sohbete yazmasını açar/kapatır */
+  setSpectatorChat(open: boolean) {
+    if (this.spectatorChat === open) return;
+    this.spectatorChat = open;
+    for (const c of this.clients.values()) c.conn?.send({ t: 'chatcfg', spectatorChat: open });
+    this.events.onChat?.(null);
+    if (!this.inGame) this.lobbyChanged();
   }
 
   /** Katılanlara giden lobi: koltuk sahiplerinin kimlikleri maskelenir */
@@ -146,8 +186,10 @@ export class HostRoom implements ChatChannel {
     }
     for (const c of this.clients.values()) {
       c.conn?.send({ t: 'start', state: viewFor(state, c.seat), seat: c.seat, presence: this.presence, chat: this.chatSnapshot(c.seat) });
+      c.conn?.send({ t: 'chatcfg', spectatorChat: this.spectatorChat });
     }
     this.events.onPresence?.(this.presence);
+    this.refreshViewers();
   }
 
   /** Uzaktaki oyuncunun koltuğu (oyunda) */
@@ -268,6 +310,9 @@ export class HostRoom implements ChatChannel {
       const st = this.getState();
       conn.send({ t: 'welcome', seat, lobby: null, state: st ? viewFor(st, seat) : null, presence: this.presence, chat: this.chatSnapshot(seat) });
       conn.send({ t: 'clock', clock: this.clockNow() });
+      conn.send({ t: 'chatcfg', spectatorChat: this.spectatorChat });
+      conn.send({ t: 'viewers', viewers: this.viewers() });
+      this.refreshViewers();
     } else {
       conn.send({ t: 'welcome', seat: c.seat, lobby: this.maskedLobby(), state: null, presence: {} });
       this.lobbyChanged();
@@ -443,6 +488,7 @@ export class HostRoom implements ChatChannel {
       this.lobbyChanged();
       return;
     }
+    this.refreshViewers();
     const seat = c.seat;
     if (seat === null || this.presence[seat]?.status !== 'online') return;
     const deadline = Date.now() + RECONNECT_GRACE_MS;

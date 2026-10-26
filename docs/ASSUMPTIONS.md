@@ -337,3 +337,14 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
      Süre gerçek zamanda işler: topaç ve savaş animasyonları da süreden yer.
 102. Son 15 saniyede üst çubuktaki süre kırmızıya döner, kısa bir uyarı çıkar ve süresi işleyen oyuncunun cihazında her
      saniye tık sesi çalar.
+
+## İzleyiciler
+
+103. İzleyici linki `?oda=KOD&izle=1`'dir. Bu linkle gelen "Odayı izle" ekranını görür ve lobide koltuğa oturmaz;
+     isterse yine de boş bir koltuğa oturabilir (link yalnızca varsayılanı belirler).
+104. Elenen oyuncu çevrimiçide otomatik olarak izleyici olur: bağlı kalır, koltuğu (ve eski özel konuşmaları) onun
+     kalır, izleyici listesinde "(elendi)" diye görünür. "Ana menü" ile ayrılabilir. Oda sahibi elenirse oyun onun
+     tarayıcısında sürdüğü için yalnızca "İzlemeye devam et" seçeneği vardır.
+105. İzleyici sohbeti varsayılan olarak açıktır. Oda sahibi lobide ("İzleyiciler genel sohbete yazabilsin") ya da
+     oyunda sohbet panelinin başlığından kapatıp açabilir; kapalıyken izleyiciler okur ama yazamaz. Bu kural elenmiş
+     oyuncular için de geçerlidir.

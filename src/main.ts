@@ -42,7 +42,7 @@ const cb: MenuCallbacks = {
     if (location.search) history.replaceState(null, '', location.pathname);
     renderMainMenu(host, cb);
   },
-  online(code) {
+  online(code, spectate) {
     leaveGame();
     renderOnlineMenu(
       host,
@@ -55,6 +55,7 @@ const cb: MenuCallbacks = {
         startClient: (state, room) => startGame(state, { kind: 'client', room }),
       },
       code,
+      spectate,
     );
   },
   startHost(state, room, mySeat) {
@@ -65,9 +66,10 @@ const cb: MenuCallbacks = {
   },
 };
 
-// Davet linki: ?oda=KOD
-const invite = new URLSearchParams(location.search).get('oda');
-if (invite) cb.online(invite);
+// Davet linki: ?oda=KOD (izleyici linki: &izle=1)
+const params = new URLSearchParams(location.search);
+const invite = params.get('oda');
+if (invite) cb.online(invite, params.has('izle'));
 else cb.menu();
 
 // Geliştirme sırasında konsoldan inceleme için

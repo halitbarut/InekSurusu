@@ -6,8 +6,16 @@ import type { ChatMessage, ChatSend } from './chat';
  * 3: oyuncuya özel durum görünümü (gizli teklifler), lobide maskeli katılımcı kimlikleri.
  * 4: oyun içi sohbet (genel kanal, uçtan uca şifreli özel mesajlar, sohbet geçmişi).
  * 5: tur süresi (clock, timeout mesajları).
+ * 6: izleyiciler: izleyici listesi (viewers), izleyici sohbeti ayarı (chatcfg).
  */
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
+
+/** Oyunu izleyen biri: oturmamış katılımcı ya da elenmiş oyuncu */
+export interface ViewerInfo {
+  name: string;
+  /** Elenmiş oyuncu (koltuğu) */
+  seat: number | null;
+}
 
 /** Oda sahibinin tuttuğu tur saati: kimin süresi işliyor ve ne kadar kaldı (gönderildiği an) */
 export interface ClockMessage {
@@ -49,6 +57,8 @@ export interface LobbyInfo {
   mapName?: string;
   /** Tur süresi (saniye; 0 ya da yok = kapalı) */
   turnSeconds?: number;
+  /** İzleyiciler genel sohbete yazabilir mi (yok = evet) */
+  spectatorChat?: boolean;
 }
 
 /** Oyun sırasında insan koltuklarının bağlantı durumu */
@@ -97,6 +107,10 @@ export type HostMessage =
   | { t: 'clock'; clock: ClockMessage | null }
   /** Bu oyuncuların süresi doldu: açık pencerelerini kapatsınlar */
   | { t: 'timeout'; players: number[] }
+  /** Oyunu izleyenler (oturmamış katılımcılar ve elenmiş oyuncular) */
+  | { t: 'viewers'; viewers: ViewerInfo[] }
+  /** İzleyiciler genel sohbete yazabilir mi */
+  | { t: 'chatcfg'; spectatorChat: boolean }
   | { t: 'ping' };
 
 /** Lobide katılanlara giden maskeli koltuk sahibi */

@@ -1815,3 +1815,30 @@ footer {
 .match-options .row {
   flex-wrap: wrap;
 }
+
+/* ---------- izleyiciler ---------- */
+.viewers-section {
+  border-top: 1.5px dashed rgba(0, 0, 0, 0.2);
+}
+.viewers-head {
+  font-weight: bold;
+  color: var(--ink);
+}
+.viewers-head .icon,
+.spectator-list .icon {
+  width: 18px;
+  height: 18px;
+  vertical-align: -4px;
+}
+.chat-mod {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+  margin-right: 4px;
+  cursor: pointer;
+}
+.chat-mod .icon {
+  width: 16px;
+  height: 16px;
+}

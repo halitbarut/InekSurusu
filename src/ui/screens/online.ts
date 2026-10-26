@@ -64,14 +64,37 @@ function clientIdFor(code: string): string {
   }
 }
 
-export function inviteLink(code: string): string {
-  return `${location.origin}${location.pathname}?oda=${code}`;
+export function inviteLink(code: string, spectate = false): string {
+  return `${location.origin}${location.pathname}?oda=${code}${spectate ? '&izle=1' : ''}`;
+}
+
+/** Linki panoya kopyalayan düğme */
+function copyButton(link: string, input: HTMLInputElement, label = 'Kopyala'): HTMLElement {
+  return h(
+    'button',
+    {
+      class: 'btn btn-small',
+      onClick: async () => {
+        try {
+          await navigator.clipboard.writeText(link);
+          toast('Link kopyalandı', 'good');
+        } catch {
+          input.select();
+          toast('Linki seçtim, kopyalayabilirsin', 'info');
+        }
+      },
+    },
+    icon('copy'),
+    label,
+  );
 }
 
 /** Oda kodu ve davet linki kutusu (oda sahibi lobisinde) */
 export function inviteBox(code: string, people: HTMLElement): HTMLElement {
   const link = inviteLink(code);
   const input = h('input', { type: 'text', class: 'text', value: link, readOnly: true, onFocus: (e: Event) => (e.target as HTMLInputElement).select() });
+  const watchLink = inviteLink(code, true);
+  const watchInput = h('input', { type: 'text', class: 'text', value: watchLink, readOnly: true, 'aria-label': 'İzleyici linki', onFocus: (e: Event) => (e.target as HTMLInputElement).select() });
   return h(
     'div',
     { class: 'invite-box' },
@@ -80,34 +103,15 @@ export function inviteBox(code: string, people: HTMLElement): HTMLElement {
       'div',
       { style: { flex: '1', minWidth: '220px' } },
       h('div', { class: 'muted small' }, 'Davet linki — arkadaşlarına gönder'),
-      h(
-        'div',
-        { class: 'row' },
-        input,
-        h(
-          'button',
-          {
-            class: 'btn btn-small',
-            onClick: async () => {
-              try {
-                await navigator.clipboard.writeText(link);
-                toast('Link kopyalandı', 'good');
-              } catch {
-                input.select();
-                toast('Linki seçtim, kopyalayabilirsin', 'info');
-              }
-            },
-          },
-          icon('copy'),
-          'Kopyala',
-        ),
-      ),
+      h('div', { class: 'row' }, input, copyButton(link, input)),
+      h('div', { class: 'muted small' }, icon('eye'), ' İzleyici linki — oyuna katılmadan izlemek isteyenler için'),
+      h('div', { class: 'row' }, watchInput, copyButton(watchLink, watchInput)),
       people,
     ),
   );
 }
 
-export function renderOnlineMenu(host: HTMLElement, cb: OnlineCallbacks, presetCode?: string) {
+export function renderOnlineMenu(host: HTMLElement, cb: OnlineCallbacks, presetCode?: string, spectate = false) {
   clear(host);
   const profile = loadProfile();
   const nameIn = h('input', { type: 'text', class: 'text', maxLength: 16, value: profile.name, placeholder: 'Adın' });
@@ -154,7 +158,7 @@ export function renderOnlineMenu(host: HTMLElement, cb: OnlineCallbacks, presetC
     room.events.onLobby = (lobby, seat) => {
       if (entered) return;
       entered = true;
-      renderJoinLobby(host, cb, room, lobby, seat);
+      renderJoinLobby(host, cb, room, lobby, seat, spectate);
     };
     room.events.onGameState = (state) => {
       if (entered) return;
@@ -187,9 +191,10 @@ export function renderOnlineMenu(host: HTMLElement, cb: OnlineCallbacks, presetC
         h('h3', {}, 'Oda kur'),
         h('p', { class: 'muted small' }, 'Bir oda kodu ve davet linki alırsın, ayarları sen yaparsın.'),
         h('button', { class: 'btn btn-primary', onClick: () => void create() }, icon('home'), 'Oda kur'),
-        h('h3', { style: { marginTop: '18px' } }, 'Odaya katıl'),
+        h('h3', { style: { marginTop: '18px' } }, spectate ? 'Odayı izle' : 'Odaya katıl'),
+        spectate ? h('p', { class: 'muted small' }, icon('eye'), ' İzleyici linkiyle geldin: oyunu izler, genel sohbete yazabilirsin. İstersen lobide boş bir koltuğa oturabilirsin.') : null,
         h('div', { class: 'row' }, 'Ad ', nameIn, colorIn),
-        h('div', { class: 'row' }, 'Oda kodu ', codeIn, h('button', { class: 'btn btn-primary', onClick: () => void join() }, icon('door'), 'Katıl')),
+        h('div', { class: 'row' }, 'Oda kodu ', codeIn, h('button', { class: 'btn btn-primary', onClick: () => void join() }, icon(spectate ? 'eye' : 'door'), spectate ? 'İzle' : 'Katıl')),
         status,
         h('div', { class: 'row-buttons' }, h('button', { class: 'btn', onClick: () => cb.menu() }, '← Geri')),
       ),
@@ -201,11 +206,12 @@ export function renderOnlineMenu(host: HTMLElement, cb: OnlineCallbacks, presetC
   if (code.length >= 4 && profile.name && joinedBefore(code)) void join();
 }
 
-function renderJoinLobby(host: HTMLElement, cb: OnlineCallbacks, room: ClientRoom, firstLobby: LobbyInfo, firstSeat: number | null) {
+function renderJoinLobby(host: HTMLElement, cb: OnlineCallbacks, room: ClientRoom, firstLobby: LobbyInfo, firstSeat: number | null, spectate = false) {
   clear(host);
   const profile = loadProfile();
   const seatsEl = h('div', {});
   const infoEl = h('p', { class: 'muted small' });
+  const spectEl = h('p', { class: 'muted small spectator-list' });
   const statusEl = h('p', { class: 'muted small' }, ' ');
   const nameIn = h('input', { type: 'text', class: 'text', maxLength: 16, value: profile.name });
   const colorIn = h('input', { type: 'color', value: profile.color });
@@ -234,8 +240,19 @@ function renderJoinLobby(host: HTMLElement, cb: OnlineCallbacks, room: ClientRoo
         ),
       );
     });
-    infoEl.textContent = `${lobby.mapName ? `Harita: ${lobby.mapName}` : `Harita ${lobby.width}×${lobby.height} · seed ${lobby.seed}`}${lobby.rules ? ` · Kurallar: ${lobby.rules}` : ''}${lobby.turnSeconds ? ` · Tur süresi: ${lobby.turnSeconds / 60} dk` : ''} · İzleyiciler: ${lobby.spectators.length ? lobby.spectators.join(', ') : '—'}`;
-    statusEl.textContent = seat === null ? 'Şu an izleyicisin. Oynamak için boş bir koltuğa otur.' : `${seat + 1}. koltuktasın. Oda sahibinin başlatması bekleniyor…`;
+    infoEl.textContent = `${lobby.mapName ? `Harita: ${lobby.mapName}` : `Harita ${lobby.width}×${lobby.height} · seed ${lobby.seed}`}${lobby.rules ? ` · Kurallar: ${lobby.rules}` : ''}${lobby.turnSeconds ? ` · Tur süresi: ${lobby.turnSeconds / 60} dk` : ''}`;
+    clear(spectEl);
+    spectEl.append(
+      icon('eye'),
+      ` İzleyiciler (${lobby.spectators.length}): ${lobby.spectators.length ? lobby.spectators.join(', ') : '—'}`,
+      lobby.spectatorChat === false ? ' · izleyici sohbeti kapalı' : '',
+    );
+    statusEl.textContent =
+      seat === null
+        ? spectate
+          ? 'İzleyici olarak katıldın; oyun başlayınca izleyeceksin. Oynamak istersen boş bir koltuğa otur.'
+          : 'Şu an izleyicisin. Oynamak için boş bir koltuğa otur.'
+        : `${seat + 1}. koltuktasın. Oda sahibinin başlatması bekleniyor…`;
   };
   room.events.onLobby = (lobby, seat) => draw(lobby, seat);
   room.events.onGameState = (state) => cb.startClient(state, room);
@@ -260,6 +277,7 @@ function renderJoinLobby(host: HTMLElement, cb: OnlineCallbacks, room: ClientRoo
         h('h3', {}, 'Koltuklar'),
         seatsEl,
         infoEl,
+        spectEl,
         statusEl,
         h(
           'div',

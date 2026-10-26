@@ -59,6 +59,19 @@ export class ChatPanel {
         'div',
         { class: 'chat-head' },
         h('b', {}, icon('chat'), ' Sohbet'),
+        this.channel.setSpectatorChat
+          ? h(
+              'label',
+              { class: 'chat-mod small', title: 'Kapalıyken izleyiciler (oturmayanlar ve elenenler) sohbeti okur ama yazamaz' },
+              h('input', {
+                type: 'checkbox',
+                checked: this.channel.spectatorChatOpen(),
+                onChange: (e: Event) => this.channel.setSpectatorChat?.((e.target as HTMLInputElement).checked),
+              }),
+              icon('eye'),
+              ' İzleyiciler yazabilir',
+            )
+          : null,
         h('button', { class: 'icon-btn', title: 'Kapat', 'aria-label': 'Sohbeti kapat', onClick: () => this.setOpen(false) }, icon('close')),
       ),
       this.tabsEl,
