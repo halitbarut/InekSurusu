@@ -8,7 +8,10 @@ import { renderOnlineMenu } from './ui/screens/online';
 import { bindClickSounds } from './ui/sound';
 import { parseReplay, type ReplayData } from './engine';
 import { ReplayScreen } from './ui/replay/replayScreen';
-import { pickFile, toast } from './ui/dom';
+import { openModal, pickFile, toast } from './ui/dom';
+import { TutorialGuide, loadProgress, saveProgress, type GameGuide } from './tutorial/guide';
+import { tutorialState } from './tutorial/scenario';
+import { STEPS } from './tutorial/steps';
 
 const host = document.getElementById('app')!;
 bindClickSounds();
@@ -23,13 +26,39 @@ function leaveGame() {
   clear(host);
 }
 
-function startGame(state: GameState, net: NetMode = null, rec?: ReplayData) {
+function startGame(state: GameState, net: NetMode = null, rec?: ReplayData, guide: GameGuide | null = null) {
   leaveGame();
-  game = new GameScreen(host, state, { toMenu: () => cb.menu(), newGame: () => cb.newGame() }, net, rec);
+  game = new GameScreen(host, state, { toMenu: () => cb.menu(), newGame: () => cb.newGame() }, net, rec, guide);
+}
+
+/** Öğreticiyi başlatır; kaldığı yer varsa sorar */
+async function startTutorial(fromStart?: boolean) {
+  const prog = loadProgress();
+  let resume = !fromStart && !prog.done && prog.state !== null && prog.step > 0 && prog.step < STEPS.length;
+  if (resume && fromStart === undefined) {
+    const m = openModal({
+      title: 'Öğretici',
+      icon: 'book',
+      body: `Öğreticinin ${STEPS[prog.step].topic}. konusunda kalmıştın.`,
+      buttons: [
+        { label: 'Baştan başla', value: 'restart' },
+        { label: 'Kaldığım yerden devam', value: 'resume', primary: true },
+      ],
+    });
+    const v = await m.result;
+    if (v === 'close') return;
+    resume = v === 'resume';
+  }
+  saveProgress({ seen: true });
+  const state = resume ? prog.state! : tutorialState();
+  const step = resume ? prog.step : 0;
+  if (!resume) saveProgress({ step: 0, state, done: false });
+  startGame(state, null, undefined, new TutorialGuide(step));
 }
 
 const cb: MenuCallbacks = {
   start: (state, rec) => startGame(state, null, rec),
+  tutorial: (fromStart) => void startTutorial(fromStart),
   async openReplay() {
     const f = await pickFile('application/json,.json');
     if (!f) return;

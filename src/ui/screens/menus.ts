@@ -25,6 +25,8 @@ import { BUILTIN_MAPS, findBuiltinMap, type BuiltinMap } from '../../maps/builti
 import { getPrefs, setPrefs } from '../prefs';
 import { soundControls } from '../sound';
 import { guidanceControls } from '../settings';
+import { loadProgress, saveProgress } from '../../tutorial/guide';
+import { STEPS } from '../../tutorial/steps';
 import type { HostRoom } from '../../net/hostRoom';
 import type { LobbyInfo, SeatKind } from '../../net/protocol';
 import { AUTOSAVE_ID, deleteSave, getSave, importSave, listMaps, listSaves } from '../storage';
@@ -47,6 +49,8 @@ export interface MenuCallbacks {
   start(state: GameState, replay?: ReplayData): void;
   /** Tekrar dosyası aç (ana menü) */
   openReplay(): void;
+  /** Öğretici (kaldığı yer varsa sorar; fromStart verilirse sormadan) */
+  tutorial(fromStart?: boolean): void;
   /** mapId verilirse kayıtlı harita seçili açılır */
   newGame(mapId?: string): void;
   /** Harita editörü (kayıtlı haritalar listesi) */
@@ -70,6 +74,34 @@ const COLORS = PLAYER_COLORS;
 export function renderMainMenu(host: HTMLElement, cb: MenuCallbacks) {
   clear(host);
   const auto = getSave(AUTOSAVE_ID);
+  const tut = loadProgress();
+  const tutLabel = tut.done ? 'Öğretici (tamamlandı)' : tut.step > 0 && tut.state ? `Öğretici (${STEPS[tut.step]?.topic ?? 1}/11. konudan devam)` : 'Öğretici';
+  // İlk kez açan oyuncuya öğretici önerisi
+  const firstTime = !tut.seen && !tut.done && listSaves().length === 0;
+  const suggest = firstTime
+    ? h(
+        'div',
+        { class: 'tutorial-suggest', role: 'note' },
+        icon('book', { cls: 'ts-icon' }),
+        h('div', {}, h('b', {}, 'İlk kez mi oynuyorsun?'), h('p', {}, 'Öğretici küçük bir haritada, 2 botla, adım adım kuralları gösterir: topaç, toprak, madenler, inşa, savaş, sefer, boğazlar, diplomasi ve kazanma.')),
+        h(
+          'div',
+          { class: 'row-buttons' },
+          h(
+            'button',
+            {
+              class: 'btn btn-small',
+              onClick: () => {
+                saveProgress({ seen: true });
+                suggest?.remove();
+              },
+            },
+            'Şimdi değil',
+          ),
+          h('button', { class: 'btn btn-small btn-primary', onClick: () => cb.tutorial(true) }, 'Öğreticiyi başlat'),
+        ),
+      )
+    : null;
   host.appendChild(
     h(
       'div',
@@ -80,6 +112,7 @@ export function renderMainMenu(host: HTMLElement, cb: MenuCallbacks) {
         h('div', { class: 'cow' }, cowMark(92)),
         h('h1', { class: 'title' }, 'İnek Sürüsü'),
         h('p', { class: 'subtitle' }, 'Kareli defterden çıkıp gelen, topaçlı strateji oyunu'),
+        suggest,
         h(
           'div',
           { class: 'menu-buttons' },
@@ -87,6 +120,7 @@ export function renderMainMenu(host: HTMLElement, cb: MenuCallbacks) {
             ? h('button', { class: 'btn btn-primary btn-big', onClick: () => cb.start(auto.state, auto.replay) }, `▶ Devam et (${auto.round > 0 ? `${auto.round}. tur` : 'kurulum'})`)
             : null,
           h('button', { class: `btn btn-big ${auto ? '' : 'btn-primary'}`, onClick: () => cb.newGame() }, icon('newGame'), 'Yeni oyun'),
+          h('button', { class: 'btn btn-big', onClick: () => cb.tutorial() }, icon('book'), tutLabel),
           h('button', { class: 'btn btn-big', onClick: () => cb.online() }, icon('online'), 'Çevrimiçi oyun'),
           h('button', { class: 'btn btn-big', onClick: () => cb.load() }, icon('load'), 'Kayıtlı oyunu yükle'),
           h('button', { class: 'btn btn-big', onClick: () => cb.openReplay() }, icon('replay'), 'Replay aç'),

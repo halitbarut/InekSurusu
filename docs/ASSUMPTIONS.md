@@ -411,3 +411,24 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
 123. **Tur sonu hatırlatması:** turu bitirirken bu tur hiç savaşılmadıysa ve karadan ya da gemi/uçakla saldırılabilecek
      bir hedef varsa sorulur. "Bir daha hatırlatma" ile ve ayarlardan kapatılabilir. Süre dolunca otomatik biten turda
      sorulmaz.
+
+## Öğretici ve ipuçları
+
+124. Öğretici kurulumu atlar: oyun 1. turda, başkentler ve topraklar yerleşmiş olarak başlar (kurulum ilk adımın
+     metninde anlatılır). Harita `scripts/maps/tutorial.ts` ile çizilir (26×18; koy boğazı, ada, göl).
+125. "Sabit seed": öğreticideki her adımda tek bir eylem yapılabildiği ve botlar yalnızca topaç çevirip turu bitirdiği
+     (TutorialBot) için RNG hep aynı sırayla kullanılır. Başlangıç RNG durumu (175) `scripts/tutorialSeed.ts` ile,
+     2. turdaki savaş kaybedilecek, 3. turdaki savaşta en az 2 toprak alınacak ve 4. turdaki başkent savaşı
+     kazanılacak biçimde arandı; `tests/tutorial.test.ts` bunu doğrular.
+126. Öğreticide oyuncuya baştan yeterli kaynak verilir (2500 akçe, 1 altın, 3 petrol, 4 demir, 2 çelik) ki adımlar
+     topaç sonucuna takılmasın. Savaş önizlemesi açık kalır (öğreticinin parçası), tur sonu hatırlatması ve ipuçları
+     kapalıdır. Öğretici otomatik kaydı ve tekrar kaydını etkilemez; ilerlemesi ayrı saklanır (`inek-surusu-tutorial`:
+     adım + o adımın başındaki durum).
+127. Adımlarda yanlış eylem yapılmaz: başka bir eylem denenirse "Öğretici: …" diye ne yapılacağı söylenir. "Benim yerime
+     yap" adımın eylemini oyuncu adına yapar (savaş önizlemesi sormadan). "Öğreticiden çık" ana menüye döner; ana
+     menüdeki "Öğretici" düğmesi kaldığı yerden devam ya da baştan başlamayı sorar.
+128. İlk açılış önerisi: öğretici hiç başlatılmamışsa, öneri kapatılmamışsa ve kayıtlı oyun yoksa ana menüde gösterilir.
+129. **İlk oyunlarda ipuçları** (ayar, varsayılan açık): normal oyunda, eylem aşamasında bir eylem bu cihazdaki oyuncu
+     için ilk kez yapılabilir olunca tur başına en fazla bir kısa ipucu (toprak alma, altın bozdurma, tersane,
+     fabrika, gemi/uçak üretimi, sefer, saldırı, başkent savaşı, boğaz idaresi, diplomasi). Her ipucu cihazda bir kez
+     gösterilir; ayarlardaki "Sıfırla" ile yeniden gösterilir.

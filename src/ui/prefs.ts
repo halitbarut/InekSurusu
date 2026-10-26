@@ -14,10 +14,12 @@ export interface UiPrefs {
   battlePreview: boolean;
   /** Kullanılmamış savaş hakkıyla tur bitirirken hatırlat */
   endTurnReminder: boolean;
+  /** İlk oyunlarda bir eylem ilk kez yapılabilir olunca kısa ipucu */
+  hints: boolean;
 }
 
 const KEY = 'inek-surusu-prefs';
-const DEFAULTS: UiPrefs = { animSpeed: 'normal', fastBots: false, passScreen: true, volume: 0.7, muted: false, battlePreview: true, endTurnReminder: true };
+const DEFAULTS: UiPrefs = { animSpeed: 'normal', fastBots: false, passScreen: true, volume: 0.7, muted: false, battlePreview: true, endTurnReminder: true, hints: true };
 
 let cache: UiPrefs | null = null;
 

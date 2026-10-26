@@ -3,7 +3,7 @@ import { MINE_COLOR, RES_ICON, STRUCT_ICON, straitLabel } from '../format';
 import { iconImage, type IconName } from '../icons';
 import { hatchShapes, playerHatch } from '../playerStyle';
 
-export type HighlightStyle = 'claim' | 'attack' | 'build' | 'select' | 'pick';
+export type HighlightStyle = 'claim' | 'attack' | 'build' | 'select' | 'pick' | 'guide';
 
 export interface Highlight {
   /** Vurgulanacak hedef kare grupları (her grubun kendi rengi) */
@@ -27,6 +27,7 @@ const STYLE_COLORS: Record<HighlightStyle, [string, string]> = {
   attack: ['rgba(235, 60, 50, 0.30)', '#b3261e'],
   build: ['rgba(70, 170, 90, 0.32)', '#1f7a35'],
   select: ['rgba(90, 120, 255, 0.30)', '#2b47c9'],
+  guide: ['rgba(160, 60, 220, 0.38)', '#7a1fb8'],
 };
 
 /** Deterministik küçük titreşim (el çizimi hissi) */

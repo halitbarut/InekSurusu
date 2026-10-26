@@ -1,5 +1,5 @@
 import { writeFileSync } from 'node:fs';
-import { buildMap } from '../../src/engine';
+import { buildMap, draftFromRows as draftFromRowsSafe } from '../../src/engine';
 import { anadolu } from './anadolu';
 import { archipelago, bigContinent, twinContinents } from './others';
 import { report } from './sketch';
@@ -84,3 +84,20 @@ export function findBuiltinMap(id: string | null | undefined): BuiltinMap | null
 `,
 );
 console.log('\nsrc/maps/builtin.ts yazıldı');
+
+// Öğretici haritası
+import('./tutorial').then(({ tutorialMap }) => {
+  const rows = tutorialMap().rows();
+  report('Öğretici', buildMap(draftFromRowsSafe(rows), 'Öğretici'));
+  writeFileSync(
+    new URL('../../src/tutorial/map.ts', import.meta.url),
+    `// Bu dosya scripts/maps/build.ts ile üretilir (scripts/maps/tutorial.ts).
+
+/** Öğretici haritası: harita editörünün metin biçiminde */
+export const TUTORIAL_ROWS: readonly string[] = [
+${rows.map((r) => `  ${JSON.stringify(r)},`).join('\n')}
+];
+`,
+  );
+  console.log('src/tutorial/map.ts yazıldı');
+});

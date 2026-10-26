@@ -501,7 +501,7 @@ export class MediumBot implements BotBrain {
 
 // ------------------------------------------------------------------
 
-function fallbackAction(state: GameState, p: number): Action {
+export function fallbackAction(state: GameState, p: number): Action {
   switch (state.phase.kind) {
     case 'setup_capital': {
       const c = capitalCandidates(state, p);

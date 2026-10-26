@@ -2231,3 +2231,128 @@ footer {
     font-size: 0.74em;
   }
 }
+
+/* ---------- öğretici ---------- */
+.tutorial-box {
+  flex-shrink: 0;
+  margin: 8px;
+  max-height: 58%;
+  overflow-y: auto;
+  padding: 8px 12px 10px;
+  background: #fbf3ff;
+  border: 2px solid #7a1fb8;
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow);
+}
+.tutorial-box h3 {
+  margin: 4px 0 2px;
+  font-size: 1.5em;
+}
+.tb-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tb-head .icon {
+  width: 22px;
+  height: 22px;
+}
+.tb-head .icon-btn {
+  margin-left: auto;
+  width: 30px;
+  height: 30px;
+}
+.tb-progress {
+  height: 6px;
+  margin: 4px 0;
+  border-radius: 3px;
+  background: rgba(122, 31, 184, 0.15);
+  overflow: hidden;
+}
+.tb-progress span {
+  display: block;
+  height: 100%;
+  background: #7a1fb8;
+  transition: width 0.3s;
+}
+.tb-text {
+  margin: 4px 0;
+  line-height: 1.3;
+}
+.tb-todo {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  margin: 6px 0;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: #fff;
+  border: 1.5px dashed #7a1fb8;
+  font-weight: bold;
+}
+.tb-todo .icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: #7a1fb8;
+}
+.tutorial-box .row-buttons {
+  margin-top: 4px;
+}
+.tutorial-suggest {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  text-align: left;
+  margin: 8px 0 12px;
+  padding: 10px 12px;
+  border: 2px solid #7a1fb8;
+  border-radius: var(--radius-card);
+  background: #fbf3ff;
+}
+.tutorial-suggest p {
+  margin: 2px 0 0;
+}
+.tutorial-suggest .ts-icon {
+  width: 34px;
+  height: 34px;
+  color: #7a1fb8;
+}
+.tutorial-suggest > div:nth-child(2) {
+  flex: 1;
+  min-width: 200px;
+}
+@media (max-width: 900px) {
+  /* Dar ekranda kenar çubuğu haritanın altında bir şerit: kutu haritanın alt kenarında yüzer */
+  .tutorial-box {
+    position: fixed;
+    left: 6px;
+    right: 6px;
+    bottom: 270px;
+    margin: 0;
+    max-height: 40vh;
+    z-index: 8;
+    padding: 6px 10px;
+  }
+  .tutorial-box:not(.expanded) .tb-text,
+  .tutorial-box:not(.expanded) h3,
+  .tutorial-box:not(.expanded) .tb-progress {
+    display: none;
+  }
+  .tutorial-box .tb-todo {
+    margin: 4px 0;
+  }
+}
+.tb-more {
+  display: none;
+  margin-left: auto;
+}
+@media (max-width: 900px) {
+  .tb-more {
+    display: inline-flex;
+  }
+  .tb-more + .icon-btn {
+    margin-left: 0;
+  }
+}

@@ -1,5 +1,7 @@
 import { h } from './dom';
 import { getPrefs, setPrefs, type UiPrefs } from './prefs';
+import { resetHints } from './game/hints';
+import { toast } from './dom';
 
 type BoolPref = { [K in keyof UiPrefs]: UiPrefs[K] extends boolean ? K : never }[keyof UiPrefs];
 
@@ -14,5 +16,18 @@ export function guidanceControls(): HTMLElement[] {
   return [
     ...boolRow('battlePreview', 'Savaştan önce önizleme', 'Saldırmadan önce masraf, kazanma olasılığı ve kazanınca/kaybedince ne olacağını göster'),
     ...boolRow('endTurnReminder', 'Savaş hakkı hatırlatması', 'Bu tur hiç savaşmadan ve saldırabileceğin bir yer varken turu bitirirken sor'),
+    ...boolRow('hints', 'İlk oyunlarda ipuçları göster', 'Bir eylem ilk kez yapılabilir hâle gelince kısa bir ipucu göster (her ipucu bir kez)'),
+    h('label', {}, 'Görülmüş ipuçları'),
+    h(
+      'button',
+      {
+        class: 'btn btn-small',
+        onClick: () => {
+          resetHints();
+          toast('İpuçları yeniden gösterilecek', 'good');
+        },
+      },
+      'Sıfırla',
+    ),
   ];
 }

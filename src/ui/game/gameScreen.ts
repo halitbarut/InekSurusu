@@ -78,6 +78,8 @@ import { renderSummary } from './summary';
 import { ChatPanel } from './chatPanel';
 import { CLOCK_WARN_MS, TurnClock, clockSegment, clockText, type ClockSegment } from './turnClock';
 import { TileMenu, tileMenuModel, type RoutePreview, type TileAction } from './tileMenu';
+import { takeHint } from './hints';
+import type { GameGuide } from '../../tutorial/guide';
 import { actionCost, clearNotices, dec, explainProblem, floatText, landOdds, notify, pct, shortfall } from './feedback';
 import { play, playSpin, setMuted, soundControls } from '../sound';
 import { guidanceControls } from '../settings';
@@ -196,10 +198,12 @@ export class GameScreen {
     private cb: GameScreenCallbacks,
     private net: NetMode = null,
     replay?: ReplayData,
+    /** Öğretici: izin verilen eylemler, vurgulanan hedefler, botların beyni */
+    private guide: GameGuide | null = null,
   ) {
     this.state = state;
     // Kayıtla saklanmış tekrar varsa oradan sürer; yoksa şimdiden başlar (oyunun ortasıysa yarım kayıt)
-    if (net?.kind !== 'client') this.recorder = replay ? ReplayRecorder.from(replay) : ReplayRecorder.start(state);
+    if (net?.kind !== 'client' && !guide) this.recorder = replay ? ReplayRecorder.from(replay) : ReplayRecorder.start(state);
     if (net) this.chat = new ChatPanel(net.room, () => this.state);
     const turnSeconds = state.options?.turnSeconds ?? 0;
     if (turnSeconds > 0 && net?.kind !== 'client') this.clock = new TurnClock(turnSeconds * 1000);
@@ -217,8 +221,14 @@ export class GameScreen {
       this.applyHighlight();
     };
     document.addEventListener('keydown', this.keyHandler);
+    this.guide?.attach({ state: () => this.state, act: (a) => this.act(a, true), toMenu: () => this.cb.toMenu(), newGame: () => this.cb.newGame() });
     this.render();
     void this.pump();
+  }
+
+  /** Bu adımda oynayan botun beyni (öğreticide pasif botlar) */
+  private brain(p: number) {
+    return this.guide?.brain(p) ?? getBot(this.state.players[p].botLevel);
   }
 
   destroy() {
@@ -311,6 +321,7 @@ export class GameScreen {
         h(
           'aside',
           { class: 'sidebar' },
+          this.guide?.el,
           h('section', {}, h('h3', {}, 'Devletler'), this.elPlayers),
           this.net ? h('section', { class: 'viewers-section' }, this.elViewers) : null,
           h('section', { class: 'log-section' }, h('h3', {}, 'Olay günlüğü'), this.elLog),
@@ -385,7 +396,7 @@ export class GameScreen {
           if (!voter) return;
           if (voter.kind === 'bot') {
             await sleep(this.botDelay());
-            await this.enqueue(() => this.commit({ type: 'CAST_VOTE', player: voter.id, accept: getBot(voter.botLevel).vote(s, voter.id) }, true));
+            await this.enqueue(() => this.commit({ type: 'CAST_VOTE', player: voter.id, accept: this.brain(voter.id).vote(s, voter.id) }, true));
           } else if (this.mine(voter.id)) {
             if (!this.net && this.humanCount() > 1) await this.passDevice(voter.id, `${pname(s, ph.proposer)} oyunu ittifakla bitirmeyi önerdi. Oyunu ver.`);
             const accept = await this.askVote(voter.id);
@@ -406,7 +417,7 @@ export class GameScreen {
           if (this.destroyed) return;
           if (this.state.players[cur.id].kind !== 'bot') continue; // bu arada oyuncu geri döndü
           if (this.botActions.turn !== this.state.turnCounter) this.botActions = { turn: this.state.turnCounter, count: 0 };
-          let action = getBot(cur.botLevel).chooseAction(this.state, cur.id);
+          let action = this.brain(cur.id).chooseAction(this.state, cur.id);
           // Güvenlik: bot aynı turda çok uzun oynarsa turu bitir
           if (++this.botActions.count > 300 && this.state.phase.kind === 'actions') action = { type: 'END_TURN', player: cur.id };
           const ok = await this.enqueue(() => this.commit(action, true));
@@ -502,11 +513,17 @@ export class GameScreen {
   }
 
   /** İnsan eylemi: doğrula, uygula (ya da oda sahibine gönder), animasyonları oynat, akışı sürdür. */
-  async act(action: Action): Promise<boolean> {
+  async act(action: Action, skipPreview = false): Promise<boolean> {
     if (this.busy) return false;
     this.tileMenu.close();
+    // Öğretici: bu adımda yalnızca istenen eylem
+    const hint = this.guide?.check(this.state, action);
+    if (hint) {
+      toast(hint, 'info', 4000);
+      return false;
+    }
     // Savaştan önce önizleme: masraf, olasılık, kazanınca/kaybedince
-    if (this.isBattle(action) && getPrefs().battlePreview && validateAction(this.state, action).ok && !(await this.confirmBattle(action))) return false;
+    if (!skipPreview && this.isBattle(action) && getPrefs().battlePreview && validateAction(this.state, action).ok && !(await this.confirmBattle(action))) return false;
     if (this.busy) return false;
     this.busy = true;
     let ok = false;
@@ -591,6 +608,7 @@ export class GameScreen {
       }
     }
     for (const e of events) this.noticeFor(next, e);
+    this.guide?.after(next);
   }
 
   /** Önemli olaylar ekranın kenarında kısa bildirim olarak */
@@ -858,7 +876,7 @@ export class GameScreen {
     if (!s.offers.some((o) => o.id === offer.id)) return;
     if (to.kind === 'bot') {
       await sleep(Math.min(300, this.botDelay()));
-      const accept = getBot(to.botLevel).evaluateOffer(s, to.id, offer);
+      const accept = this.brain(to.id).evaluateOffer(s, to.id, offer);
       await this.commit({ type: 'RESPOND_OFFER', player: to.id, offerId: offer.id, accept }, true);
       return;
     }
@@ -1285,7 +1303,8 @@ export class GameScreen {
 
   /** Otomatik kayıt (tekrar kaydıyla birlikte; katılan kaydetmez) */
   private autosave() {
-    if (this.net?.kind === 'client') return;
+    // Katılan kaydetmez; öğretici kendi ilerlemesini ayrı saklar
+    if (this.net?.kind === 'client' || this.guide) return;
     autosave(this.state, this.recorder?.data());
   }
 
@@ -1845,7 +1864,7 @@ export class GameScreen {
     this.mode = { kind: 'none' };
     const s = this.state;
     const me = s.currentPlayer;
-    if (getPrefs().endTurnReminder && this.isHumanTurn() && s.phase.kind === 'actions' && !battleUsed(s, me)) {
+    if (!this.guide && getPrefs().endTurnReminder && this.isHumanTurn() && s.phase.kind === 'actions' && !battleUsed(s, me)) {
       const targets = this.attackOptions(me);
       if (targets.land + targets.sea > 0 && !(await this.askEndTurn(targets))) return;
     }
@@ -1861,6 +1880,17 @@ export class GameScreen {
       for (const u of readyUnits(s, me, kind)) for (const t of expeditionTargets(s, me, u.id).values()) if (t.kind !== 'claim') sea.add(t.tile);
     }
     return { land, sea: sea.size };
+  }
+
+  private lastHintTurn = -1;
+  /** İlk oyunlarda: bir eylem ilk kez yapılabilir olunca tur başına en fazla bir ipucu */
+  private maybeHint() {
+    const s = this.state;
+    if (this.guide || !getPrefs().hints || s.phase.kind !== 'actions' || !this.isHumanTurn() || this.lastHintTurn === s.turnCounter) return;
+    const hint = takeHint(s, s.currentPlayer);
+    if (!hint) return;
+    this.lastHintTurn = s.turnCounter;
+    notify({ icon: hint.icon, title: 'İpucu', text: hint.text, kind: 'info', ms: 10000 });
   }
 
   /** Kullanılmamış savaş hakkı için hafif hatırlatma; turu bitirmek istiyorsa true */
@@ -2096,7 +2126,11 @@ export class GameScreen {
         }
       }
     }
+    // Öğretici: bu adımın hedefi
+    const guideTargets = this.guide?.targets(s) ?? [];
+    if (guideTargets.length) hl.groups = [...(hl.groups ?? []), { tiles: new Set(guideTargets), style: 'guide' }];
     this.lastHl = hl;
+    this.maybeHint();
     // Menü kapalıyken ve sefer modunda değilken eski rota önizlemesi kalmasın
     if (!this.tileMenu.isOpen && this.mode.kind !== 'expedition') this.hoverRoute = null;
     this.applyHighlight();
