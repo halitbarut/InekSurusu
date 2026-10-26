@@ -289,3 +289,16 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
     tek teklifte birleştirebilirsin. Geçerlilik kontrolleri sürer: verilen kaynak verenin elinde olmalı, toprak
     verenin olmalı, başkent devredilemez, aynı toprak iki kez eklenemez, en fazla bir ittifak ve bir barış kalemi
     olur, barış süresi en uzun barış ayarını aşamaz.
+
+## Çevrimiçi güvenlik
+
+87. Diplomasi teklifleri gizlidir: oda sahibi her katılımcıya kendi görünümünü gönderir (`viewFor`), teklifler ve
+    günlükteki teklif satırları (yapıldı, yanıtlandı, geri çekildi) yalnızca teklifin iki tarafına gider, izleyiciler
+    hiç görmez. Teklifin *sonucu* (ittifak, barış, devredilen toprak/kaynak) herkese açıktır, çünkü haritada ve
+    panellerde zaten görünür. Hot-seat'te hiçbir bilgi gizli değildir (#36). Ayrıntı: `docs/ONLINE.md`.
+88. Katılanın oda kimliği koltuğun anahtarıdır; önceki sürümde lobi mesajında herkese gidiyordu ve bir katılımcı
+    başkasının koltuğunu bu kimlikle alabiliyordu. Artık katılanlara giden lobide "dolu" diye maskelenir, kimlik
+    128 bit rastgeledir ve 8–64 karakter dışındaki kimlikler reddedilir. Protokol sürümü 3'e çıktı.
+89. Ağdan gelen eylemler önce biçim denetiminden geçer (`parseAction`): alanlar tek tek okunup yeni bir eylem
+    kurulur. Teklif kalem sayısına kural sınırı getirilmedi (#86); yalnızca bozuk mesajlara karşı 10 000 kalemlik
+    teknik bir üst sınır var. Katılanın adı 16 karaktere kısaltılır, renk `#rrggbb` değilse griye çevrilir.

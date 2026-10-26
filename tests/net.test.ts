@@ -2,64 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createGame, type GameState } from '../src/engine';
 import { ClientRoom } from '../src/net/clientRoom';
 import { HostRoom } from '../src/net/hostRoom';
-import { RECONNECT_GRACE_MS, type ClientMessage, type HostMessage, type LobbyInfo } from '../src/net/protocol';
-import type { ClientTransport, Conn, HostTransport } from '../src/net/transport';
-
-/** Bellek içi taşıyıcı: mesajlar eşzamanlı iletilir. */
-function memoryNetwork() {
-  let onConn: ((c: Conn<ClientMessage, HostMessage>) => void) | null = null;
-  let n = 0;
-  const host: HostTransport<ClientMessage, HostMessage> = {
-    onConnection: (cb) => (onConn = cb),
-    close: () => {},
-  };
-  function endpoint<In, Out>(id: string) {
-    const msgs: ((m: In) => void)[] = [];
-    const closes: (() => void)[] = [];
-    let peer: { deliver(m: Out): void; closed(): void } | null = null;
-    let open = true;
-    const conn: Conn<In, Out> = {
-      id,
-      send: (m) => open && peer?.deliver(structuredClone(m)),
-      onMessage: (cb) => msgs.push(cb),
-      onClose: (cb) => closes.push(cb),
-      close: () => {
-        if (!open) return;
-        open = false;
-        closes.forEach((f) => f());
-        peer?.closed();
-      },
-    };
-    return {
-      conn,
-      link: (p: { deliver(m: Out): void; closed(): void }) => (peer = p),
-      deliver: (m: In) => open && msgs.forEach((f) => f(m)),
-      closed: () => {
-        if (!open) return;
-        open = false;
-        closes.forEach((f) => f());
-      },
-    };
-  }
-  const clientTransport = (): ClientTransport<HostMessage, ClientMessage> & { drop(): void } => {
-    let current: Conn<HostMessage, ClientMessage> | null = null;
-    return {
-      async connect() {
-        const id = `c${++n}`;
-        const h = endpoint<ClientMessage, HostMessage>(id);
-        const c = endpoint<HostMessage, ClientMessage>(id);
-        h.link(c);
-        c.link(h);
-        onConn?.(h.conn);
-        current = c.conn;
-        return c.conn;
-      },
-      close: () => current?.close(),
-      drop: () => current?.close(),
-    };
-  };
-  return { host, clientTransport };
-}
+import { RECONNECT_GRACE_MS, type LobbyInfo } from '../src/net/protocol';
+import { memoryNetwork } from './netHelpers';
 
 function lobbySeats() {
   return [
@@ -89,8 +33,8 @@ describe('çevrimiçi oda', () => {
     room.setLobby(lobbySeats(), { width: 40, height: 30, seed: '7' });
     const tA = net.clientTransport();
     const tB = net.clientTransport();
-    const a = new ClientRoom('ABCDE', tA, { clientId: 'idA', name: 'Mehmet', color: '#00f' });
-    const b = new ClientRoom('ABCDE', tB, { clientId: 'idB', name: 'Zeynep', color: '#0f0' });
+    const a = new ClientRoom('ABCDE', tA, { clientId: 'client-idA', name: 'Mehmet', color: '#00f' });
+    const b = new ClientRoom('ABCDE', tB, { clientId: 'client-idB', name: 'Zeynep', color: '#0f0' });
     await a.connect();
     await b.connect();
     return { net, room, a, b, tA, tB };
@@ -102,7 +46,7 @@ describe('çevrimiçi oda', () => {
     b.events.onLobby = (l) => (lobbyB = l);
     a.claim(1);
     b.claim(1);
-    expect(room.lobby().seats[1]).toMatchObject({ claimedBy: 'idA', name: 'Mehmet' });
+    expect(room.lobby().seats[1]).toMatchObject({ claimedBy: 'client-idA', name: 'Mehmet' });
     expect(b.seat).toBeNull();
     b.claim(2);
     expect(b.seat).toBe(2);
@@ -166,7 +110,7 @@ describe('çevrimiçi oda', () => {
     expect(takeovers).toEqual([[1, true]]);
     expect(room.getPresence()[1].status).toBe('bot');
     // Aynı kimlikle geri döner
-    const back = new ClientRoom('ABCDE', net.clientTransport(), { clientId: 'idA', name: 'Mehmet', color: '#00f' });
+    const back = new ClientRoom('ABCDE', net.clientTransport(), { clientId: 'client-idA', name: 'Mehmet', color: '#00f' });
     let resumed: number | null | undefined;
     back.events.onGameState = (_s, seat) => (resumed = seat);
     await back.connect();
@@ -188,7 +132,7 @@ describe('çevrimiçi oda', () => {
     a.leave();
     tA.drop();
     vi.advanceTimersByTime(20_000);
-    const back = new ClientRoom('ABCDE', net.clientTransport(), { clientId: 'idA', name: 'Mehmet', color: '#00f' });
+    const back = new ClientRoom('ABCDE', net.clientTransport(), { clientId: 'client-idA', name: 'Mehmet', color: '#00f' });
     await back.connect();
     vi.advanceTimersByTime(RECONNECT_GRACE_MS * 2);
     expect(takeovers).toEqual([]);
@@ -200,7 +144,7 @@ describe('çevrimiçi oda', () => {
     a.claim(1);
     const state = gameFor(room.lobby());
     room.startGame(state, () => state);
-    const viewer = new ClientRoom('ABCDE', net.clientTransport(), { clientId: 'idV', name: 'Ali', color: '#000' });
+    const viewer = new ClientRoom('ABCDE', net.clientTransport(), { clientId: 'client-idV', name: 'Ali', color: '#000' });
     let seen: { seat: number | null; turn: number } | null = null;
     viewer.events.onGameState = (s, seat) => (seen = { seat, turn: s.turnCounter });
     await viewer.connect();

@@ -1,7 +1,10 @@
 import type { Action, BotLevel, GameEvent, GameState } from '../engine';
 
-/** Mesaj biçimi değişirse artırılır; farklı sürümler aynı odaya bağlanamaz. */
-export const PROTOCOL_VERSION = 2;
+/**
+ * Mesaj biçimi değişirse artırılır; farklı sürümler aynı odaya bağlanamaz.
+ * 3: oyuncuya özel durum görünümü (gizli teklifler), lobide maskeli katılımcı kimlikleri.
+ */
+export const PROTOCOL_VERSION = 3;
 
 /** Kopan oyuncunun dönmesi için beklenen süre; sonra bot devralır. */
 export const RECONNECT_GRACE_MS = 60_000;
@@ -17,7 +20,10 @@ export interface LobbySeat {
   kind: SeatKind;
   /** Bot koltuğunun seviyesi */
   botLevel?: BotLevel;
-  /** Koltuğa oturan katılımcının kalıcı kimliği (remote koltuklar için) */
+  /**
+   * Koltuğa oturan katılımcının kalıcı kimliği (remote koltuklar için). Oda sahibinde gerçek kimliktir;
+   * katılanlara giden lobide yalnızca "dolu" anlamında maskelenir (kimlik başkasının koltuğunu almaya yeter).
+   */
   claimedBy: string | null;
 }
 
@@ -66,9 +72,44 @@ export type HostMessage =
   | { t: 'closed'; reason: string }
   | { t: 'ping' };
 
-/** İstemcilere gönderilecek durum: RNG durumu gizlenir (sonraki topaç önceden hesaplanamasın). */
-export function publicState(state: GameState): GameState {
-  return { ...state, rngState: 0 };
+/** Lobide katılanlara giden maskeli koltuk sahibi */
+export const CLAIMED_MASK = 'dolu';
+
+/** Bu olay yalnızca teklifin iki tarafına mı gösterilir? */
+function privateTo(e: GameEvent): [number, number] | null {
+  switch (e.type) {
+    case 'offer_made':
+      return [e.offer.from, e.offer.to];
+    case 'offer_response':
+    case 'offer_cancelled':
+      return [e.from, e.to];
+    default:
+      return null;
+  }
+}
+
+/** viewer (koltuk; null = izleyici) bu olayı görebilir mi? */
+export function eventVisibleTo(e: GameEvent, viewer: number | null): boolean {
+  const pair = privateTo(e);
+  return !pair || (viewer !== null && pair.includes(viewer));
+}
+
+export function eventsFor(events: GameEvent[], viewer: number | null): GameEvent[] {
+  return events.filter((e) => eventVisibleTo(e, viewer));
+}
+
+/**
+ * Bir katılımcıya gönderilecek durum. RNG durumu gizlenir (sonraki topaç önceden hesaplanamasın);
+ * teklifler ve günlükteki teklif satırları yalnızca teklifin iki tarafına gider. İzleyici hiç teklif görmez.
+ * Teklifin sonucu olan ittifak, barış, toprak ve kaynak devri herkesin gördüğü değişikliklerdir.
+ */
+export function viewFor(state: GameState, viewer: number | null): GameState {
+  return {
+    ...state,
+    rngState: 0,
+    offers: viewer === null ? [] : state.offers.filter((o) => o.from === viewer || o.to === viewer),
+    log: state.log.filter((l) => eventVisibleTo(l.event, viewer)),
+  };
 }
 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -83,6 +124,18 @@ export function normalizeRoomCode(input: string): string {
   return input.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
 }
 
+/** Tahmin edilemez kimlik (katılımcının odadaki gizli anahtarı gibi davranır) */
 export function randomId(): string {
-  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+  const c = globalThis.crypto;
+  if (c?.getRandomValues) return [...c.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+}
+
+/** Katılanın gönderdiği adı ve rengi temizler */
+export function cleanName(name: unknown): string {
+  return (typeof name === 'string' ? name : '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 16) || 'Konuk';
+}
+
+export function cleanColor(color: unknown): string {
+  return typeof color === 'string' && /^#[0-9a-fA-F]{6}$/.test(color) ? color : '#777777';
 }

@@ -71,4 +71,8 @@ if (invite) cb.online(invite);
 else cb.menu();
 
 // Geliştirme sırasında konsoldan inceleme için
-if (import.meta.env.DEV) (window as unknown as { __inek: unknown }).__inek = { get game() { return game; } };
+if (import.meta.env.DEV) {
+  const dbg = { get game() { return game; }, engine: null as unknown };
+  (window as unknown as { __inek: unknown }).__inek = dbg;
+  void import('./engine').then((m) => (dbg.engine = m));
+}

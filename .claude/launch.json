@@ -4,8 +4,24 @@
     {
       "name": "inek-surusu",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--", "--port", "5173", "--strictPort"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "5173",
+        "--strictPort"
+      ],
       "port": 5173
+    },
+    {
+      "name": "dist-alt-klasor",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "mkdir -p .alt-klasor && ln -sfn ../dist .alt-klasor/oyun && exec python3 -m http.server 4180 -d .alt-klasor"
+      ],
+      "port": 4180
     }
   ]
 }

@@ -1,10 +1,14 @@
-import type { Action, GameEvent, GameState } from '../engine';
+import { parseAction, type Action, type GameEvent, type GameState } from '../engine';
 import {
+  CLAIMED_MASK,
   HEARTBEAT_INTERVAL_MS,
   HEARTBEAT_TIMEOUT_MS,
   PROTOCOL_VERSION,
   RECONNECT_GRACE_MS,
-  publicState,
+  cleanColor,
+  cleanName,
+  eventsFor,
+  viewFor,
   type ClientMessage,
   type HostMessage,
   type LobbyInfo,
@@ -91,6 +95,12 @@ export class HostRoom {
     };
   }
 
+  /** Katılanlara giden lobi: koltuk sahiplerinin kimlikleri maskelenir */
+  private maskedLobby(): LobbyInfo {
+    const l = this.lobby();
+    return { ...l, seats: l.seats.map((s) => ({ ...s, claimedBy: s.claimedBy ? CLAIMED_MASK : null })) };
+  }
+
   /** Oyun başlar: oturmuş katılımcılar koltuk sahibi olur. */
   startGame(state: GameState, getState: () => GameState | null) {
     this.inGame = true;
@@ -101,7 +111,7 @@ export class HostRoom {
       else c.seat = null;
     }
     for (const c of this.clients.values()) {
-      c.conn?.send({ t: 'start', state: publicState(state), seat: c.seat, presence: this.presence });
+      c.conn?.send({ t: 'start', state: viewFor(state, c.seat), seat: c.seat, presence: this.presence });
     }
     this.events.onPresence?.(this.presence);
   }
@@ -119,10 +129,14 @@ export class HostRoom {
   // Oyun
   // ------------------------------------------------------------------
 
+  /** Yeni durumu yayınlar; her katılımcı yalnızca görmesi gerekeni alır (viewFor, eventsFor). */
   broadcastUpdate(state: GameState, events: GameEvent[], origin?: { clientId: string; reqId: number }, undo = 0) {
-    const pub = publicState(state);
+    const views = new Map<number | null, { state: GameState; events: GameEvent[] }>();
     for (const c of this.clients.values()) {
-      c.conn?.send({ t: 'update', state: pub, events, reqId: origin && origin.clientId === c.clientId ? origin.reqId : undefined, undo });
+      if (!c.conn) continue;
+      let v = views.get(c.seat);
+      if (!v) views.set(c.seat, (v = { state: viewFor(state, c.seat), events: eventsFor(events, c.seat) }));
+      c.conn.send({ t: 'update', state: v.state, events: v.events, reqId: origin && origin.clientId === c.clientId ? origin.reqId : undefined, undo });
     }
   }
 
@@ -150,6 +164,8 @@ export class HostRoom {
     let client: RemoteClient | null = null;
     conn.onMessage((msg) => {
       if (this.closed) return;
+      // Bozuk ya da kötü niyetli mesajlar bağlantıyı düşürmesin
+      if (!msg || typeof msg !== 'object' || typeof (msg as { t?: unknown }).t !== 'string') return;
       if (client) client.lastSeen = Date.now();
       if (msg.t === 'hello') {
         client = this.hello(conn, msg);
@@ -172,6 +188,10 @@ export class HostRoom {
       conn.send({ t: 'refused', reason: 'Oyun sürümleri farklı. İki taraf da sayfayı yenilesin.' });
       return null;
     }
+    if (typeof msg.clientId !== 'string' || msg.clientId.length < 8 || msg.clientId.length > 64) {
+      conn.send({ t: 'refused', reason: 'Geçersiz katılımcı kimliği.' });
+      return null;
+    }
     let c = this.clients.get(msg.clientId);
     if (c) {
       // Aynı katılımcı yeniden bağlandı: eski bağlantıyı bırak
@@ -179,7 +199,7 @@ export class HostRoom {
       c.conn = conn;
       c.lastSeen = Date.now();
     } else {
-      c = { clientId: msg.clientId, name: (msg.name || 'Konuk').slice(0, 16), color: msg.color, conn, seat: null, lastSeen: Date.now() };
+      c = { clientId: msg.clientId, name: cleanName(msg.name), color: cleanColor(msg.color), conn, seat: null, lastSeen: Date.now() };
       this.clients.set(c.clientId, c);
     }
     if (this.inGame) {
@@ -196,9 +216,9 @@ export class HostRoom {
         this.notice(`${c.name} oyuna geri döndü.`);
       }
       const st = this.getState();
-      conn.send({ t: 'welcome', seat, lobby: null, state: st ? publicState(st) : null, presence: this.presence });
+      conn.send({ t: 'welcome', seat, lobby: null, state: st ? viewFor(st, seat) : null, presence: this.presence });
     } else {
-      conn.send({ t: 'welcome', seat: c.seat, lobby: this.lobby(), state: null, presence: {} });
+      conn.send({ t: 'welcome', seat: c.seat, lobby: this.maskedLobby(), state: null, presence: {} });
       this.lobbyChanged();
     }
     return c;
@@ -209,8 +229,8 @@ export class HostRoom {
       case 'ping':
         return;
       case 'profile':
-        c.name = (msg.name || 'Konuk').slice(0, 16);
-        c.color = msg.color;
+        c.name = cleanName(msg.name);
+        c.color = cleanColor(msg.color);
         if (!this.inGame && c.seat !== null) {
           this.seats[c.seat].name = c.name;
           this.seats[c.seat].color = c.color;
@@ -219,6 +239,7 @@ export class HostRoom {
         return;
       case 'claim': {
         if (this.inGame) return;
+        if (msg.seat !== null && !Number.isInteger(msg.seat)) return;
         if (msg.seat !== null) {
           const seat = this.seats[msg.seat];
           if (!seat || seat.kind !== 'remote' || (seat.claimedBy && seat.claimedBy !== c.clientId)) {
@@ -241,9 +262,12 @@ export class HostRoom {
         const origin = { clientId: c.clientId, reqId: msg.reqId };
         if (!this.inGame) return this.reject(origin, 'Oyun başlamadı');
         if (c.seat === null) return this.reject(origin, 'İzleyiciler hamle yapamaz');
-        if (msg.action.player !== c.seat) return this.reject(origin, 'Yalnızca kendi devletin adına oynayabilirsin');
         if (this.presence[c.seat]?.status !== 'online') return this.reject(origin, 'Koltuğun şu an botta');
-        this.events.onAction?.(c.seat, msg.action, origin);
+        // Biçim denetimi: yalnızca bilinen türde, doğru tipte alanlarla kurulmuş temiz bir eylem geçer
+        const action = parseAction(msg.action);
+        if (!action) return this.reject(origin, 'Geçersiz eylem biçimi');
+        if (action.player !== c.seat) return this.reject(origin, 'Yalnızca kendi devletin adına oynayabilirsin');
+        this.events.onAction?.(c.seat, action, origin);
         return;
       }
       case 'undo': {
@@ -305,8 +329,8 @@ export class HostRoom {
   }
 
   private lobbyChanged() {
-    const lobby = this.lobby();
-    for (const c of this.clients.values()) c.conn?.send({ t: 'lobby', lobby, seat: c.seat });
-    this.events.onLobbyChange?.(lobby);
+    const masked = this.maskedLobby();
+    for (const c of this.clients.values()) c.conn?.send({ t: 'lobby', lobby: masked, seat: c.seat });
+    this.events.onLobbyChange?.(this.lobby());
   }
 }

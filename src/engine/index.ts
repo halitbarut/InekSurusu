@@ -16,3 +16,4 @@ export { autoPlaceMines, farthestFromMine, fitsStartAreas, generateMap, mapProbl
 export { detectStraits } from './map/straits';
 export { mapFromAscii } from './map/ascii';
 export * from './map/custom';
+export * from './actionShape';
