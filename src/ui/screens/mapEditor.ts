@@ -27,6 +27,7 @@ import { icon, iconImage, type IconName } from '../icons';
 import { PAINT, paintThumb } from '../mapPaint';
 import { deleteMap, exportMap, importMap, listMaps, saveMap, type SavedMap } from '../storage';
 import { clampInt } from './rulesPanel';
+import { BUILTIN_MAPS } from '../../maps/builtin';
 
 export interface EditorCallbacks {
   menu(): void;
@@ -51,6 +52,34 @@ export function mapFromSaved(m: SavedMap): GameMap {
 export function renderMapList(host: HTMLElement, cb: EditorCallbacks) {
   clear(host);
   const list = h('div', { class: 'map-list' });
+  // Oyunla gelen haritalar: silinemez, kopyası açılıp düzenlenebilir
+  const builtins = h(
+    'div',
+    { class: 'map-list' },
+    BUILTIN_MAPS.map((m) => {
+      const map = buildMap(draftFromRows(m.rows), m.name);
+      const thumb = h('canvas', { class: 'map-thumb', width: 168, height: 118 });
+      paintThumb(thumb, map);
+      return h(
+        'div',
+        { class: 'map-item builtin' },
+        thumb,
+        h(
+          'div',
+          { class: 'map-item-info' },
+          h('b', {}, m.name, ' ', h('span', { class: 'tag' }, 'hazır')),
+          h('div', { class: 'muted small' }, `${map.width}×${map.height} · önerilen ${m.players[0] === m.players[1] ? m.players[0] : `${m.players[0]}–${m.players[1]}`} oyuncu`),
+          h('div', { class: 'small' }, m.description),
+        ),
+        h(
+          'div',
+          { class: 'map-item-actions' },
+          h('button', { class: 'btn btn-small btn-primary', onClick: () => cb.playMap(m.id) }, 'Oyna'),
+          h('button', { class: 'btn btn-small', title: 'Hazır harita değişmez; kopyası senin haritaların arasına kaydedilir', onClick: () => openEditor(host, cb, draftFromRows(m.rows), null, uniqueName(`${m.name} (kopya)`)) }, icon('edit'), 'Kopyasını düzenle'),
+        ),
+      );
+    }),
+  );
   const refresh = () => {
     clear(list);
     const maps = listMaps();
@@ -167,6 +196,9 @@ export function renderMapList(host: HTMLElement, cb: EditorCallbacks) {
         ),
         h('h3', {}, 'Kayıtlı haritalar'),
         list,
+        h('h3', {}, 'Hazır haritalar'),
+        h('p', { class: 'muted small' }, 'Oyunla birlikte gelir; silinemez ve değiştirilemez. "Kopyasını düzenle" ile kendi haritalarına kopyalayıp değiştirebilirsin.'),
+        builtins,
         h('div', { class: 'row-buttons' }, h('button', { class: 'btn', onClick: () => cb.menu() }, '← Ana menü')),
       ),
     ),
@@ -206,7 +238,7 @@ const TOOLS: { id: Tool; label: string; tip: string; icon: IconName }[] = [
   { id: 'erase', label: 'Silgi', tip: 'Madeni sil (E)', icon: 'eraser' },
 ];
 
-function openEditor(host: HTMLElement, cb: EditorCallbacks, draft: MapDraft, saved: SavedMap | null) {
+function openEditor(host: HTMLElement, cb: EditorCallbacks, draft: MapDraft, saved: SavedMap | null, initialName = '') {
   clear(host);
   let d = draft;
   let id = saved?.id ?? null;
@@ -224,7 +256,7 @@ function openEditor(host: HTMLElement, cb: EditorCallbacks, draft: MapDraft, sav
   const canvas = h('canvas', { class: 'editor-canvas' });
   const wrap = h('div', { class: 'editor-canvas-wrap' }, canvas);
   const ctx = canvas.getContext('2d')!;
-  const nameIn = h('input', { type: 'text', class: 'text', maxLength: 40, value: saved?.name ?? '', placeholder: 'Harita adı' });
+  const nameIn = h('input', { type: 'text', class: 'text', maxLength: 40, value: saved?.name ?? initialName, placeholder: 'Harita adı' });
   const toolsEl = h('div', { class: 'editor-tools' });
   const minesEl = h('div', { class: 'editor-mines' });
   const checkEl = h('div', { class: 'editor-check' });

@@ -366,3 +366,20 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
      içeriği çıkarılmış). Oda sahibinin "Replay indir" ile aldığı dosya tam kayıttır ve bütün teklifleri içerir;
      oynatıcısında günlük yine onun gözünden gösterilir. Oda sahibi tam kaydı paylaşırsa teklifler görünür.
 111. Sohbet tekrara girmez.
+
+## Hazır haritalar
+
+112. Dört hazır harita `src/maps/builtin.ts` içinde harita editörünün metin biçimindedir; dosya
+     `scripts/maps/build.ts` ile şekillerden (çokgen, elips, kanal) üretilir. Haritayı değiştirmek için oradaki şekil
+     tarifleri düzenlenip betik yeniden çalıştırılır. Göller ve boğazlar her zamanki gibi oyunun kendi kurallarıyla
+     bulunur; boğazlar bu kurallara uyacak biçimde tek kare genişliğinde ve en fazla 4 kare uzunluğunda çizildi.
+113. Haritanın kenarına açılan dar koylar boğaz sayılmaz (kenarın ötesi su değildir); bu yüzden İkiz kıtalar'daki
+     körfezler kenara değil okyanusa açılır.
+114. Madenler: Anadolu, Büyük kıta ve İkiz kıtalar'da oyunun dengeli yerleşimiyle (önerilen en kalabalık oyuncu sayısı
+     kadar her türden) seçildi. Takımadalar'da bilerek dengesizdir: her ev adasında gemi için demir ve petrol, altın ve
+     çelik yalnızca ortadaki adalarda. Editör bu yüzden "madenler dengesiz dağılmış olabilir" uyarısı verir; hata değildir.
+115. Hazır harita seçilince oyuncu sayısı önerilen aralığa çekilir; aralık dışında da oynanabilir (yalnızca not
+     gösterilir), haritanın taşıyabileceğinden fazla oyuncu ise engellenir. Hazır haritalar silinemez ve editörde
+     değiştirilemez; "Kopyasını düzenle" kullanıcının haritalarına "(kopya)" adıyla yeni bir harita açar.
+116. Kara oranı rastgele haritalardan (%50) biraz yüksektir (Anadolu %56, Büyük kıta %53); oyuncu başına toprak
+     rastgele haritalardan fazla olduğu için oyunlar biraz uzun sürer (docs/MAPS.md).
