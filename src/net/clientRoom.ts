@@ -1,4 +1,6 @@
 import type { Action, GameEvent, GameState } from '../engine';
+import { ChatIdentity, cleanChatText, type ChatBox, type ChatMessage } from './chat';
+import { privateProblemFor, type ChatChannel } from './hostRoom';
 import {
   HEARTBEAT_INTERVAL_MS,
   HEARTBEAT_TIMEOUT_MS,
@@ -20,6 +22,8 @@ export interface ClientRoomEvents {
   onPresence?(presence: Presence): void;
   onNotice?(text: string): void;
   onStatus?(status: ClientStatus, reason?: string): void;
+  /** Yeni sohbet mesajı; null = geçmiş ya da anahtarlar yenilendi */
+  onChat?(msg: ChatMessage | null): void;
 }
 
 export interface ClientProfile {
@@ -31,10 +35,17 @@ export interface ClientProfile {
 const RETRY_MS = 3000;
 
 /** Katılımcı tarafı: oda sahibine bağlanır, kopunca kendiliğinden yeniden bağlanır. */
-export class ClientRoom {
+export class ClientRoom implements ChatChannel {
   readonly events: ClientRoomEvents = {};
   status: ClientStatus = 'connecting';
   seat: number | null = null;
+  /** Oda sahibinin son gönderdiği durum ve bağlantı bilgisi (sohbet kuralları için) */
+  private lastState: GameState | null = null;
+  private presence: Presence = {};
+  private chatLog: ChatMessage[] = [];
+  private keys: Record<number, string> = {};
+  private identity: ChatIdentity | null = null;
+  private spectatorChat = true;
   private conn: Conn<HostMessage, ClientMessage> | null = null;
   private nextReq = 1;
   private pending = new Map<number, (r: { ok: true } | { ok: false; reason: string }) => void>();
@@ -50,6 +61,11 @@ export class ClientRoom {
 
   /** İlk bağlantı; başarısız olursa hata fırlatır (yeniden deneme yapılmaz). */
   async connect(): Promise<void> {
+    try {
+      this.identity = await ChatIdentity.create(`inek-surusu-chatkey-${this.code}-${this.profile.clientId}`);
+    } catch {
+      // Güvenli bağlam yok (ör. yerel ağda http): özel mesaj kapalı, genel kanal çalışır
+    }
     await this.open();
     this.heartbeat = setInterval(() => this.tick(), HEARTBEAT_INTERVAL_MS);
   }
@@ -124,8 +140,10 @@ export class ClientRoom {
       case 'welcome':
         this.seat = m.seat;
         this.setStatus('online');
-        if (m.state) this.events.onGameState?.(m.state, m.seat, m.presence);
-        else if (m.lobby) this.events.onLobby?.(m.lobby, m.seat);
+        if (m.state) {
+          this.gameStarted(m.state, m.presence, m.chat);
+          this.events.onGameState?.(m.state, m.seat, m.presence);
+        } else if (m.lobby) this.events.onLobby?.(m.lobby, m.seat);
         return;
       case 'refused':
         this.left = true;
@@ -138,9 +156,11 @@ export class ClientRoom {
         return;
       case 'start':
         this.seat = m.seat;
+        this.gameStarted(m.state, m.presence, m.chat);
         this.events.onGameState?.(m.state, m.seat, m.presence);
         return;
       case 'update': {
+        this.lastState = m.state;
         this.undoCount = m.undo ?? 0;
         this.events.onUpdate?.(m.state, m.events);
         if (m.reqId !== undefined) this.resolve(m.reqId, { ok: true });
@@ -150,7 +170,16 @@ export class ClientRoom {
         this.resolve(m.reqId, { ok: false, reason: m.reason });
         return;
       case 'presence':
+        this.presence = m.presence;
         this.events.onPresence?.(m.presence);
+        return;
+      case 'chat':
+        this.chatLog.push(m.msg);
+        this.events.onChat?.(m.msg);
+        return;
+      case 'keys':
+        this.keys = m.keys;
+        this.events.onChat?.(null);
         return;
       case 'notice':
         this.events.onNotice?.(m.text);
@@ -160,6 +189,55 @@ export class ClientRoom {
         this.setStatus('closed', m.reason);
         return;
     }
+  }
+
+  private gameStarted(state: GameState, presence: Presence, chat: { log: ChatMessage[]; keys: Record<number, string> } | undefined) {
+    this.lastState = state;
+    this.presence = presence;
+    if (chat) {
+      this.chatLog = chat.log;
+      this.keys = chat.keys;
+      this.events.onChat?.(null);
+    }
+    // Oyuncuysa özel mesajlar için açık anahtarını bildir (her bağlanışta)
+    if (this.seat !== null && this.identity) this.conn?.send({ t: 'key', pub: this.identity.pub });
+  }
+
+  // ChatChannel
+
+  chatSeat(): number | null {
+    return this.seat;
+  }
+
+  chatMessages(): ChatMessage[] {
+    return this.chatLog;
+  }
+
+  privateProblem(seat: number): string | null {
+    return privateProblemFor(this.lastState, this.presence, this.seat, seat, this.keys, this.identity !== null);
+  }
+
+  async sendChat(to: number | null, text: string): Promise<string | null> {
+    if (!this.conn || this.status !== 'online') return 'Oda sahibiyle bağlantı yok';
+    const clean = cleanChatText(text);
+    if (!clean) return 'Mesaj boş';
+    if (to === null) {
+      this.conn.send({ t: 'chat', msg: { to: null, text: clean } });
+      return null;
+    }
+    const prob = this.privateProblem(to);
+    if (prob) return prob;
+    const box = await this.identity!.seal(clean, this.keys[to]);
+    this.conn?.send({ t: 'chat', msg: { to, box } });
+    return null;
+  }
+
+  openBox(box: ChatBox): Promise<string | null> {
+    return this.identity ? this.identity.open(box) : Promise.resolve(null);
+  }
+
+  spectatorChatOpen(): boolean {
+    return this.spectatorChat;
   }
 
   private resolve(reqId: number, r: { ok: true } | { ok: false; reason: string }) {

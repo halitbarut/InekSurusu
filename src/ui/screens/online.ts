@@ -41,6 +41,15 @@ function saveProfile(p: Profile) {
   }
 }
 
+/** Bu tarayıcı bu odaya daha önce katıldı mı? (sayfa yenilenince kendiliğinden yeniden bağlanmak için) */
+function joinedBefore(code: string): boolean {
+  try {
+    return localStorage.getItem(`inek-surusu-client-${code}`) !== null;
+  } catch {
+    return false;
+  }
+}
+
 /** Aynı odaya yeniden bağlanınca koltuğun geri gelmesi için oda başına kalıcı kimlik */
 function clientIdFor(code: string): string {
   const key = `inek-surusu-client-${code}`;
@@ -187,6 +196,9 @@ export function renderOnlineMenu(host: HTMLElement, cb: OnlineCallbacks, presetC
     ),
   );
   if (presetCode) nameIn.focus();
+  // Daha önce katılınan odanın linki yeniden açıldıysa (ör. sayfa yenilendi) sormadan bağlan
+  const code = presetCode ? normalizeRoomCode(presetCode) : '';
+  if (code.length >= 4 && profile.name && joinedBefore(code)) void join();
 }
 
 function renderJoinLobby(host: HTMLElement, cb: OnlineCallbacks, room: ClientRoom, firstLobby: LobbyInfo, firstSeat: number | null) {

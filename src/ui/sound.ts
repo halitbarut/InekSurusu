@@ -16,10 +16,13 @@ export type SoundName =
   | 'capitalFall'
   | 'turn'
   | 'offer'
-  | 'undo';
+  | 'undo'
+  | 'chat'
+  | 'tick'
+  | 'timeUp';
 
 /** "Hızlı oynat"ta da çalan önemli olaylar */
-const IMPORTANT: ReadonlySet<SoundName> = new Set(['win', 'lose', 'capitalFall', 'offer']);
+const IMPORTANT: ReadonlySet<SoundName> = new Set(['win', 'lose', 'capitalFall', 'offer', 'chat']);
 
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
@@ -166,6 +169,20 @@ export function play(name: SoundName, byBot = false) {
       break;
     case 'undo':
       tone(c, t, 700, 0.12, { type: 'sine', gain: 0.14, slideTo: 420 });
+      break;
+    case 'chat':
+      // Hafif "pıt": yeni sohbet mesajı
+      tone(c, t, 988, 0.09, { type: 'sine', gain: 0.1 });
+      tone(c, t + 0.07, 1319, 0.14, { type: 'sine', gain: 0.08 });
+      break;
+    case 'tick':
+      // Süre azalıyor: kısa tahta tıkırtısı
+      burst(c, t, 0.04, { freq: 1800, q: 6, gain: 0.25 });
+      tone(c, t, 880, 0.05, { type: 'square', gain: 0.04 });
+      break;
+    case 'timeUp':
+      tone(c, t, 523, 0.18, { type: 'square', gain: 0.07 });
+      tone(c, t + 0.2, 392, 0.3, { type: 'square', gain: 0.07 });
       break;
   }
 }

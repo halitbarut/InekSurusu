@@ -302,3 +302,15 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
 89. Ağdan gelen eylemler önce biçim denetiminden geçer (`parseAction`): alanlar tek tek okunup yeni bir eylem
     kurulur. Teklif kalem sayısına kural sınırı getirilmedi (#86); yalnızca bozuk mesajlara karşı 10 000 kalemlik
     teknik bir üst sınır var. Katılanın adı 16 karaktere kısaltılır, renk `#rrggbb` değilse griye çevrilir.
+
+## Sohbet
+
+90. Sohbet yalnızca çevrimiçi oyunda vardır; hot-seat ve bot oyunlarında panel oluşturulmaz. Sohbet oyun durumunun
+    parçası değildir (kayda ve tekrar dosyasına girmez); oda sahibi son 400 mesajı bellekte tutar.
+91. "Özel mesajı host oyuncu bile göremesin" şartı uçtan uca şifrelemeyle sağlandı (ECDH P-256 + AES-GCM). Oda
+    sahibi anahtarları dağıttığı için kodu değiştirilmiş bir oda sahibine karşı koruma yoktur (ONLINE.md, kısıtlar).
+92. Özel mesaj yalnızca elenmemiş oyuncular arasında gönderilir; elenen oyuncu eski özel konuşmalarını okuyabilir ama
+    yenisini başlatamaz (izleyici sayılır). Botlara özel mesaj gönderilemez; bağlantısı koptuğu için yerine bot oynayan
+    insana gönderilebilir, döndüğünde okur.
+93. Genel kanal mesajı en fazla 300 karakterdir; bir katılımcı 5 saniyede en fazla 6 mesaj gönderebilir.
+94. Davet linkiyle daha önce katılınan odaya link yeniden açılınca (ör. sayfa yenilenince) ad sorulmadan bağlanılır.

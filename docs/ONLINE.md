@@ -36,7 +36,7 @@ eylemi kendi durumuna göre doğruladığı için hiçbir etkisi olmaz (`tests/n
 
 ## Mesaj protokolü
 
-Sürüm `PROTOCOL_VERSION` (`src/net/protocol.ts`), şu an **3**. Katılan ilk mesajında (`hello`) sürümünü
+Sürüm `PROTOCOL_VERSION` (`src/net/protocol.ts`), şu an **4**. Katılan ilk mesajında (`hello`) sürümünü
 gönderir; farklıysa oda sahibi `refused` ile reddeder ("İki taraf da sayfayı yenilesin").
 
 | Sürüm | Değişiklik |
@@ -44,6 +44,7 @@ gönderir; farklıysa oda sahibi `refused` ile reddeder ("İki taraf da sayfayı
 | 1 | İlk çevrimiçi sürüm |
 | 2 | Geri alma isteği (`undo`), güncellemede geri alınabilir eylem sayısı |
 | 3 | Oyuncuya özel durum görünümü (gizli teklifler), lobide maskeli katılımcı kimlikleri |
+| 4 | Oyun içi sohbet: `key`, `chat`, `keys` mesajları; `welcome`/`start` içinde sohbet geçmişi |
 
 Katılan → oda sahibi:
 
@@ -54,21 +55,25 @@ Katılan → oda sahibi:
 | `claim {seat}` | Lobide koltuğa otur (`null` = kalk, izleyici ol) |
 | `action {reqId, action}` | Eylem isteği |
 | `undo {reqId}` | Son eylemi geri alma isteği |
+| `key {pub}` | Sohbet: özel mesajlar için açık anahtar (her bağlanışta, yalnızca oyuncular) |
+| `chat {msg}` | Sohbet mesajı: `{to: null, text}` genel kanal, `{to: koltuk, box}` şifreli özel mesaj |
 | `ping` | Canlılık (4 saniyede bir) |
 
 Oda sahibi → katılan:
 
 | Mesaj | Anlamı |
 |---|---|
-| `welcome {seat, lobby \| state, presence}` | Tanışma yanıtı: lobideyse lobi, oyundaysa güncel durum |
+| `welcome {seat, lobby \| state, presence, chat}` | Tanışma yanıtı: lobideyse lobi, oyundaysa güncel durum ve sohbet geçmişi |
 | `refused {reason}` | Sürüm farkı ya da geçersiz kimlik |
 | `lobby {lobby, seat}` | Lobi değişti |
-| `start {state, seat, presence}` | Oyun başladı |
+| `start {state, seat, presence, chat}` | Oyun başladı |
 | `update {state, events, reqId?, undo}` | Bir eylem uygulandı (ya da geri alındı); `reqId` yalnızca isteği gönderene |
 | `reject {reqId, reason}` | Eylem reddedildi (yalnızca gönderene) |
 | `presence {presence}` | Koltukların bağlantı durumu (bağlı / koptu + geri sayım / botta) |
 | `notice {text}` | Bilgi notu ("X oyuna geri döndü" …) |
 | `closed {reason}` | Oda kapandı |
+| `chat {msg}` | Yeni sohbet mesajı (yalnızca görebileceklere) |
+| `keys {keys}` | Koltukların sohbet açık anahtarları değişti |
 | `ping` | Canlılık |
 
 Her `update` tam durumu taşır (fark değil). Bu, kopmalardan sonra tutarsızlığı imkânsız kılar; bedeli
@@ -85,6 +90,9 @@ mesaj boyutudur (yerel ağda ve WebRTC'de sorun olmadı).
 | Teklif sonucu (ittifak kuruldu, barış, devredilen toprak ve kaynak) | Herkese: bunlar haritada ve panellerde zaten görünen değişikliklerdir |
 | Lobideki koltuk sahibi kimliği (`claimedBy`) | Oda sahibinde gerçek kimlik; katılanlara yalnızca "dolu" |
 | Geri alma geçmişi | Hiç kimseye (oda sahibinde kalır), katılana yalnızca kaç eylem geri alınabileceği |
+| Genel sohbet mesajları | Herkese (izleyiciler dahil); izleyicinin mesajı "izleyici" olarak işaretlenir |
+| Özel sohbet mesajları | Yalnızca iki tarafa, **şifreli**. Oda sahibi taraf değilse yalnızca şifreli metni görür ve aktarır |
+| Sohbet açık anahtarları | Herkese (açık anahtar gizli değildir) |
 
 Süzme oda sahibinde, gönderimden önce yapılır (`viewFor`, `eventsFor`): gizli veri hiçbir zaman ağa
 çıkmaz; "herkese gönderip arayüzde gizleme" yapılmaz.
@@ -103,6 +111,21 @@ Süzme oda sahibinde, gönderimden önce yapılır (`viewFor`, `eventsFor`): giz
 5. Ad (en fazla 16 karakter, denetim karakterleri silinir) ve renk (`#rrggbb`, değilse gri) temizlenir.
    Bozuk mesajlar bağlantıyı düşürmez, sessizce yok sayılır.
 
+## Sohbet
+
+- **Genel kanal** düz metindir; oda sahibi mesajı temizler (en fazla 300 karakter, denetim karakterleri silinir),
+  gönderenin adını ve koltuğunu kendisi ekler (katılan kendini başkası gibi gösteremez) ve herkese iletir.
+- **Özel mesajlar** uçtan uca şifrelidir (`src/net/chat.ts`). Her oyuncunun tarayıcısı (oda sahibi dahil) bir
+  ECDH P-256 anahtar çifti üretir ve oda başına saklar; açık anahtarlar oda sahibi üzerinden dağıtılır.
+  Gönderen, alıcının açık anahtarıyla ortak bir AES-GCM anahtarı türetip mesajı şifreler. Şifreli gövde
+  gönderenin ve alıcının açık anahtarlarını da taşır, böylece iki taraf da (sayfayı yeniledikten sonra bile)
+  mesajı açabilir. Oda sahibi bu gövdeyi yalnızca iki tarafa iletir ve geçmişte şifreli hâliyle saklar.
+- Yalnızca oyuncular (elenmemiş) özel mesaj gönderebilir; bota (bağlantısı koptuğu için yerine bot oynayan
+  insana değil) ve izleyicilere özel mesaj gönderilemez.
+- **Geçmiş:** oda sahibi son 400 mesajı bellekte tutar ve yeniden bağlanan katılımcıya, görebildikleriyle
+  (genel kanal + kendi özel konuşmaları) birlikte gönderir. Geçmiş kayda girmez; oda sahibi sayfayı yenilerse silinir.
+- **Hız sınırı:** bir katılımcı 5 saniyede en fazla 6 mesaj gönderebilir.
+
 ## Kimlik ve yeniden bağlanma
 
 - Katılan, her oda kodu için tarayıcısında rastgele 128 bitlik bir kimlik saklar (`localStorage`,
@@ -112,6 +135,8 @@ Süzme oda sahibinde, gönderimden önce yapılır (`viewFor`, `eventsFor`): giz
 - Oyunda kopan oyuncu için 60 saniye beklenir (herkes geri sayımı görür); dönmezse koltuğunda bot oynar.
   Oyuncu aynı tarayıcıdan döndüğünde koltuğu hemen insana geçer ve güncel durumu (`welcome`) alır.
 - Oyun başladıktan sonra gelen yeni katılımcılar izleyici olur.
+- Bu tarayıcı odaya daha önce katıldıysa davet linki yeniden açıldığında (ör. sayfa yenilenince) ad sorulmadan
+  kendiliğinden bağlanılır.
 
 ## Bilinen kısıtlar
 
@@ -126,6 +151,12 @@ Süzme oda sahibinde, gönderimden önce yapılır (`viewFor`, `eventsFor`): giz
   başka bir ağ (ör. telefonun hotspot'u) genellikle çözer.
 - **Eşleşme sunucusu:** PeerJS'in ücretsiz bulut sunucusu (`0.peerjs.com`) erişilemezse oda kurulamaz ve
   katılınamaz. Kurulmuş bağlantılar sunucu düşse de sürer.
+- **Sohbet şifrelemesi oda sahibine karşı tam koruma değildir:** açık anahtarları oda sahibi dağıttığı için,
+  kodu değiştirilmiş bir oda sahibi araya girip (kendi anahtarını vererek) özel mesajları okuyabilir. Değiştirilmemiş
+  oyunda oda sahibi özel mesajları hiçbir zaman çözmez ve ekranında göstermez.
+- **Özel mesaj güvenli bağlam ister:** tarayıcıların şifreleme arayüzü (`crypto.subtle`) yalnızca `https://` ya da
+  `localhost` üzerinde çalışır. Oyun yerel ağda `http://192.168…` adresinden açılırsa genel kanal çalışır, özel
+  mesaj kapalı olur (nedeni sohbet panelinde yazar).
 - **Teklif sayacı:** `nextOfferId` herkese gider; bir oyuncu teklif kimliklerindeki artıştan *başkaları
   arasında* teklif yapıldığını sezebilir (içeriğini değil).
 - Aynı tarayıcının iki sekmesi aynı odaya aynı kimlikle bağlanır ve birbirini düşürür; ikinci bir katılımcı

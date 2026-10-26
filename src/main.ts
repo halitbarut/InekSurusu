@@ -61,7 +61,7 @@ const cb: MenuCallbacks = {
     leaveGame();
     game = new GameScreen(host, state, { toMenu: () => cb.menu(), newGame: () => cb.newGame() }, { kind: 'host', room, mySeat });
     const g = game;
-    room.startGame(state, () => g.state);
+    room.startGame(state, () => g.state, mySeat);
   },
 };
 

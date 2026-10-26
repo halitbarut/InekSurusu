@@ -1,4 +1,5 @@
 import { parseAction, type Action, type GameEvent, type GameState } from '../engine';
+import { CHAT_HISTORY, ChatIdentity, RateLimit, cleanChatText, validBox, type ChatBox, type ChatMessage, type ChatSend } from './chat';
 import {
   CLAIMED_MASK,
   HEARTBEAT_INTERVAL_MS,
@@ -14,6 +15,7 @@ import {
   type LobbyInfo,
   type LobbySeat,
   type Presence,
+  type ChatSnapshot,
 } from './protocol';
 import type { Conn, HostTransport } from './transport';
 
@@ -25,6 +27,23 @@ interface RemoteClient {
   /** Lobide oturduğu ya da oyunda sahibi olduğu koltuk; null = izleyici */
   seat: number | null;
   lastSeen: number;
+  chatLimit: RateLimit;
+}
+
+/** Sohbet arayüzünün oda sahibi ve katılan için ortak yüzü */
+export interface ChatChannel {
+  /** Bu cihazın koltuğu (null = izleyici) */
+  chatSeat(): number | null;
+  /** Bu cihazın görebildiği mesajlar (eskiden yeniye) */
+  chatMessages(): ChatMessage[];
+  /** Bu koltuğa özel mesaj gönderilebilir mi? Gönderilemiyorsa nedeni */
+  privateProblem(seat: number): string | null;
+  /** Gönderir; olmazsa nedenini döner */
+  sendChat(to: number | null, text: string): Promise<string | null>;
+  /** Özel mesajı çözer (bu cihaz taraf değilse null) */
+  openBox(box: ChatBox): Promise<string | null>;
+  /** Genel kanala izleyiciler yazabilir mi */
+  spectatorChatOpen(): boolean;
 }
 
 export interface HostRoomEvents {
@@ -38,6 +57,8 @@ export interface HostRoomEvents {
   onTakeover?(seat: number, toBot: boolean): void;
   onPresence?(presence: Presence): void;
   onNotice?(text: string): void;
+  /** Oda sahibinin görebildiği yeni sohbet mesajı; null = liste ya da anahtarlar değişti */
+  onChat?(msg: ChatMessage | null): void;
 }
 
 /**
@@ -47,7 +68,7 @@ export interface HostRoomEvents {
  */
 type LobbySettings = Pick<LobbyInfo, 'width' | 'height' | 'seed' | 'rules' | 'mapName'>;
 
-export class HostRoom {
+export class HostRoom implements ChatChannel {
   readonly events: HostRoomEvents = {};
   private clients = new Map<string, RemoteClient>();
   private seats: LobbySeat[] = [];
@@ -58,6 +79,14 @@ export class HostRoom {
   private heartbeat: ReturnType<typeof setInterval>;
   private getState: () => GameState | null = () => null;
   private closed = false;
+  // Sohbet: oda sahibi geçmişi tutar; özel mesajları yalnızca şifreli hâliyle görür
+  private chatLog: ChatMessage[] = [];
+  private nextChatId = 1;
+  private keys: Record<number, string> = {};
+  private hostSeat: number | null = null;
+  private identity: ChatIdentity | null = null;
+  /** İzleyiciler genel kanala yazabilir mi */
+  private spectatorChat = true;
 
   constructor(
     readonly code: string,
@@ -101,17 +130,19 @@ export class HostRoom {
     return { ...l, seats: l.seats.map((s) => ({ ...s, claimedBy: s.claimedBy ? CLAIMED_MASK : null })) };
   }
 
-  /** Oyun başlar: oturmuş katılımcılar koltuk sahibi olur. */
-  startGame(state: GameState, getState: () => GameState | null) {
+  /** Oyun başlar: oturmuş katılımcılar koltuk sahibi olur. hostSeat: oda sahibinin kendi koltuğu (sohbet için) */
+  startGame(state: GameState, getState: () => GameState | null, hostSeat: number | null = null) {
     this.inGame = true;
     this.getState = getState;
+    this.hostSeat = hostSeat;
+    if (hostSeat !== null) void this.initChat(hostSeat);
     this.presence = {};
     for (const c of this.clients.values()) {
       if (c.seat !== null && state.players[c.seat]?.kind === 'human') this.presence[c.seat] = { status: c.conn ? 'online' : 'away' };
       else c.seat = null;
     }
     for (const c of this.clients.values()) {
-      c.conn?.send({ t: 'start', state: viewFor(state, c.seat), seat: c.seat, presence: this.presence });
+      c.conn?.send({ t: 'start', state: viewFor(state, c.seat), seat: c.seat, presence: this.presence, chat: this.chatSnapshot(c.seat) });
     }
     this.events.onPresence?.(this.presence);
   }
@@ -199,7 +230,7 @@ export class HostRoom {
       c.conn = conn;
       c.lastSeen = Date.now();
     } else {
-      c = { clientId: msg.clientId, name: cleanName(msg.name), color: cleanColor(msg.color), conn, seat: null, lastSeen: Date.now() };
+      c = { clientId: msg.clientId, name: cleanName(msg.name), color: cleanColor(msg.color), conn, seat: null, lastSeen: Date.now(), chatLimit: new RateLimit() };
       this.clients.set(c.clientId, c);
     }
     if (this.inGame) {
@@ -216,7 +247,7 @@ export class HostRoom {
         this.notice(`${c.name} oyuna geri döndü.`);
       }
       const st = this.getState();
-      conn.send({ t: 'welcome', seat, lobby: null, state: st ? viewFor(st, seat) : null, presence: this.presence });
+      conn.send({ t: 'welcome', seat, lobby: null, state: st ? viewFor(st, seat) : null, presence: this.presence, chat: this.chatSnapshot(seat) });
     } else {
       conn.send({ t: 'welcome', seat: c.seat, lobby: this.maskedLobby(), state: null, presence: {} });
       this.lobbyChanged();
@@ -277,9 +308,111 @@ export class HostRoom {
         this.events.onUndo?.(c.seat, origin);
         return;
       }
+      case 'key':
+        if (this.inGame && c.seat !== null && validPub(msg.pub) && this.keys[c.seat] !== msg.pub) {
+          this.keys[c.seat] = msg.pub;
+          this.keysChanged();
+        }
+        return;
+      case 'chat': {
+        if (!this.inGame) return;
+        if (!c.chatLimit.allow()) return c.conn?.send({ t: 'notice', text: 'Çok hızlı yazıyorsun, biraz bekle.' });
+        const st = this.getState();
+        const seat = c.seat;
+        const err = this.postChat(seat, seat !== null && st ? st.players[seat].name : c.name, seat !== null && st ? st.players[seat].color : c.color, msg.msg);
+        if (err) c.conn?.send({ t: 'notice', text: err });
+        return;
+      }
       case 'hello':
         return;
     }
+  }
+
+  // ------------------------------------------------------------------
+  // Sohbet
+  // ------------------------------------------------------------------
+
+  private async initChat(seat: number) {
+    try {
+      this.identity = await ChatIdentity.create(`inek-surusu-chatkey-host-${this.code}`);
+      this.keys[seat] = this.identity.pub;
+      this.keysChanged();
+    } catch {
+      // Güvenli bağlam yok: özel mesaj kapalı, genel kanal çalışır
+    }
+  }
+
+  private keysChanged() {
+    for (const c of this.clients.values()) if (this.inGame) c.conn?.send({ t: 'keys', keys: { ...this.keys } });
+    this.events.onChat?.(null);
+  }
+
+  private chatSnapshot(seat: number | null): ChatSnapshot {
+    return { log: this.chatLog.filter((m) => canSeeChat(seat, m)), keys: { ...this.keys } };
+  }
+
+  /** Mesajı doğrular, saklar ve yalnızca görebileceklere iletir. Olmazsa nedenini döner. */
+  private postChat(seat: number | null, name: string, color: string, send: ChatSend): string | null {
+    const st = this.getState();
+    if (!st || !send || typeof send !== 'object') return 'Sohbet kapalı';
+    const spectator = seat === null || !st.players[seat]?.alive;
+    let msg: ChatMessage;
+    const base = { id: this.nextChatId, at: Date.now(), seat, name, color, spectator };
+    if (send.to === null) {
+      const text = cleanChatText((send as { text?: unknown }).text);
+      if (!text) return 'Mesaj boş';
+      if (spectator && !this.spectatorChat) return 'Oda sahibi izleyici sohbetini kapattı.';
+      msg = { ...base, to: null, text };
+    } else {
+      const to = send.to;
+      const box = (send as { box?: unknown }).box;
+      if (spectator) return 'İzleyiciler özel mesaj gönderemez.';
+      if (!Number.isInteger(to) || to === seat || !st.players[to] || !humanSeat(st, this.presence, to)) return 'Bu oyuncuya özel mesaj gönderilemez.';
+      if (!validBox(box)) return 'Mesaj bozuk';
+      if (box.spub !== this.keys[seat] || box.rpub !== this.keys[to]) return 'Anahtarlar değişti, mesajı tekrar gönder.';
+      msg = { ...base, to, box: { iv: box.iv, data: box.data, spub: box.spub, rpub: box.rpub } };
+    }
+    this.nextChatId++;
+    this.chatLog.push(msg);
+    if (this.chatLog.length > CHAT_HISTORY) this.chatLog.splice(0, this.chatLog.length - CHAT_HISTORY);
+    for (const c of this.clients.values()) if (canSeeChat(c.seat, msg)) c.conn?.send({ t: 'chat', msg });
+    if (canSeeChat(this.hostSeat, msg)) this.events.onChat?.(msg);
+    return null;
+  }
+
+  // ChatChannel (oda sahibinin kendi ekranı)
+
+  chatSeat(): number | null {
+    return this.hostSeat;
+  }
+
+  chatMessages(): ChatMessage[] {
+    return this.chatLog.filter((m) => canSeeChat(this.hostSeat, m));
+  }
+
+  privateProblem(seat: number): string | null {
+    return privateProblemFor(this.getState(), this.presence, this.hostSeat, seat, this.keys, this.identity !== null);
+  }
+
+  async sendChat(to: number | null, text: string): Promise<string | null> {
+    const st = this.getState();
+    if (!st || this.hostSeat === null) return 'Sohbet kapalı';
+    const me = st.players[this.hostSeat];
+    if (to === null) return this.postChat(this.hostSeat, me.name, me.color, { to: null, text });
+    const prob = this.privateProblem(to);
+    if (prob) return prob;
+    const clean = cleanChatText(text);
+    if (!clean) return 'Mesaj boş';
+    const box = await this.identity!.seal(clean, this.keys[to]);
+    return this.postChat(this.hostSeat, me.name, me.color, { to, box });
+  }
+
+  openBox(box: ChatBox): Promise<string | null> {
+    return this.identity ? this.identity.open(box) : Promise.resolve(null);
+  }
+
+  spectatorChatOpen(): boolean {
+    return this.spectatorChat;
   }
 
   private dropped(c: RemoteClient) {
@@ -332,5 +465,38 @@ export class HostRoom {
     const masked = this.maskedLobby();
     for (const c of this.clients.values()) c.conn?.send({ t: 'lobby', lobby: masked, seat: c.seat });
     this.events.onLobbyChange?.(this.lobby());
+  }
+}
+
+/** seat koltuğundaki (null = izleyici) katılımcı bu mesajı görebilir mi? */
+export function canSeeChat(seat: number | null, m: ChatMessage): boolean {
+  return m.to === null || (seat !== null && (m.seat === seat || m.to === seat));
+}
+
+/** me → seat özel mesajına engel (oda sahibi ve katılan aynı kuralı kullanır) */
+export function privateProblemFor(st: GameState | null, presence: Presence, me: number | null, seat: number, keys: Record<number, string>, haveIdentity: boolean): string | null {
+  if (!st) return 'Sohbet kapalı';
+  if (me === null || !st.players[me]?.alive) return 'İzleyiciler özel mesaj gönderemez';
+  const p = st.players[seat];
+  if (!p || seat === me) return 'Geçersiz oyuncu';
+  if (!humanSeat(st, presence, seat)) return 'Botlarla mesajlaşılmaz';
+  if (!haveIdentity) return 'Özel mesaj için güvenli bağlantı gerekir (https ya da localhost)';
+  if (!keys[seat]) return `${p.name} henüz bağlanmadı`;
+  if (!keys[me]) return 'Anahtarın henüz oda sahibine ulaşmadı';
+  return null;
+}
+
+/** İnsan koltuğu mu? (bağlantısı koptuğu için yerine bot oynayan oyuncu da insandır) */
+export function humanSeat(st: GameState, presence: Presence, seat: number): boolean {
+  return st.players[seat]?.kind === 'human' || presence[seat] !== undefined;
+}
+
+function validPub(pub: unknown): pub is string {
+  if (typeof pub !== 'string' || pub.length > 1024) return false;
+  try {
+    const j = JSON.parse(pub) as { kty?: unknown; crv?: unknown };
+    return j.kty === 'EC' && j.crv === 'P-256';
+  } catch {
+    return false;
   }
 }

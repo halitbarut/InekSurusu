@@ -67,6 +67,7 @@ import { Spinner } from './spinner';
 import { cowMark, icon, type IconName } from '../icons';
 import { HATCH_NAME, playerHatch, playerSwatch } from '../playerStyle';
 import { renderSummary } from './summary';
+import { ChatPanel } from './chatPanel';
 import { play, playSpin, setMuted, soundControls } from '../sound';
 
 type Mode =
@@ -134,6 +135,8 @@ export class GameScreen {
   private history = new UndoHistory();
   /** Aynı teklif/oylama için ikinci kez soru açılmasın */
   private prompted = new Set<string>();
+  /** Çevrimiçi oyunda sohbet paneli (hot-seat ve bot oyunlarında yok) */
+  private chat: ChatPanel | null = null;
 
   private elTop!: HTMLElement;
   private elPlayers!: HTMLElement;
@@ -152,6 +155,7 @@ export class GameScreen {
     private net: NetMode = null,
   ) {
     this.state = state;
+    if (net) this.chat = new ChatPanel(net.room, () => this.state);
     this.bindNet();
     this.root = this.buildLayout();
     host.appendChild(this.root);
@@ -221,6 +225,7 @@ export class GameScreen {
           'div',
           { class: 'top-controls' },
           h('label', { class: 'fast-toggle', title: 'Botların hamlelerini animasyonsuz ve beklemeden oynat' }, fast, icon('hourglass'), h('span', { class: 'fast-label' }, 'Hızlı oynat')),
+          this.chat?.toggleBtn,
           this.muteBtn,
           h('button', { class: 'btn btn-icon', title: 'Oyunu kaydet', 'aria-label': 'Oyunu kaydet', onClick: () => this.openSaveDialog() }, icon('save')),
           h('button', { class: 'btn btn-icon', title: 'Menü: kurallar, ayarlar, ana menü', 'aria-label': 'Menü', onClick: () => this.openGameMenu() }, icon('menu')),
@@ -235,6 +240,7 @@ export class GameScreen {
           this.elMapWrap,
           this.elBanner,
           this.elTip,
+          this.chat?.el,
           h(
             'div',
             { class: 'zoom-controls' },
@@ -623,6 +629,7 @@ export class GameScreen {
         this.render();
       };
       room.events.onNotice = (text) => toast(text, 'info', 4000);
+      room.events.onChat = (m) => this.chat?.onMessage(m);
     } else {
       const room = net.room;
       room.events.onUpdate = (state, events) => {
@@ -654,6 +661,7 @@ export class GameScreen {
       };
       room.events.onNotice = (text) => toast(text, 'info', 4000);
       room.events.onStatus = (status, reason) => this.showConnection(status, reason);
+      room.events.onChat = (m) => this.chat?.onMessage(m);
     }
     // Geri sayım için bağlantı durumunu saniyede bir tazele
     this.presenceTimer = setInterval(() => {
@@ -910,6 +918,7 @@ export class GameScreen {
     this.renderActions();
     this.renderTargets();
     this.map.setState(this.state);
+    this.chat?.render();
   }
 
   private phaseText(): string {
@@ -1799,6 +1808,9 @@ export class GameScreen {
                   ? h('button', { class: 'btn btn-small btn-danger', onClick: () => confirm(`${p.name} ile ittifakı bozmak istiyor musun? Bu tur ona saldıramazsın.`) && after({ type: 'BREAK_ALLIANCE', player: me, target: p.id }) }, 'İttifakı boz')
                   : null,
               ]
+            : null,
+          this.chat && p.alive && this.net && this.net.room.privateProblem(p.id) === null
+            ? h('button', { class: 'btn btn-small', title: `${p.name} ile özel sohbet (uçtan uca şifreli)`, onClick: () => (modal?.close(), this.chat?.openPrivate(p.id)) }, icon('chat'), 'Özel mesaj')
             : null,
         ),
       );

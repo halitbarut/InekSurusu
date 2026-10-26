@@ -1,10 +1,12 @@
 import type { Action, BotLevel, GameEvent, GameState } from '../engine';
+import type { ChatMessage, ChatSend } from './chat';
 
 /**
  * Mesaj biçimi değişirse artırılır; farklı sürümler aynı odaya bağlanamaz.
  * 3: oyuncuya özel durum görünümü (gizli teklifler), lobide maskeli katılımcı kimlikleri.
+ * 4: oyun içi sohbet (genel kanal, uçtan uca şifreli özel mesajlar, sohbet geçmişi).
  */
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 
 /** Kopan oyuncunun dönmesi için beklenen süre; sonra bot devralır. */
 export const RECONNECT_GRACE_MS = 60_000;
@@ -57,19 +59,30 @@ export type ClientMessage =
   | { t: 'action'; reqId: number; action: Action }
   /** Kendi turunda son eylemini geri al */
   | { t: 'undo'; reqId: number }
+  /** Sohbet: özel mesajlar için açık anahtar (JWK metni) */
+  | { t: 'key'; pub: string }
+  | { t: 'chat'; msg: ChatSend }
   | { t: 'ping' };
 
+/** Oyundaki sohbet durumu: geçmiş (bu katılımcının görebildikleri) ve koltukların açık anahtarları */
+export interface ChatSnapshot {
+  log: ChatMessage[];
+  keys: Record<number, string>;
+}
+
 export type HostMessage =
-  | { t: 'welcome'; seat: number | null; lobby: LobbyInfo | null; state: GameState | null; presence: Presence }
+  | { t: 'welcome'; seat: number | null; lobby: LobbyInfo | null; state: GameState | null; presence: Presence; chat?: ChatSnapshot }
   | { t: 'refused'; reason: string }
   | { t: 'lobby'; lobby: LobbyInfo; seat: number | null }
-  | { t: 'start'; state: GameState; seat: number | null; presence: Presence }
+  | { t: 'start'; state: GameState; seat: number | null; presence: Presence; chat?: ChatSnapshot }
   /** undo: sıradaki oyuncunun geri alabileceği eylem sayısı */
   | { t: 'update'; state: GameState; events: GameEvent[]; reqId?: number; by?: string; undo?: number }
   | { t: 'reject'; reqId: number; reason: string }
   | { t: 'presence'; presence: Presence }
   | { t: 'notice'; text: string }
   | { t: 'closed'; reason: string }
+  | { t: 'chat'; msg: ChatMessage }
+  | { t: 'keys'; keys: Record<number, string> }
   | { t: 'ping' };
 
 /** Lobide katılanlara giden maskeli koltuk sahibi */
