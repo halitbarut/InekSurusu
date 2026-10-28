@@ -163,9 +163,19 @@ export function tileMenuModel(state: GameState, me: number, tile: number, opts: 
 export class TileMenu {
   readonly el = h('div', { class: 'tile-menu hidden', role: 'menu' });
   tile = -1;
+  /** Menü açıldıktan sonra içinde bir basış başladı mı? Dokunmatikte menüyü açan
+   *  dokunuşun ardından gelen tıklama, parmağın altındaki ilk eyleme düşmesin. */
+  private pressed = false;
+
   onPick: ((a: TileAction) => void) | null = null;
   /** Bir eylemin üzerine gelindi (rota önizlemesi için); null = ayrıldı */
   onFocusAction: ((a: TileAction | null) => void) | null = null;
+
+  constructor() {
+    this.el.addEventListener('pointerdown', () => (this.pressed = true));
+    // detail 0: klavye ya da programatik tıklama
+    this.el.addEventListener('click', (e) => !this.pressed && e.detail !== 0 && e.stopPropagation(), true);
+  }
 
   get isOpen(): boolean {
     return !this.el.classList.contains('hidden');
@@ -173,6 +183,7 @@ export class TileMenu {
 
   open(tile: number, model: TileMenuModel, x: number, y: number, bounds: DOMRect) {
     this.tile = tile;
+    this.pressed = false;
     clear(this.el);
     append(this.el, [
       h('div', { class: 'tile-menu-head' }, h('b', {}, model.title), h('span', { class: 'muted small' }, model.sub), h('button', { class: 'icon-btn', 'aria-label': 'Kapat', onClick: () => this.close() }, icon('close'))),
