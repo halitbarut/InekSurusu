@@ -9,6 +9,9 @@ import type { GameState } from './types';
 export function migrateState(raw: GameState): GameState {
   const s = structuredClone(raw) as GameState;
   s.config = { ...DEFAULT_CONFIG, ...s.config };
+  s.loans ??= [];
+  s.loanRequests ??= [];
+  s.nextLoanId ??= 1;
   // Eski boğaz durumu: tek idareci ve doğrudan oyuncu → {allow, toll} ayarları
   for (const st of s.straits as unknown as { controller?: number | null; controllers?: number[]; policies: Record<number, unknown> }[]) {
     if (st.controllers) continue;

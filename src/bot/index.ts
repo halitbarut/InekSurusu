@@ -5,7 +5,7 @@ import { MediumBot } from './medium';
 import type { BotBrain } from './types';
 
 export type { BotBrain } from './types';
-export { MediumBot, MEDIUM_TUNING, type BotTuning } from './medium';
+export { MediumBot, MEDIUM_TUNING, autoUpkeepAction, type BotTuning } from './medium';
 export { EasyBot, EASY_TUNING, botNoise } from './easy';
 export { HardBot, HARD_TUNING } from './hard';
 export { RusherBot } from './rusher';
@@ -22,4 +22,5 @@ export function getBot(level: BotLevel): BotBrain {
 
 export const BOT_LEVEL_NAME: Record<BotLevel, string> = { easy: 'Kolay', medium: 'Orta', hard: 'Zor' };
 export { responseAction, timeoutAction } from './timeout';
+export { nextBotAction } from './driver';
 export { TutorialBot } from './tutorial';

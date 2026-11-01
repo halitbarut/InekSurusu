@@ -51,6 +51,8 @@ export interface Player {
   /** Bu oyuncu turunda yapılan savaş sayısı (turda tek savaş) */
   battlesThisTurn: number;
   eliminatedBy: number | null;
+  /** Vadesi geçmiş borcu var: herkese "borçlu" görünür (ayrıntılar gizli) */
+  inDebt?: boolean;
   /** Boğaz kimliği → iznin en son reddedildiği turCounter (bu tur aynı boğazdan yeniden sorulamaz) */
   permitDenied?: Record<number, number>;
 }
@@ -120,6 +122,36 @@ export interface PermitRequest {
 /** Söz sahibinin izin cevabı: bu seferlik izin/ret ya da bu oyuncu için kalıcı ayar */
 export type PermitDecision = 'once' | 'deny' | 'open' | 'toll' | 'closed';
 export const PERMIT_DECISIONS: readonly PermitDecision[] = ['once', 'deny', 'open', 'toll', 'closed'];
+
+/** Görüşmesi süren borç: isteyen ya da teklif eden taraftan başlar, borçlunun son onayıyla kurulur */
+export interface LoanRequest {
+  id: number;
+  borrower: number;
+  lender: number;
+  amount: number;
+  /** Vade (tur) */
+  term: number;
+  /** Faiz yüzdesi; borç veren henüz cevap vermediyse null */
+  rate: number | null;
+  /** 'asked': borç verenin cevabı bekleniyor; 'terms': borçlunun onayı bekleniyor */
+  stage: 'asked' | 'terms';
+  createdTurn: number;
+}
+
+/** Kurulmuş borç. Basit faiz: total = principal × (1 + rate/100), yukarı yuvarlanır */
+export interface Loan {
+  id: number;
+  borrower: number;
+  lender: number;
+  principal: number;
+  rate: number;
+  total: number;
+  paid: number;
+  /** Bu tur ve sonrasında borçlunun turunda topaçtan sonra kesilir */
+  dueRound: number;
+  /** Vadesinde ödenemedi: kalan kısım her tur gelirden kesilir */
+  overdue: boolean;
+}
 
 export type Phase =
   | { kind: 'setup_capital' }
@@ -203,6 +235,15 @@ export type GameEvent =
   | { type: 'permit_answered'; requester: number; controller: number; straitId: number; allowed: boolean; toll: number; parties: number[] }
   /** granted: sefer yapıldı; aksi halde neden: reddedildi, sıra sahibi vazgeçti ya da akçe yetmedi */
   | { type: 'permit_result'; player: number; granted: boolean; reason?: 'denied' | 'declined' | 'funds'; by?: number; parties: number[] }
+  | { type: 'loan_requested'; requestId: number; borrower: number; lender: number; amount: number; term: number; rate: number | null; byLender: boolean; parties: number[] }
+  | { type: 'loan_answered'; requestId: number; borrower: number; lender: number; accepted: boolean; rate: number | null; parties: number[] }
+  | { type: 'loan_made'; loanId: number; borrower: number; lender: number; amount: number; rate: number; total: number; dueRound: number; parties: number[] }
+  | { type: 'loan_declined'; requestId: number; borrower: number; lender: number; failedReason?: string; parties: number[] }
+  | { type: 'loan_payment'; loanId: number; borrower: number; lender: number; amount: number; remaining: number; early: boolean; parties: number[] }
+  /** Başkent düşünce borç/alacak fatihe geçti */
+  | { type: 'loan_transferred'; loanId: number; from: number; to: number; parties: number[] }
+  /** Oyuncu borçlu durumuna girdi ya da çıktı (herkese açık) */
+  | { type: 'debtor_status'; player: number; inDebt: boolean }
   | { type: 'offer_made'; offer: Offer }
   | { type: 'offer_response'; offerId: number; from: number; to: number; accepted: boolean; failedReason?: string }
   | { type: 'offer_cancelled'; offerId: number; from: number; to: number }
@@ -252,6 +293,9 @@ export interface GameState {
   straits: StraitState[];
   offers: Offer[];
   nextOfferId: number;
+  loans: Loan[];
+  loanRequests: LoanRequest[];
+  nextLoanId: number;
   currentPlayer: number;
   /** Her oyuncu turunda bir artar */
   turnCounter: number;
@@ -284,6 +328,18 @@ export type Action =
   | { type: 'SET_STRAIT_POLICY'; player: number; straitId: number; target: number; mode: StraitMode; toll: number }
   /** Söz sahibinin geçiş izni cevabı (toll: 'once' ve 'toll' için vergi) */
   | { type: 'RESPOND_PERMIT'; player: number; straitId: number; decision: PermitDecision; toll: number }
+  /** Bakım: açık kapandı, kalanı öde ve topaça geç */
+  | { type: 'PAY_UPKEEP'; player: number }
+  /** Borç iste: miktar ve vade */
+  | { type: 'REQUEST_LOAN'; player: number; to: number; amount: number; term: number }
+  /** İsteyen olmadan borç teklif et */
+  | { type: 'OFFER_LOAN'; player: number; to: number; amount: number; term: number; rate: number }
+  /** Borç verenin cevabı: kabul ederken faiz yüzdesi (0 = faizsiz) */
+  | { type: 'RESPOND_LOAN'; player: number; requestId: number; accept: boolean; rate: number }
+  /** Borçlunun son onayı */
+  | { type: 'CONFIRM_LOAN'; player: number; requestId: number; accept: boolean }
+  /** Erken ödeme */
+  | { type: 'REPAY_LOAN'; player: number; loanId: number; amount: number }
   /** Sıra sahibi: istenen vergiyi onayla ya da seferden vazgeç */
   | { type: 'CONFIRM_PERMIT'; player: number; accept: boolean }
   | { type: 'PROPOSE_OFFER'; player: number; to: number; items: OfferItem[] }

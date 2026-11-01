@@ -70,6 +70,18 @@ export function parseAction(raw: unknown): Action | null {
     case 'SET_STRAIT_POLICY':
       if (!ints('straitId', 'target', 'toll') || !STRAIT_MODES.includes(a.mode as StraitMode)) return null;
       return { type: a.type, player, straitId: a.straitId as number, target: a.target as number, mode: a.mode as StraitMode, toll: a.toll as number };
+    case 'PAY_UPKEEP':
+      return { type: a.type, player };
+    case 'REQUEST_LOAN':
+      return ints('to', 'amount', 'term') ? { type: a.type, player, to: a.to as number, amount: a.amount as number, term: a.term as number } : null;
+    case 'OFFER_LOAN':
+      return ints('to', 'amount', 'term', 'rate') ? { type: a.type, player, to: a.to as number, amount: a.amount as number, term: a.term as number, rate: a.rate as number } : null;
+    case 'RESPOND_LOAN':
+      return ints('requestId', 'rate') && isBool(a.accept) ? { type: a.type, player, requestId: a.requestId as number, accept: a.accept, rate: a.rate as number } : null;
+    case 'CONFIRM_LOAN':
+      return ints('requestId') && isBool(a.accept) ? { type: a.type, player, requestId: a.requestId as number, accept: a.accept } : null;
+    case 'REPAY_LOAN':
+      return ints('loanId', 'amount') ? { type: a.type, player, loanId: a.loanId as number, amount: a.amount as number } : null;
     case 'RESPOND_PERMIT':
       if (!ints('straitId', 'toll') || !PERMIT_DECISIONS.includes(a.decision as PermitDecision)) return null;
       return { type: a.type, player, straitId: a.straitId as number, decision: a.decision as PermitDecision, toll: a.toll as number };

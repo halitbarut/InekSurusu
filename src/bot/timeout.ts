@@ -1,6 +1,6 @@
 import { validateAction, type Action, type GameState } from '../engine';
 import type { PendingResponse } from '../ui/game/responses';
-import { MediumBot } from './medium';
+import { MediumBot, autoUpkeepAction } from './medium';
 
 /**
  * Tur süresi dolunca oyuncu adına yapılacak otomatik eylemler. Her çağrı bir sonraki eylemi verir;
@@ -12,7 +12,7 @@ const medium = new MediumBot();
 
 /**
  * Cevap süresi dolunca verilecek karar. Her çağrı bir sonraki eylemi verir; bu cevap için yapılacak bir şey
- * kalmayınca null. Toprak seçimi Orta bot mantığıyla; teklif, boğaz izni reddedilir; oylama "hayır".
+ * kalmayınca null. Toprak seçimi Orta bot mantığıyla; teklif, borç, boğaz izni reddedilir; oylama "hayır"; bakım otomatik dağıtılır.
  */
 export function responseAction(state: GameState, r: Pick<PendingResponse, 'kind' | 'player' | 'ref'>): Action | null {
   const ph = state.phase;
@@ -29,6 +29,14 @@ export function responseAction(state: GameState, r: Pick<PendingResponse, 'kind'
       break;
     case 'offer':
       if (state.offers.some((o) => o.id === r.ref)) a = { type: 'RESPOND_OFFER', player: r.player, offerId: r.ref!, accept: false };
+      break;
+    case 'loan': {
+      const q = state.loanRequests.find((x) => x.id === r.ref);
+      if (q) a = q.stage === 'asked' ? { type: 'RESPOND_LOAN', player: r.player, requestId: q.id, accept: false, rate: 0 } : { type: 'CONFIRM_LOAN', player: r.player, requestId: q.id, accept: false };
+      break;
+    }
+    case 'upkeep':
+      if (ph.kind === 'upkeep' && state.currentPlayer === r.player) a = autoUpkeepAction(state, r.player);
       break;
     default:
       break;
@@ -72,6 +80,9 @@ export function timeoutAction(state: GameState, p: number): Action | null {
       a = { type: 'END_TURN', player: p };
       break;
     case 'upkeep':
+      if (state.currentPlayer !== p) return null;
+      a = autoUpkeepAction(state, p);
+      break;
     case 'setup_capital':
     case 'setup_territory':
       if (state.currentPlayer !== p) return null;

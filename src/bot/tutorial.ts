@@ -1,4 +1,4 @@
-import { conquestCandidates, validateAction, type Action, type GameState } from '../engine';
+import { conquestCandidates, validateAction, type Action, type GameState, type LoanRequest } from '../engine';
 import { fallbackAction } from './medium';
 import type { BotBrain } from './types';
 
@@ -34,6 +34,10 @@ export class TutorialBot implements BotBrain {
 
   evaluateOffer(): boolean {
     return true;
+  }
+
+  answerLoan(_state: GameState, p: number, r: LoanRequest): Action {
+    return r.stage === 'asked' ? { type: 'RESPOND_LOAN', player: p, requestId: r.id, accept: false, rate: 0 } : { type: 'CONFIRM_LOAN', player: p, requestId: r.id, accept: false };
   }
 
   vote(): boolean {

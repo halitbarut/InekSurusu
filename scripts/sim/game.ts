@@ -1,4 +1,4 @@
-import { EasyBot, HardBot, MediumBot, MEDIUM_TUNING, RusherBot, type BotBrain, type BotTuning } from '../../src/bot';
+import { EasyBot, HardBot, MediumBot, MEDIUM_TUNING, RusherBot, nextBotAction, type BotBrain, type BotTuning } from '../../src/bot';
 import { battleCost, createGame, defaultMapSize, dispatch, neighbors4, phaseActor, structureCost, type BotLevel, type GameConfig, type GameState } from '../../src/engine';
 
 export const SNAPSHOT_ROUNDS = [10, 25, 50, 100] as const;
@@ -25,6 +25,10 @@ export interface GameMetrics {
   rusherSeat: number | null;
   /** Zorluk testinde farklı seviyedeki botun koltuğu */
   focusSeat: number | null;
+  /** Borç kullanımı */
+  loans: { made: number; amount: number; interest: number; asked: number; refused: number; overdue: number };
+  /** Oyun sonundaki yapı sayıları (tersane, fabrika, üs) ve toplam yapılan/yıkılan */
+  structures: { shipyard: number; factory: number; base: number; built: number; demolished: number };
   /** Elenme sırası */
   eliminations: { player: number; by: number; round: number }[];
   /** Darboğaz ölçümleri: ilk kez olduğu tur (olmadıysa null) */
@@ -85,6 +89,8 @@ export function playGame(spec: GameSpec): GameMetrics {
     upkeepBy: { ship: 0, plane: 0, base: 0 },
     income: 0,
     battles: { land: 0, base: 0, capital: 0, capitalWon: 0, baseWon: 0 },
+    loans: { made: 0, amount: 0, interest: 0, asked: 0, refused: 0, overdue: 0 },
+    structures: { shipyard: 0, factory: 0, base: 0, built: 0, demolished: 0 },
     rusherSeat: spec.rusherSeat,
     focusSeat: lv?.focusSeat ?? null,
     eliminations: [],
@@ -100,7 +106,7 @@ export function playGame(spec: GameSpec): GameMetrics {
   while (s.phase.kind !== 'gameover' && s.round <= spec.maxRounds) {
     const ph = s.phase;
     const p = phaseActor(s);
-    let action = brain(p).chooseAction(s, p);
+    let action = nextBotAction(s, brain);
     if (s.turnCounter !== lastTurn) {
       lastTurn = s.turnCounter;
       perTurn = 0;
@@ -142,6 +148,25 @@ export function playGame(spec: GameSpec): GameMetrics {
           break;
         case 'build':
           m.spend.build += structureCost(s, e.structure);
+          m.structures.built++;
+          break;
+        case 'demolish':
+          m.spend.build += e.cost;
+          m.structures.demolished++;
+          break;
+        case 'loan_requested':
+          m.loans.asked++;
+          break;
+        case 'loan_answered':
+          if (!e.accepted) m.loans.refused++;
+          break;
+        case 'loan_made':
+          m.loans.made++;
+          m.loans.amount += e.amount;
+          m.loans.interest += e.total - e.amount;
+          break;
+        case 'debtor_status':
+          if (e.inDebt) m.loans.overdue++;
           break;
         case 'produce':
           m.spend.produce += e.unit === 'ship' ? cfg.shipAkceCost : cfg.planeAkceCost;
@@ -173,6 +198,10 @@ export function playGame(spec: GameSpec): GameMetrics {
         }
       }
     }
+  }
+  for (let i = 0; i < s.owner.length; i++) {
+    const st = s.structure[i];
+    if (st && st !== 'capital') m.structures[st]++;
   }
   m.endRound = Math.min(s.round, spec.maxRounds);
   if (s.phase.kind === 'gameover') {

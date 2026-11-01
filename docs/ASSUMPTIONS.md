@@ -549,3 +549,34 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
 166. Yıkma ve terhis rastgelelik içermez, başka oyuncuyu ilgilendirmez, geri alınabilir.
 167. **Botlar:** Orta ve üstü, terhisi bakım gelirin %60'ını aşınca kullanır (eskisi gibi). Yapı yıkmayı iki durumda kullanır: bakım
      isteyen ve 6 kare içinde düşman olmayan üs; gidecek yabancı kıyısı kalmamış boş tersane. Ücret akçesinin dörtte birinden azsa.
+
+## Bakım ekranı ve borç
+
+168. **Bakım aşaması artık "Devam" ister** (`PAY_UPKEEP`): altın bozdurma, terhis ve üs yıkma yalnızca bakım tutarını günceller,
+     açık kendiliğinden ödenip geçilmez. Böylece oyuncu seçimlerini birlikte yapar, aldığı borç da pencereyi kapatmaz.
+     Ekrandaki seçimler (kaç altın, hangi birimler) "Devam"a basınca eyleme dönüşür; öncesinde hiçbir şey uygulanmaz.
+     Akçe baştan yetiyorsa eskisi gibi pencere açılmaz, bakım otomatik ödenir.
+169. **Önerilen altın:** açığı kapatmaya yetecek en az altın sayısı (seçili terhisler hesaba katılır).
+170. **Otomatik kural:** "Otomatik dağıt", tur süresi ya da cevap süresi dolunca: önce gereken kadar altın, sonra (uçak/gemiden sayısı
+     çok olan) birim terhisi, en son (bakımı varsa) başkentten en uzak üs. Eski kuralda bütün altın bozduruluyordu; kısmi
+     bozdurma gelince gereksiz oldu. Otomatik kural borç istemez: cevabı başka oyuncuya bağlıdır.
+171. **Bakım penceresinin süresi:** sıra sahibinin penceresi olduğu için cihaz geçiş ekranında işlemez; pencere açıkken cevap süresi kadar
+     beklenir. Oyuncu pencereyi cevapsız bırakırsa tur süresi kapalıyken de oyun kilitlenmez.
+172. **Borç eylemleri:** `REQUEST_LOAN` (kendi turunda; eylem ya da bakım aşamasında), `OFFER_LOAN` (kendi eylem aşamasında), `RESPOND_LOAN`,
+     `CONFIRM_LOAN` (cevaplar sıra beklemez), `REPAY_LOAN` (kendi eylem aşamasında, kısmi olabilir). Vade en fazla 50 tur, faiz en fazla %500.
+     Aynı iki oyuncu arasında aynı anda tek görüşme olur; bir oyuncu birden çok borç alabilir.
+173. **Faiz** basittir ve yukarı yuvarlanır: toplam = ⌈miktar × (100 + oran) / 100⌉. Erken ödemede de aynı toplam ödenir.
+174. **Vade** tam tur sayısıdır: borç `tur + vade` numaralı turda ve sonrasında, borçlunun turunda topaçtan sonra kesilir. Birden çok borç
+     varsa önce vadesi eski olan.
+175. **Kesinti** o an eldeki bütün akçeden yapılır (topaç gelirine ek olarak stok da kesilir); ödenemeyen kısım bir sonraki turuna kalır.
+     Altın kendiliğinden bozdurulmaz. Faiz kademeli tahsilatta artmaz.
+176. **"Borçlu" işareti** yalnızca vadesi geçip ödenememiş borcu olana konur ve herkese açıktır (`Player.inDebt`). Vadesi gelmemiş borçlar
+     görünmez. Bir tarafın akçesi açık bilgi olduğu için ani değişimden borç sezilebilir; miktar, faiz ve taraf gizlidir.
+177. **Gizlilik:** `loans`, `loanRequests` ve `loan_*` günlük satırları yalnızca iki tarafa gider (`viewFor`). Hot-seat'te oyuncu panelinde yalnızca
+     sıradaki oyuncunun borçları görünür. Oyun bittikten sonra paylaşılan tekrarda borç ayrıntıları eylemlerde durur, çünkü kabul edilen borç
+     oyunun gidişatını belirler; reddedilen istekler de oyun bittiği için gizli sayılmadı (günlükte yine yalnızca taraflara gösterilir).
+178. **Başkent düşerse** elenenin borç ve alacakları fatihe geçer; borçlu ve alacaklı aynı kişi olursa borç silinir. Görüşme hâlindeki istekleri düşer.
+179. **Geri alma:** erken ödeme ve bakım ödemesi geri alınır. Borç istemek/teklif etmek/cevaplamak karşı tarafa ulaşan bilgidir ve geri alınmaz (#64 gibi).
+180. **Botlar:** güven = müttefik 2, barış 1, nötr 0; son 8 turda saldıran ya da borcunu ödemeyen -1. Verirken faiz: müttefik %5, barış %10, nötr %20; güvenmediğine vermez,
+     akçesinin %35'inden fazlasını (müttefike %60) ve elinde 400 akçe kalmayacak kadarını vermez. Alırken %30'dan yüksek faizi ve vadede ödeyemeyeceği tutarı reddeder.
+     Bakımı altınla da kapatamıyorsa ya da başkent savaşına 300 akçe kalmışsa ister; 2500 akçenin üstündeyken parasız kalmış dostuna teklif eder.

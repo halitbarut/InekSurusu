@@ -1,4 +1,6 @@
 import { resolveLandBattle, resolveSeriesBattle, spinTop } from './combat';
+import { MAX_LOAN_RATE, MAX_LOAN_TERM } from './config';
+import { loanRemaining, loanTotal, settleDueLoans, transferLoans, updateDebtors } from './loans';
 import { executeOffer, offerProblem } from './diplomacy';
 import { isCoastal, neighbors4 } from './grid';
 import {
@@ -156,6 +158,51 @@ export function validateAction(state: GameState, action: Action): ValidationResu
       }
       const costProb = battleCostProblem(state, action.player, kind);
       return costProb ? fail(costProb) : OK;
+    }
+    case 'PAY_UPKEEP':
+      if (ph.kind !== 'upkeep') return fail('Bakım aşamasında değilsin');
+      if (!myTurn) return fail('Sıra sizde değil');
+      if (ph.due > res.akce) return fail(`Bakım için ${ph.due - res.akce} akçe daha lazım`);
+      return OK;
+    case 'REQUEST_LOAN':
+    case 'OFFER_LOAN': {
+      if (ph.kind !== 'actions' && !(action.type === 'REQUEST_LOAN' && ph.kind === 'upkeep')) return fail('Borç eylem aşamasında konuşulur');
+      if (!myTurn) return fail('Sıra sizde değil');
+      const other = state.players[action.to];
+      if (!other || !other.alive || action.to === action.player) return fail('Geçersiz oyuncu');
+      if (!Number.isInteger(action.amount) || action.amount < 1) return fail('Miktar pozitif tam sayı olmalı');
+      if (!Number.isInteger(action.term) || action.term < 1 || action.term > MAX_LOAN_TERM) return fail(`Vade 1–${MAX_LOAN_TERM} tur olmalı`);
+      if (state.loanRequests.some((r) => (r.borrower === action.player && r.lender === action.to) || (r.borrower === action.to && r.lender === action.player))) return fail('Bu oyuncuyla süren bir borç görüşmesi var');
+      if (action.type === 'OFFER_LOAN') {
+        if (!Number.isInteger(action.rate) || action.rate < 0 || action.rate > MAX_LOAN_RATE) return fail(`Faiz %0–${MAX_LOAN_RATE} olmalı`);
+        if (res.akce < action.amount) return fail(`${action.amount} akçe gerekli`);
+      }
+      return OK;
+    }
+    case 'RESPOND_LOAN': {
+      const r = state.loanRequests.find((x) => x.id === action.requestId);
+      if (!r || r.stage !== 'asked') return fail('Bekleyen borç isteği yok');
+      if (r.lender !== action.player) return fail('Bu istek sana yapılmadı');
+      if (action.accept) {
+        if (!Number.isInteger(action.rate) || action.rate < 0 || action.rate > MAX_LOAN_RATE) return fail(`Faiz %0–${MAX_LOAN_RATE} olmalı`);
+        if (res.akce < r.amount) return fail(`${r.amount} akçe gerekli`);
+      }
+      return OK;
+    }
+    case 'CONFIRM_LOAN': {
+      const r = state.loanRequests.find((x) => x.id === action.requestId);
+      if (!r || r.stage !== 'terms') return fail('Onay bekleyen borç yok');
+      if (r.borrower !== action.player) return fail('Bu borç sana teklif edilmedi');
+      return OK;
+    }
+    case 'REPAY_LOAN': {
+      if (ph.kind !== 'actions') return fail('Borç eylem aşamasında ödenir');
+      if (!myTurn) return fail('Sıra sizde değil');
+      const l = state.loans.find((x) => x.id === action.loanId);
+      if (!l || l.borrower !== action.player) return fail('Bu borç senin değil');
+      if (!Number.isInteger(action.amount) || action.amount < 1 || action.amount > loanRemaining(l)) return fail('Geçersiz ödeme');
+      if (res.akce < action.amount) return fail(`${action.amount} akçe gerekli`);
+      return OK;
     }
     case 'DISBAND_UNIT': {
       if (ph.kind !== 'upkeep' && ph.kind !== 'actions') return fail('Birimler bakım ya da eylem aşamasında dağıtılır');
@@ -347,6 +394,8 @@ export function applyAction(state: GameState, action: Action, rng: Rng): ApplyRe
       const akce = value * cfg.spinMultiplier;
       me.resources.akce += akce;
       ev.push({ type: 'spin', player: me.id, value, akce });
+      // Vadesi gelen borçlar topaçtan sonra kesilir
+      settleDueLoans(s, me.id, ev);
       s.phase = { kind: 'actions' };
       break;
     }
@@ -360,20 +409,23 @@ export function applyAction(state: GameState, action: Action, rng: Rng): ApplyRe
       me.resources.gold -= action.amount;
       me.resources.akce += akce;
       ev.push({ type: 'exchange', player: me.id, gold: action.amount, akce });
-      if (s.phase.kind === 'upkeep') tryPayUpkeep(s, ev);
+      if (s.phase.kind === 'upkeep') refreshUpkeep(s);
       break;
     }
+    case 'PAY_UPKEEP':
+      tryPayUpkeep(s, ev);
+      break;
     case 'DISBAND_UNIT': {
       const u = s.units.find((x) => x.id === action.unitId)!;
       s.units = s.units.filter((x) => x.id !== u.id);
       ev.push({ type: 'disband', player: me.id, what: u.kind, tile: u.tile, voluntary: s.phase.kind !== 'upkeep' });
-      if (s.phase.kind === 'upkeep') tryPayUpkeep(s, ev);
+      if (s.phase.kind === 'upkeep') refreshUpkeep(s);
       break;
     }
     case 'DEMOLISH_BASE':
       s.structure[action.tile] = null;
       ev.push({ type: 'disband', player: me.id, what: 'base', tile: action.tile, voluntary: s.phase.kind !== 'upkeep' });
-      if (s.phase.kind === 'upkeep') tryPayUpkeep(s, ev);
+      if (s.phase.kind === 'upkeep') refreshUpkeep(s);
       break;
     case 'DEMOLISH': {
       const structure = s.structure[action.tile] as BuildableStructure;
@@ -476,6 +528,57 @@ export function applyAction(state: GameState, action: Action, rng: Rng): ApplyRe
       const st = s.straits[action.straitId];
       (st.policies[me.id] ??= {})[action.target] = { mode: action.mode, toll: action.toll };
       ev.push({ type: 'strait_policy', player: me.id, straitId: action.straitId, target: action.target, mode: action.mode, toll: action.toll });
+      break;
+    }
+    case 'REQUEST_LOAN':
+    case 'OFFER_LOAN': {
+      const byLender = action.type === 'OFFER_LOAN';
+      const borrower = byLender ? action.to : me.id;
+      const lender = byLender ? me.id : action.to;
+      const rate = byLender ? action.rate : null;
+      const id = s.nextLoanId++;
+      s.loanRequests.push({ id, borrower, lender, amount: action.amount, term: action.term, rate, stage: byLender ? 'terms' : 'asked', createdTurn: s.turnCounter });
+      ev.push({ type: 'loan_requested', requestId: id, borrower, lender, amount: action.amount, term: action.term, rate, byLender, parties: [borrower, lender] });
+      break;
+    }
+    case 'RESPOND_LOAN': {
+      const r = s.loanRequests.find((x) => x.id === action.requestId)!;
+      const parties = [r.borrower, r.lender];
+      if (action.accept) {
+        r.rate = action.rate;
+        r.stage = 'terms';
+      } else s.loanRequests = s.loanRequests.filter((x) => x.id !== r.id);
+      ev.push({ type: 'loan_answered', requestId: r.id, borrower: r.borrower, lender: r.lender, accepted: action.accept, rate: action.accept ? action.rate : null, parties });
+      break;
+    }
+    case 'CONFIRM_LOAN': {
+      const r = s.loanRequests.find((x) => x.id === action.requestId)!;
+      const parties = [r.borrower, r.lender];
+      s.loanRequests = s.loanRequests.filter((x) => x.id !== r.id);
+      const lender = s.players[r.lender];
+      const failedReason = !action.accept ? undefined : !lender.alive ? 'Borç veren oyunda değil' : lender.resources.akce < r.amount ? `${lender.name} yeterli akçeye sahip değil` : undefined;
+      if (!action.accept || failedReason) {
+        ev.push({ type: 'loan_declined', requestId: r.id, borrower: r.borrower, lender: r.lender, failedReason, parties });
+        break;
+      }
+      const rate = r.rate ?? 0;
+      const total = loanTotal(r.amount, rate);
+      lender.resources.akce -= r.amount;
+      s.players[r.borrower].resources.akce += r.amount;
+      s.loans.push({ id: r.id, borrower: r.borrower, lender: r.lender, principal: r.amount, rate, total, paid: 0, dueRound: s.round + r.term, overdue: false });
+      ev.push({ type: 'loan_made', loanId: r.id, borrower: r.borrower, lender: r.lender, amount: r.amount, rate, total, dueRound: s.round + r.term, parties });
+      if (s.phase.kind === 'upkeep') refreshUpkeep(s);
+      break;
+    }
+    case 'REPAY_LOAN': {
+      const l = s.loans.find((x) => x.id === action.loanId)!;
+      me.resources.akce -= action.amount;
+      s.players[l.lender].resources.akce += action.amount;
+      l.paid += action.amount;
+      const remaining = loanRemaining(l);
+      ev.push({ type: 'loan_payment', loanId: l.id, borrower: l.borrower, lender: l.lender, amount: action.amount, remaining, early: true, parties: [l.borrower, l.lender] });
+      if (remaining === 0) s.loans = s.loans.filter((x) => x.id !== l.id);
+      updateDebtors(s, ev);
       break;
     }
     case 'PROPOSE_OFFER': {
@@ -661,6 +764,7 @@ function eliminate(s: GameState, loser: number, winner: number, ev: GameEvent[])
   L.capital = null;
   L.eliminatedBy = winner;
   s.offers = s.offers.filter((o) => o.from !== loser && o.to !== loser);
+  transferLoans(s, loser, winner, ev);
   for (const k of Object.keys(s.relations)) {
     const [a, b] = k.split('-').map(Number);
     if (a === loser || b === loser) delete s.relations[k];
@@ -753,6 +857,11 @@ function beginTurn(s: GameState, ev: GameEvent[]) {
   // Bakım: topaçtan önce otomatik ödenir; yetmezse oyuncu dağıtacaklarını seçer
   s.phase = { kind: 'upkeep', due: 0 };
   tryPayUpkeep(s, ev);
+}
+
+/** Bakım ekranındayken borç tutarını günceller (oyuncu "Devam" deyince ödenir) */
+function refreshUpkeep(s: GameState) {
+  s.phase = { kind: 'upkeep', due: upkeepDue(s, s.currentPlayer) };
 }
 
 /** Bakımı öder ve topaç aşamasına geçer; akçe yetmiyorsa bakım aşamasında kalır. */

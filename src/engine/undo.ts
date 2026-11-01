@@ -16,7 +16,10 @@ export function isUndoable(state: GameState, action: Action): boolean {
     case 'BUILD':
     case 'PRODUCE':
     case 'SET_STRAIT_POLICY':
+    case 'REPAY_LOAN':
       return ph === 'actions';
+    case 'PAY_UPKEEP':
+      return ph === 'upkeep';
     case 'EXCHANGE_GOLD':
     case 'DISBAND_UNIT':
     case 'DEMOLISH_BASE':

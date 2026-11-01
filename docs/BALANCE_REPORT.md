@@ -518,3 +518,54 @@ oynatılan RB/RB2 değerleri 2. tur raporundaki değerlerle birebir aynı (%14,4
   giriyor, toprağı gelişigüzel seçiyor ve turu bazen erken bitiriyor.
 - Hiçbir seviye hile yapmaz: botlar yalnızca herkesin gördüğü durumu okur. Kolay botun rastgeleliği oyunun RNG'sini
   kullanmaz; durumdan türetilen bir karışımdır (aynı durumda aynı karar, simülasyonlar tekrarlanabilir).
+
+<!-- bölüm:ekonomi — bu işaretle kapanış işareti arası simülasyon tarafından yazılır -->
+
+## Ekonomi güncellemesi
+
+`npm run simulate -- --round ekonomi` ile üretilir (son çalıştırma: 2026-11-01). Her senaryo için 100 oyun, 5 oyuncu, Orta botlar, 300 tur sınırı, seed'ler 10000–10099. "3. tur" kolonu, bu raporun 3. tur bölümündeki B3 ölçümüdür (eski harita üreticisi, eski fiyatlar, borçsuz, boğazlar varsayılan açık).
+
+- **E-yeni:** Dengeli: kapalı denizler, yeni yapı fiyatları (400/600/800), borç
+- **E-eskifiyat:** Kapalı denizler, eski yapı fiyatları (200/300/400), borç
+- **E-takimada:** Takımada (eski harita üreticisi), yeni yapı fiyatları, borç
+
+| Ölçüt | 3. tur (önceki) | E-yeni | E-eskifiyat | E-takimada |
+|---|---|---|---|---|
+| İlk başkent fethi, medyan tur | 42 | 58 | 52 | 48 |
+| Hiç başkent düşmeyen oyun | %1 | %3 | %1 | %2 |
+| Biten oyunların bitiş turu, medyan | 92 | 96 | 120 | 97 |
+| Tur sınırına takılan oyun | %17 | %17 | %9 | %13 |
+| Tek devletle biten / ittifakla biten | 41 / 42 | 31 / 52 | 40 / 51 | 30 / 57 |
+| Oyun başına savaş | 227 | 252 | 226 | 219 |
+| Oyun başına başkent savaşı | 22,8 | 21,2 | 23,6 | 21,9 |
+| Oyun başına kurulan yapı | — | 30,3 | 30,6 | 28,6 |
+| Oyun sonunda tersane / fabrika / üs | — | 10,1 / 8,0 / 12,3 | 9,6 / 7,8 / 13,2 | 10,3 / 8,3 / 10,0 |
+| Oyun başına yıkılan yapı | — | 0,0 | 0,0 | 0,0 |
+| Bakım / tüm harcama | %56 | %50 | %52 | %53 |
+| İnşa / tüm harcama | %3 | %6,4 | %3,4 | %6,6 |
+| Boğaz vergisi, oyun başına akçe | — | 68 | 103 | 25 |
+| Oyun başına borç isteği / reddedilen | — | 10,1 / 2,6 | 5,6 / 1,1 | 5,8 / 1,6 |
+| Oyun başına kurulan borç | — | 7,5 | 4,4 | 4,2 |
+| Oyun başına borç hacmi / faiz (akçe) | — | 1.048 / 76 | 586 / 66 | 639 / 55 |
+| Borçlu duruma düşme (oyun başına) | — | 0,3 | 0,2 | 0,2 |
+
+<!-- /bölüm:ekonomi -->
+
+### Değerlendirme ve öneriler (Ekonomi güncellemesi)
+
+Ölçüm botlarladır; insan oyuncular farklı davranır. Bu turda varsayılan değiştirilmedi, aşağıdakiler öneridir.
+
+- **İlk başkent fethi geç kaldı:** medyan 42 → 58. tur. Etkinin bir kısmı kapalı denizlerden, bir kısmı fiyatlardan: Takımada + yeni fiyat 48,
+  kapalı denizler + eski fiyat 52, ikisi birlikte 58. 3. turun 30–60 hedefinin hâlâ içinde ama üst sınırında.
+- **Oyun süresi:** biten oyunların medyanı 92 → 96 turla neredeyse aynı. Tur sınırına takılan oyun %17 ile değişmedi, %10 hedefinin üstünde kalmaya devam ediyor.
+  Eski fiyatlarla sınıra takılan %9'a iniyor ama biten oyunların medyanı 120'ye çıkıyor; yani fiyat bu ölçütü tek başına düzeltmiyor.
+- **Yapılar:** pahalı fiyatlara rağmen botlar oyun başına yaklaşık aynı sayıda yapı kuruyor (30,3'e karşı 30,6). İnşanın harcamadaki payı %3,4 → %6,4.
+  Yani yeni fiyatlar kurulan yapı sayısını azaltmadı, ama ilk yatırımları geciktirdi. Botların kararı buna dayanıyor; insanlarda etkisi daha büyük olabilir.
+- **Yapı yıkma botlarda fiilen hiç kullanılmadı** (oyun başına 0,0). Dengeli'de üs bakımı 0 olduğu için botun yıkma koşulu pek oluşmuyor. Bu, testlerdeki davranışın oyunda nadir
+  olduğu anlamına gelir; Gerçekçi bot da aynı koşulları devralır.
+- **Borç az kullanılıyor:** oyun başına 7,5 borç, 1.048 akçe, 76 akçe faiz; harcamalara göre küçük. Borçlu duruma düşme oyun başına 0,3. Oyunu bozmuyor; botların temkinli kurallarını yansıtıyor.
+- **Bakım payı** %56 → %50: hedefe (%50 altı) ulaşıldı sayılmaz ama sınırda. Pay, toplam harcama pastası büyüdüğü için de düşüyor.
+- **Boğaz vergisi çok düşük** (oyun başına 68 akçe): botlar sorulan izinlerde çoğunlukla vergi ya da kapalı ayarı veriyor, gemi seferleri seyrek. Boğazların insan oyunlarındaki etkisi bu sayılardan okunamaz.
+- **Karşılaştırmanın sınırı:** 3. tur B3 eski kod ve eski haritayla ölçüldü, seed'ler aynı olsa da haritalar farklı. E- senaryoları birbiriyle doğrudan karşılaştırılabilir; B3 yalnızca yön gösterir.
+
+**Öneriler (uygulanmadı, senin kararın):** İlk başkent fethi üst sınıra yaklaştığı için başkent savaşı masrafını biraz düşürmek (600 → 500 akçe) denenebilir. Tur sınırına takılan oyunlar için ayrı bir çalışma gerekir: bu güncelleme onu çözmedi. Yapı fiyatları için değişiklik önermiyorum, gerçek oyunlardan geri bildirim daha değerli olur.

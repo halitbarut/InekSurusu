@@ -1,4 +1,4 @@
-import type { GameState } from '../../engine';
+import { loanResponder, type GameState } from '../../engine';
 
 /**
  * Sıra sahibi dışında birinden (ya da sıra sahibinin penceresinden) cevap bekleyen durumlar. Kim, neye cevap verecek,
@@ -35,9 +35,23 @@ export interface ResponseScope {
   hotSeat?: boolean;
   /** Hot-seat: şu an cihazı alıcıya verilmiş teklifler */
   promptedOffers?: ReadonlySet<number>;
+  /** Hot-seat: şu an cihazı cevap verecek tarafa verilmiş borç görüşmeleri */
+  promptedLoans?: ReadonlySet<number>;
+  /** Hot-seat: cihaz geçiş ekranı açık (sıra sahibinin penceresinde süre işlemez) */
+  handoff?: boolean;
 }
 
 export function pendingResponses(s: GameState, scope: ResponseScope): PendingResponse[] {
+  return collect(s, scope).concat(upkeepResponse(s, scope));
+}
+
+/** Bakım ekranı sıra sahibinin penceresidir: hiçbir şey yapmazsa otomatik dağıtma kuralı uygulanır */
+function upkeepResponse(s: GameState, scope: ResponseScope): PendingResponse[] {
+  if (s.phase.kind !== 'upkeep' || !scope.isHuman(s.currentPlayer) || scope.handoff) return [];
+  return [{ key: `upkeep-${s.turnCounter}`, player: s.currentPlayer, kind: 'upkeep', blocking: true, parties: null }];
+}
+
+function collect(s: GameState, scope: ResponseScope): PendingResponse[] {
   const out: PendingResponse[] = [];
   const ph = s.phase;
   if (ph.kind === 'gameover') return out;
@@ -58,6 +72,12 @@ export function pendingResponses(s: GameState, scope: ResponseScope): PendingRes
     if (!scope.isHuman(o.to)) continue;
     if (scope.hotSeat && !scope.promptedOffers?.has(o.id) && s.currentPlayer !== o.to) continue;
     out.push({ key: `offer-${o.id}`, player: o.to, kind: 'offer', blocking: false, parties: [o.from, o.to], ref: o.id });
+  }
+  for (const r of s.loanRequests) {
+    const who = loanResponder(r);
+    if (!scope.isHuman(who)) continue;
+    if (scope.hotSeat && !scope.promptedLoans?.has(r.id) && s.currentPlayer !== who) continue;
+    out.push({ key: `loan-${r.id}-${r.stage}`, player: who, kind: 'loan', blocking: false, parties: [r.borrower, r.lender], ref: r.id });
   }
   return out;
 }

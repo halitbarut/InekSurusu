@@ -1,4 +1,4 @@
-import { BOT_LEVEL_NAME, getBot, responseAction, timeoutAction } from '../../bot';
+import { BOT_LEVEL_NAME, autoUpkeepAction, getBot, responseAction, timeoutAction } from '../../bot';
 import {
   RESOURCE_KEYS,
   STRAIT_MODES,
@@ -39,6 +39,13 @@ import {
   expeditionCheck,
   neighbors4,
   seriesWinProbability,
+  MAX_LOAN_RATE,
+  MAX_LOAN_TERM,
+  creditsOf,
+  debtsOf,
+  loanRemaining,
+  loanResponder,
+  loanTotal,
   redactReplay,
   type ReplayData,
   type Action,
@@ -47,6 +54,7 @@ import {
   type GameState,
   type Offer,
   type OfferItem,
+  type LoanRequest,
   type PermitDecision,
   type ResourceKey,
   type StraitMode,
@@ -194,6 +202,11 @@ export class GameScreen {
   private responses: ResponseTracker | null = null;
   /** Bu cihazda açık olan cevap pencereleri */
   private questions = new Map<string, ModalHandle>();
+  /** Hot-seat: cihazı cevap verecek tarafa verilmiş borç görüşmeleri */
+  private localLoans = new Set<number>();
+  /** Açık bakım penceresi ve içeriğini yeniden çizen işlev */
+  private upkeepModal: ModalHandle | null = null;
+  private upkeepRedraw: (() => void) | null = null;
   /** Hot-seat: açık cihaz geçiş ekranını kapatır (cevap süresi dolunca) */
   private passCancel: { player: number; cancel: () => void } | null = null;
   private elWaitBar = h('div', { class: 'wait-bar hidden', role: 'status', 'aria-live': 'off' });
@@ -432,6 +445,7 @@ export class GameScreen {
           this.showVictory();
           return;
         }
+        if (await this.routeLoans()) continue;
         if (s.phase.kind === 'vote') {
           const ph = s.phase;
           const voter = s.players.find((p) => p.alive && !(p.id in ph.votes));
@@ -731,6 +745,23 @@ export class GameScreen {
         notify({ icon: e.kind === 'land' ? 'attack' : STRUCT_ICON[e.kind], title, text, kind: named ? 'info' : won ? 'good' : lost ? 'bad' : 'info', onClick: () => this.map.centerOn(e.target) });
         return;
       }
+      case 'loan_answered':
+        if (mine(e.borrower) && !mine(e.lender) && !e.accepted) notify({ icon: 'akce', title: `${N(e.lender)} borç isteğini reddetti`, kind: 'bad' });
+        return;
+      case 'loan_made':
+        if (mine(e.lender) && !mine(e.borrower)) notify({ icon: 'akce', title: `${N(e.borrower)} borcu onayladı`, text: `${fmtNum(e.amount)} akçe verdin; ${fmtNum(e.total)} akçe alacaksın (vade ${e.dueRound}. tur)`, kind: 'good' });
+        if (mine(e.borrower)) notify({ icon: 'akce', title: `${fmtNum(e.amount)} akçe borç aldın`, text: `${fmtNum(e.total)} akçe ödeyeceksin, vade ${e.dueRound}. tur`, kind: 'info' });
+        return;
+      case 'loan_declined':
+        if (mine(e.lender) && !mine(e.borrower)) notify({ icon: 'akce', title: e.failedReason ? 'Borç kurulamadı' : `${N(e.borrower)} borçtan vazgeçti`, text: e.failedReason, kind: 'info' });
+        return;
+      case 'loan_payment':
+        if (mine(e.lender) && !mine(e.borrower)) notify({ icon: 'akce', title: `${N(e.borrower)} ${fmtNum(e.amount)} akçe borç ödedi`, text: e.remaining ? `Kalan ${fmtNum(e.remaining)} akçe` : 'Borç bitti', kind: 'good' });
+        if (mine(e.borrower) && !e.early) notify({ icon: 'akce', title: `Borç taksiti kesildi: ${fmtNum(e.amount)} akçe`, text: e.remaining ? `Kalan ${fmtNum(e.remaining)} akçe` : 'Borç bitti', kind: e.remaining ? 'bad' : 'info' });
+        return;
+      case 'debtor_status':
+        if (mine(e.player)) notify({ icon: 'warning', title: e.inDebt ? 'Borcunu vadesinde ödeyemedin' : 'Borcun bitti', text: e.inDebt ? 'Herkese "borçlu" görünüyorsun; kalan her tur gelirinden kesilir.' : undefined, kind: e.inDebt ? 'bad' : 'good' });
+        return;
       case 'permit_answered':
         if (mine(e.requester) && !mine(e.controller)) notify({ icon: 'strait', title: `${N(e.controller)} ${straitLabel(e.straitId)} boğazında ${e.allowed ? 'izin verdi' : 'izin vermedi'}`, text: e.toll ? `${fmtNum(e.toll)} akçe vergi istiyor` : undefined, kind: e.allowed ? 'good' : 'bad' });
         return;
@@ -887,6 +918,9 @@ export class GameScreen {
         return;
       case 'composer':
         this.openComposer(this.newDraft(p.to));
+        return;
+      case 'loan':
+        this.openLoanComposer(p.to, 'ask');
         return;
       case 'chat':
         this.chat?.openPrivate(p.to);
@@ -1164,6 +1198,15 @@ export class GameScreen {
     // Yeniden bağlanınca da bekleyen teklifler sorulur
     const seat = this.mySeat();
     if (seat !== null) for (const o of s.offers) if (o.to === seat) void this.promptOffer(o);
+    if (seat !== null && s.phase.kind !== 'permit') {
+      for (const r of s.loanRequests) {
+        const key = `loan-${r.id}-${r.stage}`;
+        if (loanResponder(r) === seat && !this.prompted.has(key)) {
+          this.prompted.add(key);
+          void this.promptLoan(r);
+        }
+      }
+    }
     if (s.phase.kind === 'permit') {
       this.clientPermitPrompt(s.phase);
       return;
@@ -1239,7 +1282,7 @@ export class GameScreen {
   private tickResponses() {
     const tr = this.responses;
     if (!tr || this.destroyed) return;
-    const list = pendingResponses(this.state, { isHuman: (p) => this.state.players[p]?.kind === 'human', hotSeat: !this.net, promptedOffers: this.localOffers });
+    const list = pendingResponses(this.state, { isHuman: (p) => this.state.players[p]?.kind === 'human', hotSeat: !this.net, promptedOffers: this.localOffers, promptedLoans: this.localLoans, handoff: this.handoff });
     if (tr.sync(list) && this.net?.kind === 'host') this.net.room.sendWaits(tr.info());
     for (const r of tr.expired()) void this.onResponseExpired(r);
   }
@@ -1376,7 +1419,7 @@ export class GameScreen {
   private async showSpin(p: number, value: number, f: number) {
     const pl = this.state.players[p];
     const spinner = new Spinner(200, pl.color);
-    const result = h('div', { class: 'spin-result' }, ' ');
+    const result = h('div', { class: 'spin-result' }, ' ');
     const el = this.overlay(h('div', { class: 'overlay-title' }, h('span', { class: 'dot', style: { background: pl.color } }), `${pl.name} topacı çeviriyor…`), spinner.el, result);
     await spinner.spinTo(value, 1500 * f);
     result.textContent = `${value}!  +${fmtNum(value * this.state.config.spinMultiplier)} akçe`;
@@ -1733,6 +1776,7 @@ export class GameScreen {
     this.chat?.render();
     this.syncClock();
     this.closeStaleQuestions();
+    this.upkeepRedraw?.();
     this.renderViewers();
     this.checkEliminated();
   }
@@ -1912,6 +1956,7 @@ export class GameScreen {
               p.name,
               p.kind === 'bot' ? h('span', { class: 'tag', title: 'Bot seviyesi' }, icon('bot'), BOT_LEVEL_NAME[p.botLevel]) : null,
               this.seatBadge(p.id),
+              p.inDebt ? h('span', { class: 'tag tag-debt', title: 'Vadesi geçmiş borcu var' }, 'borçlu') : null,
               rel,
             ),
             p.alive
@@ -1925,6 +1970,8 @@ export class GameScreen {
                   s.config.upkeepEnabled ? mini('upkeep', fmtNum(upkeepDue(s, p.id)), 'Tur başı bakım') : null,
                 )
               : h('div', { class: 'pr-stats' }, icon('eliminated'), `Elendi${p.eliminatedBy !== null ? ` (${pname(s, p.eliminatedBy)})` : ''}`),
+            // Borç ayrıntıları yalnızca iki tarafta: hot-seat'te sıradaki oyuncu, çevrimiçinde kendi koltuğu
+            p.alive && p.id === (this.net ? this.mySeat() : this.actor()) ? h('div', { class: 'pr-loans' }, this.loanLines(p.id, false)) : null,
             allies.length ? h('div', { class: 'pr-allies' }, icon('alliance', { label: 'Müttefikleri' }), allies.map((a) => h('span', { class: 'dot small', title: a.name, style: { background: a.color } }))) : null,
           ),
         ),
@@ -2336,14 +2383,16 @@ export class GameScreen {
     } else if (ph.kind === 'upkeep') {
       const akce = s.players[me].resources.akce;
       this.setBanner(
-        `Bakım ${fmtNum(ph.due)} akçe, akçen ${fmtNum(akce)}. Ödenemeyen kadar birim ya da üs dağıtmalısın.`,
-        [{ label: 'Dağıtılacakları seç', primary: true, onClick: () => this.openUpkeepDialog() }],
+        `Bakım ${fmtNum(ph.due)} akçe, akçen ${fmtNum(akce)}. Açığı kapat: altın bozdur, birim terhis et ya da borç iste.`,
+        [{ label: 'Bakım penceresi', primary: true, onClick: () => this.openUpkeepDialog() }],
         'upkeep',
       );
-      const key = `upkeep-${s.turnCounter}`;
-      if (!this.prompted.has(key)) {
-        this.prompted.add(key);
-        setTimeout(() => this.openUpkeepDialog(), 0);
+      if (!this.upkeepModal) {
+        const key = `upkeep-${s.turnCounter}`;
+        if (!this.prompted.has(key)) {
+          this.prompted.add(key);
+          setTimeout(() => this.openUpkeepDialog(), 0);
+        }
       }
     } else if (ph.kind === 'spin') {
       this.setBanner('Sıra sende! Önce sekizgen topacı çevir (Boşluk).', [{ label: 'Topacı çevir', icon: 'spin', primary: true, onClick: () => void this.act({ type: 'SPIN', player: me }) }], 'spin');
@@ -2688,46 +2737,315 @@ export class GameScreen {
     return parts.join(' ');
   }
 
-  /** Bakım ödenemiyorsa dağıtılacak birimleri/üsleri seçtiren pencere */
+  /**
+   * Bakım ödenemiyor penceresi: açık net görünür; altın kısmi bozdurulur, birimler tek tek seçilir, borç istenebilir.
+   * Seçimler "Devam"a basınca uygulanır; açık kapanmadan Devam etkinleşmez. Hiçbir şey yapılmazsa süre dolunca otomatik kural.
+   */
   private openUpkeepDialog() {
     const s = this.state;
     if (s.phase.kind !== 'upkeep' || !this.isHumanTurn() || this.destroyed) return;
+    if (this.upkeepModal) return;
     // Cihaz geçiş ekranı ya da başka bir pencere açıksa biraz sonra tekrar dene
     if (document.querySelector('.modal-backdrop, .overlay')) {
       setTimeout(() => this.openUpkeepDialog(), 500);
       return;
     }
     const me = s.currentPlayer;
-    const c = s.config;
-    const res = s.players[me].resources;
-    let modal: ReturnType<typeof openModal> | null = null;
-    const run = (a: Action) => {
-      modal?.close();
-      void this.act(a).then(() => {
-        if (!this.destroyed && this.state.phase.kind === 'upkeep') this.openUpkeepDialog();
-      });
-    };
-    const units = s.units.filter((u) => u.owner === me);
-    const bases: number[] = [];
-    for (let i = 0; i < s.owner.length; i++) if (s.owner[i] === me && s.structure[i] === 'base') bases.push(i);
-    const row = (ic: IconName, label: string, upkeep: number, btn: string, a: Action) =>
-      h('div', { class: 'seat-row' }, icon(ic), h('span', { class: 'grow' }, label, h('span', { class: 'muted small' }, ` · bakım ${upkeep}`)), h('button', { class: 'btn btn-small btn-danger', onClick: () => run(a) }, btn));
-    modal = openModal({
+    const pl = s.players[me];
+    const key = `upkeep-${s.turnCounter}`;
+    const picked = new Set<number>();
+    const pickedBases = new Set<number>();
+    let gold = 0;
+    const body = h('div', { class: 'upkeep-body' });
+    const payBtn = h('button', { class: 'btn btn-primary btn-big' }, 'Devam');
+    const autoBtn = h('button', { class: 'btn' }, 'Otomatik dağıt');
+    const modal = this.trackQuestion(key, openModal({
       title: 'Bakım ödenemiyor',
       icon: 'upkeep',
+      closable: false,
+      wide: true,
+      className: 'turn-window-backdrop',
+      body: h('div', { class: 'turn-window', style: { borderTopColor: pl.color } }, h('div', { class: 'tw-head' }, playerSwatch(pl.color, pl.id, 34), h('div', { class: 'tw-name' }, pl.name)), body, this.countdownEl(key), h('div', { class: 'tw-actions' }, autoBtn, payBtn)),
+    }));
+    this.upkeepModal = modal;
+    void modal.result.then(() => {
+      if (this.upkeepModal === modal) this.upkeepModal = null;
+      this.upkeepRedraw = null;
+    });
+    const draw = () => {
+      const st = this.state;
+      const ph = st.phase;
+      if (ph.kind !== 'upkeep') {
+        modal.close('done');
+        return;
+      }
+      const c = st.config;
+      const res = st.players[me].resources;
+      const units = st.units.filter((u) => u.owner === me);
+      for (const id of [...picked]) if (!units.some((u) => u.id === id)) picked.delete(id);
+      gold = Math.min(gold, res.gold);
+      const saved = units.filter((u) => picked.has(u.id)).reduce((a, u) => a + (u.kind === 'ship' ? c.shipUpkeep : c.planeUpkeep), 0) + pickedBases.size * c.baseUpkeep;
+      const due = ph.due - saved;
+      const have = res.akce + gold * c.goldToAkce;
+      const gap = Math.max(0, due - have);
+      const minGold = Math.min(res.gold, Math.ceil(Math.max(0, due - res.akce) / Math.max(1, c.goldToAkce)));
+      const unitRow = (ic: IconName, label: string, upkeep: number, checked: boolean, toggle: (v: boolean) => void) =>
+        h('label', { class: 'seat-row upkeep-row' }, h('input', { type: 'checkbox', checked, onChange: (e: Event) => (toggle((e.target as HTMLInputElement).checked), draw()) }), icon(ic), h('span', { class: 'grow' }, label), h('span', { class: 'muted small' }, `+${fmtNum(upkeep)} akçe`));
+      clear(body);
+      body.append(
+        h(
+          'div',
+          { class: 'upkeep-sums' },
+          h('div', {}, h('small', {}, 'Ödenecek bakım'), h('b', {}, fmtNum(due))),
+          h('div', {}, h('small', {}, 'Mevcut akçe'), h('b', {}, fmtNum(res.akce))),
+          h('div', { class: gap > 0 ? 'bad' : 'good' }, h('small', {}, 'Eksik'), h('b', {}, fmtNum(gap))),
+        ),
+      );
+      if (res.gold > 0) {
+        const input = h('input', { type: 'number', class: 'num', min: 0, max: res.gold, value: gold, onChange: (e: Event) => ((gold = Math.max(0, Math.min(res.gold, Math.floor(Number((e.target as HTMLInputElement).value) || 0)))), draw()) });
+        body.append(
+          h(
+            'div',
+            { class: 'row upkeep-gold' },
+            icon('exchange'),
+            h('b', {}, 'Altın bozdur '),
+            input,
+            ` / ${res.gold} altın = +${fmtNum(gold * c.goldToAkce)} akçe `,
+            minGold > 0 ? h('button', { class: 'btn btn-small', onClick: () => ((gold = minGold), draw()) }, `Öneri: ${minGold} altın`) : null,
+          ),
+        );
+      }
+      const bases: number[] = [];
+      if (c.baseUpkeep > 0) for (let i = 0; i < st.owner.length; i++) if (st.owner[i] === me && st.structure[i] === 'base') bases.push(i);
+      if (units.length || bases.length) {
+        body.append(
+          h(
+            'div',
+            { class: 'upkeep-units' },
+            h('b', {}, 'Terhis et'),
+            units.map((u) => unitRow(UNIT_ICON[u.kind], `${u.kind === 'ship' ? 'Gemi' : 'Uçak'} ${tileLabel(st, u.tile)}`, u.kind === 'ship' ? c.shipUpkeep : c.planeUpkeep, picked.has(u.id), (v) => (v ? picked.add(u.id) : picked.delete(u.id)))),
+            bases.map((t) => unitRow('base', `Askeri üs ${tileLabel(st, t)} (toprak sende kalır)`, c.baseUpkeep, pickedBases.has(t), (v) => (v ? pickedBases.add(t) : pickedBases.delete(t)))),
+          ),
+        );
+      }
+      body.append(this.loanAskRow(me, gap));
+      payBtn.disabled = gap > 0;
+      payBtn.title = gap > 0 ? `${fmtNum(gap)} akçe daha lazım` : '';
+    };
+    payBtn.addEventListener('click', () => {
+      void (async () => {
+        const steps: Action[] = [];
+        if (gold > 0) steps.push({ type: 'EXCHANGE_GOLD', player: me, amount: gold });
+        for (const id of picked) steps.push({ type: 'DISBAND_UNIT', player: me, unitId: id });
+        for (const t of pickedBases) steps.push({ type: 'DEMOLISH_BASE', player: me, tile: t });
+        steps.push({ type: 'PAY_UPKEEP', player: me });
+        modal.close('done');
+        for (const a of steps) if (!(await this.act(a))) break;
+      })();
+    });
+    autoBtn.addEventListener('click', () => {
+      void (async () => {
+        modal.close('auto');
+        for (let k = 0; k < 100 && this.state.phase.kind === 'upkeep'; k++) if (!(await this.act(autoUpkeepAction(this.state, me)))) break;
+      })();
+    });
+    this.upkeepRedraw = draw;
+    draw();
+  }
+
+  /** Borç isteme satırı (bakım penceresi): oyuncu, miktar, vade */
+  private loanAskRow(me: number, gap: number): HTMLElement {
+    const s = this.state;
+    const others = s.players.filter((p) => p.alive && p.id !== me);
+    const pending = s.loanRequests.filter((r) => r.borrower === me);
+    const to = h('select', { 'aria-label': 'Kimden' }, others.map((p) => h('option', { value: p.id }, `${p.name} (${fmtNum(p.resources.akce)} akçe)`)));
+    const amount = h('input', { type: 'number', class: 'num', min: 1, step: 50, value: Math.max(50, Math.ceil(gap / 50) * 50) });
+    const term = h('input', { type: 'number', class: 'num', min: 1, max: MAX_LOAN_TERM, value: 5 });
+    const send = () => void this.act({ type: 'REQUEST_LOAN', player: me, to: Number(to.value), amount: Math.floor(Number(amount.value) || 0), term: Math.floor(Number(term.value) || 0) });
+    return h(
+      'div',
+      { class: 'upkeep-loan' },
+      h('b', {}, 'Borç iste'),
+      others.length ? h('div', { class: 'row' }, to, amount, ' akçe, ', term, ' tur ', h('button', { class: 'btn btn-small', onClick: send }, 'İste')) : null,
+      pending.map((r) =>
+        r.stage === 'asked'
+          ? h('div', { class: 'small muted' }, `${pname(s, r.lender)}: ${fmtNum(r.amount)} akçe isteği cevap bekliyor…`)
+          : h('div', { class: 'small' }, `${pname(s, r.lender)} kabul etti: ${this.loanTermsText(r)}`),
+      ),
+    );
+  }
+
+  /** "500 akçe · %10 faiz · 550 akçe geri ödenecek · 5 tur vade" */
+  private loanTermsText(r: LoanRequest): string {
+    const rate = r.rate ?? 0;
+    return `${fmtNum(r.amount)} akçe · ${rate ? `%${rate} faiz` : 'faizsiz'} · ${fmtNum(loanTotal(r.amount, rate))} akçe geri ödenecek · ${r.term} tur vade`;
+  }
+
+  /** Borç görüşmesinde bu oyuncuya sıra geldi: istekte faiz belirler, koşullarda onaylar. Süre dolunca reddedilir. */
+  private async askLoan(r: LoanRequest): Promise<Action | null> {
+    const s = this.state;
+    const key = `loan-${r.id}-${r.stage}`;
+    if (r.stage === 'asked') {
+      const useRate = h('input', { type: 'checkbox', checked: true });
+      const rate = h('input', { type: 'number', class: 'num', min: 0, max: MAX_LOAN_RATE, value: 10 });
+      useRate.addEventListener('change', () => (rate.disabled = !useRate.checked));
+      const m = this.trackQuestion(key, openModal({
+        title: `Borç isteği — ${pname(s, r.lender)}`,
+        icon: 'akce',
+        closable: false,
+        body: h(
+          'div',
+          {},
+          h('p', {}, `${pname(s, r.borrower)} senden ${fmtNum(r.amount)} akçe borç istiyor. Vade: ${r.term} tur.`),
+          h('p', { class: 'small' }, `Akçen: ${fmtNum(s.players[r.lender].resources.akce)}`),
+          h('div', { class: 'row' }, h('label', {}, useRate, ' Faiz uygula: %'), rate),
+          h('p', { class: 'muted small' }, 'Basit faiz: geri ödenecek toplam = miktar × (1 + oran). Vade gelince borçlunun turunda topaçtan sonra kesilir. Son onayı borçlu verir.'),
+          this.countdownEl(key),
+        ),
+        buttons: [
+          { label: 'Reddet', value: 'no', danger: true },
+          { label: 'Kabul et', value: 'yes', primary: true },
+        ],
+      }));
+      const v = await m.result;
+      if (v === 'timeout' || !this.state.loanRequests.some((x) => x.id === r.id)) return null;
+      return { type: 'RESPOND_LOAN', player: r.lender, requestId: r.id, accept: v === 'yes', rate: useRate.checked ? Math.max(0, Math.floor(Number(rate.value) || 0)) : 0 };
+    }
+    const m = this.trackQuestion(key, openModal({
+      title: `Borç koşulları — ${pname(s, r.borrower)}`,
+      icon: 'akce',
       closable: false,
       body: h(
         'div',
         {},
-        h('p', {}, `Bu turun bakımı ${fmtNum(s.phase.due)} akçe, elinde ${fmtNum(res.akce)} akçe var. Borç akçene inene kadar birim dağıt ya da üs yık; kalan bakım otomatik ödenir.`),
-        res.gold > 0
-          ? h('p', {}, h('button', { class: 'btn btn-small btn-primary', onClick: () => run({ type: 'EXCHANGE_GOLD', player: me, amount: res.gold }) }, icon('exchange'), `${res.gold} altını bozdur (+${fmtNum(res.gold * c.goldToAkce)} akçe)`))
-          : null,
-        units.map((u) => row(UNIT_ICON[u.kind], `${u.kind === 'ship' ? 'Gemi' : 'Uçak'} ${tileLabel(s, u.tile)}`, u.kind === 'ship' ? c.shipUpkeep : c.planeUpkeep, 'Terhis et', { type: 'DISBAND_UNIT', player: me, unitId: u.id })),
-        // Bakımsız üsleri yıkmak borcu azaltmaz
-        c.baseUpkeep <= 0 ? null : bases.map((t) => row('base', `Askeri üs ${tileLabel(s, t)} (toprak sende kalır)`, c.baseUpkeep, 'Yık', { type: 'DEMOLISH_BASE', player: me, tile: t })),
+        h('p', {}, `${pname(s, r.lender)}: ${this.loanTermsText(r)}.`),
+        h('p', { class: 'muted small' }, `Vade: ${s.round + r.term}. tur. Vadede akçen yetmezse kalanı her turun topacından sonra kesilir ve herkese "borçlu" görünürsün.`),
+        this.countdownEl(key),
       ),
+      buttons: [
+        { label: 'Vazgeç', value: 'no' },
+        { label: 'Onayla', value: 'yes', primary: true },
+      ],
+    }));
+    const v = await m.result;
+    if (v === 'timeout' || !this.state.loanRequests.some((x) => x.id === r.id)) return null;
+    return { type: 'CONFIRM_LOAN', player: r.borrower, requestId: r.id, accept: v === 'yes' };
+  }
+
+  /** Bot cevapları hemen; bu cihazdaki insana sorulur (hot-seat'te cihaz el değiştirir) */
+  private async routeLoans(): Promise<boolean> {
+    const s = this.state;
+    if (s.phase.kind === 'vote' || s.phase.kind === 'permit' || s.phase.kind === 'gameover') return false;
+    for (const r of s.loanRequests) {
+      const who = loanResponder(r);
+      if (s.players[who].kind === 'bot') {
+        await sleep(Math.min(300, this.botDelay()));
+        const a = this.brain(who).answerLoan(this.state, who, r);
+        await this.enqueue(() => this.commit(a, true));
+        return true;
+      }
+      const key = `loan-${r.id}-${r.stage}`;
+      if (!this.mine(who) || this.prompted.has(key)) continue;
+      if (this.net) {
+        this.prompted.add(key);
+        void this.promptLoan(r);
+      } else if (who === s.currentPlayer || s.players[r.stage === 'asked' ? r.borrower : r.lender].kind === 'human') {
+        this.prompted.add(key);
+        void this.hotSeatLoan(r);
+      }
+    }
+    return false;
+  }
+
+  private async promptLoan(r: LoanRequest) {
+    const a = await this.askLoan(r);
+    if (a && !this.destroyed) await this.act(a);
+  }
+
+  /** Hot-seat: cihaz cevap verecek tarafa geçer, sonra geri döner */
+  private async hotSeatLoan(r: LoanRequest) {
+    const who = loanResponder(r);
+    const back = this.deviceAt ?? this.state.currentPlayer;
+    const away = who !== back && this.humanCount() > 1;
+    this.localLoans.add(r.id);
+    this.offerHolds++;
+    this.syncClock();
+    this.tickResponses();
+    if (away) await this.passDevice(who, r.stage === 'asked' ? `${pname(this.state, r.borrower)} senden borç istiyor.` : `${pname(this.state, r.lender)} borç koşullarını iletti.`);
+    const live = this.state.loanRequests.find((x) => x.id === r.id && x.stage === r.stage);
+    const a = live ? await this.askLoan(live) : null;
+    if (a) await this.enqueue(() => this.commit(a));
+    this.localLoans.delete(r.id);
+    this.offerHolds--;
+    this.syncClock();
+    if (this.destroyed) return;
+    // Sıradaki adım aynı görüşmede başka tarafa gidecekse cihazı oraya pump verir
+    const next = this.state.loanRequests.find((x) => x.id === r.id);
+    if (away && (!next || loanResponder(next) === who)) await this.passDevice(back, 'Borç görüşmesi bitti, sıra yine sende.');
+    this.render();
+    void this.pump();
+  }
+
+  /** Borç isteme ya da teklif penceresi */
+  private openLoanComposer(to: number, mode: 'ask' | 'offer') {
+    const s = this.state;
+    const me = this.actor();
+    const amount = h('input', { type: 'number', class: 'num', min: 1, step: 50, value: 500 });
+    const term = h('input', { type: 'number', class: 'num', min: 1, max: MAX_LOAN_TERM, value: 5 });
+    const rate = h('input', { type: 'number', class: 'num', min: 0, max: MAX_LOAN_RATE, value: 10 });
+    const m = openModal({
+      title: mode === 'ask' ? `Borç iste → ${pname(s, to)}` : `Borç teklif et → ${pname(s, to)}`,
+      icon: 'akce',
+      body: h(
+        'div',
+        { class: 'form-grid' },
+        h('label', {}, 'Miktar (akçe)'),
+        amount,
+        h('label', {}, 'Vade (tur)'),
+        term,
+        mode === 'offer' ? [h('label', {}, 'Faiz (%; 0 = faizsiz)'), rate] : null,
+        h('p', { class: 'muted small' }, mode === 'ask' ? 'Borç veren kabul ederse faizi o belirler; son onayı sen verirsin.' : 'Son onayı borçlu verir; akçe o an geçer.'),
+      ),
+      buttons: [
+        { label: 'Vazgeç', value: 'no' },
+        { label: mode === 'ask' ? 'İste' : 'Teklif et', value: 'yes', primary: true },
+      ],
     });
+    void m.result.then((v) => {
+      if (v !== 'yes') return;
+      const am = Math.floor(Number(amount.value) || 0);
+      const tm = Math.floor(Number(term.value) || 0);
+      void this.act(mode === 'ask' ? { type: 'REQUEST_LOAN', player: me, to, amount: am, term: tm } : { type: 'OFFER_LOAN', player: me, to, amount: am, term: tm, rate: Math.floor(Number(rate.value) || 0) });
+    });
+  }
+
+  /** Oyuncunun görebildiği borç ve alacak satırları (panel ve diplomasi) */
+  private loanLines(me: number, withPay: boolean): HTMLElement[] {
+    const s = this.state;
+    const out: HTMLElement[] = [];
+    for (const l of debtsOf(s, me)) {
+      const left = loanRemaining(l);
+      out.push(
+        h(
+          'div',
+          { class: `loan-line ${l.overdue ? 'overdue' : ''}` },
+          h('span', { class: 'grow' }, `Borç: ${fmtNum(left)} akçe → ${pname(s, l.lender)} · ${l.overdue ? 'vadesi geçti, gelirden kesiliyor' : `vade ${l.dueRound}. tur`}`),
+          withPay ? h('button', { class: 'btn btn-small', onClick: () => void this.act({ type: 'REPAY_LOAN', player: me, loanId: l.id, amount: Math.min(left, s.players[me].resources.akce) }).then(() => this.reopenDiplomacy()) }, 'Erken öde') : null,
+        ),
+      );
+    }
+    for (const l of creditsOf(s, me)) {
+      out.push(h('div', { class: 'loan-line credit' }, h('span', { class: 'grow' }, `Alacak: ${fmtNum(loanRemaining(l))} akçe ← ${pname(s, l.borrower)} · ${l.overdue ? 'vadesi geçti' : `vade ${l.dueRound}. tur`} · %${l.rate}`)));
+    }
+    return out;
+  }
+
+  private diplomacyModal: ReturnType<typeof openModal> | null = null;
+  private reopenDiplomacy() {
+    if (!this.destroyed && this.diplomacyModal) {
+      this.diplomacyModal.close();
+      this.openDiplomacy();
+    }
   }
 
   private openBuildDialog() {
@@ -2814,6 +3132,8 @@ export class GameScreen {
           p.alive && myTurn && s.phase.kind === 'actions'
             ? [
                 h('button', { class: 'btn btn-small', onClick: () => (modal?.close(), this.openComposer(this.newDraft(p.id))) }, 'Teklif hazırla'),
+                h('button', { class: 'btn btn-small', onClick: () => (modal?.close(), this.openLoanComposer(p.id, 'ask')) }, 'Borç iste'),
+                h('button', { class: 'btn btn-small', onClick: () => (modal?.close(), this.openLoanComposer(p.id, 'offer')) }, 'Borç ver'),
                 rel.allied
                   ? h('button', { class: 'btn btn-small btn-danger', onClick: () => confirm(`${p.name} ile ittifakı bozmak istiyor musun? Bu tur ona saldıramazsın.`) && after({ type: 'BREAK_ALLIANCE', player: me, target: p.id }) }, 'İttifakı boz')
                   : null,
@@ -2861,6 +3181,14 @@ export class GameScreen {
             ),
           )
         : h('p', { class: 'muted' }, 'Yanıt bekleyen teklifin yok.'),
+      h('h3', {}, 'Borçlar ve alacaklar'),
+      (() => {
+        const lines = this.loanLines(me, myTurn && s.phase.kind === 'actions');
+        const talks = s.loanRequests.filter((r) => r.borrower === me || r.lender === me);
+        return lines.length || talks.length
+          ? [lines, talks.map((r) => h('div', { class: 'loan-line muted' }, `Görüşme: ${pname(s, r.borrower)} ← ${pname(s, r.lender)} · ${r.stage === 'asked' ? `${fmtNum(r.amount)} akçe, cevap bekleniyor` : `${this.loanTermsText(r)}, onay bekleniyor`}`, h('div', { class: 'wait-left muted small', dataset: { waitKey: `loan-${r.id}-${r.stage}` } })))]
+          : h('p', { class: 'muted' }, 'Aktif borç ya da alacak yok.');
+      })(),
       allAliveAllied(s) && myTurn && s.phase.kind === 'actions'
         ? h(
             'div',
@@ -2871,6 +3199,10 @@ export class GameScreen {
         : null,
     );
     modal = openModal({ title: `Diplomasi — ${pname(s, me)}`, icon: 'diplomacy', body, wide: true });
+    this.diplomacyModal = modal;
+    void modal.result.then(() => {
+      if (this.diplomacyModal === modal) this.diplomacyModal = null;
+    });
   }
 
   private newDraft(to: number): OfferDraft {
@@ -3208,6 +3540,7 @@ export class GameScreen {
           h('li', {}, 'Boğaz karesinin iki yanında birbirinin tam karşısındaki iki kara kareye sahipsen o boğazda söz sahibisin: her oyuncu için geçiş ayarını ve vergiyi belirlersin. Birden çok söz sahibi varsa gemi her birinden ayrı izin alır ve her birinin vergisini öder.'),
           h('li', {}, 'Boğaz ayarı oyuncu başına Sor (varsayılan), Açık, Vergili ya da Kapalıdır. Rotası "Sor" durumundaki boğazdan geçen sefer önce söz sahibine sorulur; biri bile reddederse sefer yapılmaz, ödeme alınmaz, yakıt harcanmaz.'),
           h('li', {}, 'Müttefiklere ve barış yapılanlara saldırılamaz. İttifak kendi turunda bozulabilir; o tur eski müttefike saldırılamaz.'),
+          h('li', {}, 'Borç: devletler birbirine akçe borç verebilir. İsteyen miktar ve vadeyi söyler; veren reddeder ya da faizini (0 = faizsiz) belirleyip kabul eder; borçlu son koşulları onaylar. Geri ödenecek toplam = miktar × (1 + oran). Vade gelince borçlunun turunda topaçtan sonra kesilir, yetmezse kalan her tur kesilir ve "borçlu" görünür. Erken ödenebilir. Başkent düşerse borç ve alacaklar fatihe geçer. Ayrıntıları yalnızca iki taraf görür.'),
           h('li', {}, 'Kazanma: tek devlet kalırsa ya da kalan herkes müttefikse ve oybirliğiyle bitirmeye karar verirse.'),
         ),
       ),

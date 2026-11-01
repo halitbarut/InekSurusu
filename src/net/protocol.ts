@@ -9,7 +9,8 @@ import type { ChatMessage, ChatSend } from './chat';
  * 5: tur süresi (clock, timeout mesajları).
  * 6: izleyiciler: izleyici listesi (viewers), izleyici sohbeti ayarı (chatcfg).
  * 7: oyun bitince tekrar kaydı (replay; kabul edilmemiş teklif içerikleri çıkarılmış).
- * 8: boğazda birden çok söz sahibi ve izin aşaması (permit: yalnızca taraflara ayrıntı); bekleyen cevaplar ve süreleri (waits).
+ * 8: boğazda birden çok söz sahibi ve izin aşaması (permit: yalnızca taraflara ayrıntı); bekleyen cevaplar ve süreleri (waits);
+ *    borçlar (yalnızca taraflara ayrıntı).
  */
 export const PROTOCOL_VERSION = 8;
 
@@ -136,6 +137,12 @@ function privateTo(e: GameEvent): number[] | null {
     case 'permit_requested':
     case 'permit_answered':
     case 'permit_result':
+    case 'loan_requested':
+    case 'loan_answered':
+    case 'loan_made':
+    case 'loan_declined':
+    case 'loan_payment':
+    case 'loan_transferred':
       return e.parties;
     default:
       return null;
@@ -166,6 +173,9 @@ export function viewFor(state: GameState, viewer: number | null): GameState {
     rngState: 0,
     phase: hidePermit ? { ...ph, target: -1, path: [], unitId: -1 } : ph,
     offers: viewer === null ? [] : state.offers.filter((o) => o.from === viewer || o.to === viewer),
+    // Borç ayrıntıları yalnızca iki tarafta; diğerleri yalnızca "borçlu" işaretini (Player.inDebt) görür
+    loans: viewer === null ? [] : state.loans.filter((l) => l.borrower === viewer || l.lender === viewer),
+    loanRequests: viewer === null ? [] : state.loanRequests.filter((r) => r.borrower === viewer || r.lender === viewer),
     log: state.log.filter((l) => eventVisibleTo(l.event, viewer)),
   };
 }

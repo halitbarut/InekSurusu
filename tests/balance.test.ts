@@ -122,6 +122,7 @@ describe('bakım', () => {
     s = act(s, { type: 'DEMOLISH_BASE', player: 1, tile: at(s, 2, 0) });
     expect(s.structure[at(s, 2, 0)]).toBeNull();
     expect(s.owner[at(s, 2, 0)]).toBe(1);
+    s = act(s, { type: 'PAY_UPKEEP', player: 1 });
     expect(s.phase.kind).toBe('spin');
     expect(s.players[1].resources.akce).toBe(0);
     expect(s.units.map((u) => u.id)).toEqual([1]);
@@ -132,6 +133,7 @@ describe('bakım', () => {
     s.players[1].resources.gold = 1;
     s = act(s, { type: 'END_TURN', player: 0 });
     s = act(s, { type: 'EXCHANGE_GOLD', player: 1, amount: 1 });
+    s = act(s, { type: 'PAY_UPKEEP', player: 1 });
     expect(s.phase.kind).toBe('spin');
     expect(s.players[1].resources.akce).toBe(0);
   });

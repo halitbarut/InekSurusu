@@ -167,6 +167,22 @@ export function formatEvent(state: GameState, e: GameEvent): string | null {
     case 'permit_result':
       if (e.granted) return null;
       return `${gen(N(e.player))} seferi yapılmadı: ${e.reason === 'denied' ? 'izin reddedildi' : e.reason === 'funds' ? 'akçe yetmedi' : 'vazgeçildi'}`;
+    case 'loan_requested':
+      return e.byLender
+        ? `${N(e.lender)}, ${dat(N(e.borrower))} borç teklif etti: ${fmtNum(e.amount)} akçe, ${e.term} tur, %${e.rate ?? 0} faiz`
+        : `${N(e.borrower)}, ${abl(N(e.lender))} borç istedi: ${fmtNum(e.amount)} akçe, ${e.term} tur`;
+    case 'loan_answered':
+      return e.accepted ? `${N(e.lender)} borç isteğini %${e.rate ?? 0} faizle kabul etti` : `${N(e.lender)} borç isteğini reddetti`;
+    case 'loan_made':
+      return `${N(e.borrower)}, ${abl(N(e.lender))} ${fmtNum(e.amount)} akçe borç aldı: ${fmtNum(e.total)} akçe ödenecek, vade ${e.dueRound}. tur`;
+    case 'loan_declined':
+      return e.failedReason ? `Borç kurulamadı: ${e.failedReason}` : `${N(e.borrower)} borçtan vazgeçti`;
+    case 'loan_payment':
+      return `${N(e.borrower)}, ${dat(N(e.lender))} ${fmtNum(e.amount)} akçe borç ödedi${e.remaining ? ` (kalan ${fmtNum(e.remaining)})` : ' (borç bitti)'}`;
+    case 'loan_transferred':
+      return `${gen(N(e.from))} borç ve alacakları ${dat(N(e.to))} geçti`;
+    case 'debtor_status':
+      return e.inDebt ? `${N(e.player)} borcunu vadesinde ödeyemedi: borçlu` : `${N(e.player)} artık borçlu değil`;
     case 'offer_made':
       // Tekrar dosyasında kabul edilmemiş tekliflerin içeriği çıkarılır
       return `${N(e.offer.from)}, ${dat(N(e.offer.to))} teklif gönderdi: ${e.offer.items.length ? offerText(state, e.offer) : '(içeriği gizli)'}`;
@@ -272,6 +288,14 @@ export function eventIcon(e: GameEvent): IconName | null {
     case 'offer_response':
     case 'offer_cancelled':
       return 'diplomacy';
+    case 'loan_requested':
+    case 'loan_answered':
+    case 'loan_made':
+    case 'loan_declined':
+    case 'loan_payment':
+    case 'loan_transferred':
+    case 'debtor_status':
+      return 'akce';
     case 'alliance_formed':
       return 'alliance';
     case 'peace_made':

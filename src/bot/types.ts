@@ -1,4 +1,4 @@
-import type { Action, GameState, Offer } from '../engine';
+import type { Action, GameState, LoanRequest, Offer } from '../engine';
 
 /**
  * Bot beyni. Botlar insanlarla aynı Action arayüzünü kullanır; her çağrıda
@@ -9,6 +9,8 @@ export interface BotBrain {
   chooseAction(state: GameState, player: number): Action;
   /** Bota gelen teklifi kabul etsin mi? */
   evaluateOffer(state: GameState, player: number, offer: Offer): boolean;
+  /** Bota gelen borç görüşmesine cevap: istekte RESPOND_LOAN, koşullarda CONFIRM_LOAN */
+  answerLoan(state: GameState, player: number, request: LoanRequest): Action;
   /** İttifakla bitirme oylamasında oy */
   vote(state: GameState, player: number): boolean;
 }

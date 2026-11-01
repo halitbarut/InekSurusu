@@ -2392,3 +2392,24 @@ footer {
   font-size: 0.85rem;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
 }
+
+/* Tur başı pencereleri: bakım ve topaç aynı tasarım dilinde */
+.turn-window { border-top: 10px solid var(--pencil); margin: -4px -4px 0; padding: 12px 14px 4px; border-radius: 6px; }
+.tw-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.tw-name { font-family: var(--font-title, inherit); font-size: 1.5rem; font-weight: 700; }
+.tw-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.upkeep-sums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
+.upkeep-sums > div { border: 2px solid var(--pencil); border-radius: 8px; padding: 6px 8px; text-align: center; background: rgba(255, 255, 255, 0.6); }
+.upkeep-sums small { display: block; opacity: 0.75; }
+.upkeep-sums b { font-size: 1.5rem; }
+.upkeep-sums .bad b { color: #b3261e; }
+.upkeep-sums .good b { color: #1f7a35; }
+.upkeep-gold, .upkeep-units, .upkeep-loan { margin-top: 10px; }
+.upkeep-units { max-height: 240px; overflow: auto; }
+.upkeep-row { cursor: pointer; }
+.tag-debt { background: #f7d7d3; color: #8c1d18; border: 1px solid #b3261e; }
+.pr-loans { font-size: 0.78rem; line-height: 1.25; }
+.pr-loans .loan-line { padding: 1px 0; }
+.loan-line { display: flex; gap: 8px; align-items: center; padding: 3px 0; flex-wrap: wrap; }
+.loan-line.overdue { color: #8c1d18; font-weight: 700; }
+.loan-line .grow { flex: 1; min-width: 120px; }

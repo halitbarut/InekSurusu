@@ -47,6 +47,7 @@ export interface TileAction {
     /** Birim konuşlu yapı için önce uyarı gösterilir */
     | { kind: 'demolish'; tile: number }
     | { kind: 'composer'; to: number }
+    | { kind: 'loan'; to: number }
     | { kind: 'chat'; to: number }
     | { kind: 'straits' };
 }
@@ -210,6 +211,7 @@ export function tileMenuModel(state: GameState, me: number, tile: number, opts: 
     }
   }
   actions.push({ id: 'offer', icon: 'diplomacy', label: `Teklif: ${pname(state, o)}`, reason: null, pick: { kind: 'composer', to: o } });
+  actions.push({ id: 'loan', icon: 'akce', label: `Borç iste: ${pname(state, o)}`, reason: null, pick: { kind: 'loan', to: o } });
   if (opts.chat(o)) actions.push({ id: 'chat', icon: 'chat', label: `Özel mesaj: ${pname(state, o)}`, reason: null, pick: { kind: 'chat', to: o } });
   return { title: tileLabel(state, tile), sub: h('span', {}, h('span', { class: 'dot small', style: { background: state.players[o].color } }), ` ${pname(state, o)}${st ? ` · ${STRUCT_NAME[st]}` : ''}${mine ? ' · maden' : ''}`), notes: bankNotes(state, tile), actions };
 }

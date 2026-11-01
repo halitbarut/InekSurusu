@@ -155,6 +155,11 @@ export function configProblems(cfg: GameConfig): string[] {
 /** Her oyuncu turunda yapılabilecek savaş sayısı (sabit kural) */
 export const BATTLES_PER_TURN = 1;
 
+/** Borç vadesi en fazla kaç tur */
+export const MAX_LOAN_TERM = 50;
+/** Borç faizi en fazla yüzde kaç */
+export const MAX_LOAN_RATE = 500;
+
 export const MIN_PLAYERS = 3;
 export const MAX_PLAYERS = 8;
 

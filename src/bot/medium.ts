@@ -18,6 +18,7 @@ import {
   getRelation,
   isAllied,
   isCoastal,
+  loanTotal,
   manhattan,
   neighbors4,
   offerProblem,
@@ -33,6 +34,7 @@ import {
   type BuildableStructure,
   type GameEvent,
   type GameState,
+  type LoanRequest,
   type MineType,
   type Offer,
   type ResourceKey,
@@ -336,6 +338,10 @@ export class MediumBot implements BotBrain {
     const dip = this.pickDiplomacy(state, p, turnEvents);
     if (dip) return dip;
 
+    // 9) Borç: başkent savaşı masrafına az kaldıysa iste; varlıklıysa güvendiğine teklif et
+    const loan = this.pickLoan(state, p);
+    if (loan) return loan;
+
     return end;
   }
 
@@ -396,20 +402,48 @@ export class MediumBot implements BotBrain {
     return null;
   }
 
-  /** Bakım ödenemiyor: önce altını boz, sonra en az işe yarayanı dağıt. */
+  /** Bakım ödenemiyor: altın da yetmeyecekse önce birinden borç ister, olmazsa otomatik dağıtır. */
   protected pickUpkeep(state: GameState, p: number): Action {
+    const ph = state.phase;
     const me = state.players[p];
-    if (me.resources.gold > 0) return { type: 'EXCHANGE_GOLD', player: p, amount: me.resources.gold };
-    const mine = state.units.filter((u) => u.owner === p);
-    const ships = mine.filter((u) => u.kind === 'ship');
-    const planes = mine.filter((u) => u.kind === 'plane');
-    const pool = planes.length >= ships.length ? planes : ships;
-    if (pool.length) return { type: 'DISBAND_UNIT', player: p, unitId: pool[pool.length - 1].id };
-    const bases = ownedStructures(state, p, 'base');
-    const cap = me.capital;
-    // Başkentten en uzak üs en az değerlidir
-    const base = best(bases, (t) => (cap === null ? 0 : manhattan(state.map, t, cap)));
-    return { type: 'DEMOLISH_BASE', player: p, tile: base };
+    if (ph.kind === 'upkeep' && ph.due > me.resources.akce + me.resources.gold * state.config.goldToAkce) {
+      const ask = this.pickLoanRequest(state, p, ph.due - me.resources.akce - me.resources.gold * state.config.goldToAkce);
+      if (ask) return ask;
+    }
+    return autoUpkeepAction(state, p);
+  }
+
+  /** Güven: müttefik 2, barış 1, nötr 0, son zamanda saldıran ya da borcunu ödemeyen -1 */
+  protected trust(state: GameState, p: number, q: number): number {
+    if (state.loans.some((l) => l.borrower === q && l.lender === p && l.overdue)) return -1;
+    if (hostileRecently(state, p, q)) return -1;
+    if (isAllied(state, p, q)) return 2;
+    return atPeace(state, p, q) ? 1 : 0;
+  }
+
+  /** Bu turda borç istenecek oyuncu: güvenilen ve akçesi yeten; aynı tur bir kez */
+  protected pickLoanRequest(state: GameState, p: number, gap: number): Action | null {
+    if (eventsThisTurn(state).some((e) => e.type === 'loan_requested' && e.borrower === p)) return null;
+    if (state.loanRequests.some((r) => r.borrower === p)) return null;
+    const amount = Math.ceil(gap / 100) * 100;
+    const others = state.players.filter((q) => q.alive && q.id !== p && q.resources.akce >= amount + 200 && this.trust(state, p, q.id) >= 0);
+    if (others.length === 0) return null;
+    const lender = best(others, (q) => this.trust(state, p, q.id) * 1000 + q.resources.akce);
+    return { type: 'REQUEST_LOAN', player: p, to: lender.id, amount, term: 5 };
+  }
+
+  /** Borç isteğine ya da gelen koşullara cevap. Güvene göre: güvenmediğine vermez, tanımadığına faizli verir. */
+  answerLoan(state: GameState, p: number, r: LoanRequest): Action {
+    if (r.stage === 'asked') {
+      const t = this.trust(state, p, r.borrower);
+      const left = state.players[p].resources.akce - r.amount;
+      const ok = t >= 0 && left >= 400 && r.amount <= state.players[p].resources.akce * (t === 2 ? 0.6 : 0.35);
+      return { type: 'RESPOND_LOAN', player: p, requestId: r.id, accept: ok, rate: ok ? loanRateFor(t) : 0 };
+    }
+    // Faiz çok yüksek değilse ve vadede ödenebilecekse kabul
+    const income = this.expectedIncome(state, p);
+    const total = loanTotal(r.amount, r.rate ?? 0);
+    return { type: 'CONFIRM_LOAN', player: p, requestId: r.id, accept: (r.rate ?? 0) <= 30 && total <= income * r.term };
   }
 
   /** Başkent savaşı makulse (komşu, zayıf hedef, demir/çelik var) biriktirilecek akçe */
@@ -561,6 +595,19 @@ export class MediumBot implements BotBrain {
     return bestOpt && bestOpt.value > this.tuning.minBattleValue ? bestOpt.action : null;
   }
 
+  protected pickLoan(state: GameState, p: number): Action | null {
+    const me = state.players[p];
+    const cost = battleCost(state, 'capital');
+    if (this.capitalTarget(state, p) !== null && !battleUsed(state, p) && me.resources.akce < cost.akce && cost.akce - me.resources.akce <= 300) {
+      return this.pickLoanRequest(state, p, cost.akce - me.resources.akce);
+    }
+    if (me.resources.akce < 2500 || (state.round + p) % 4 !== 0) return null;
+    if (eventsThisTurn(state).some((e) => e.type === 'loan_requested')) return null;
+    const friend = state.players.find((q) => q.alive && q.id !== p && this.trust(state, p, q.id) >= 1 && q.resources.akce < 300 && !state.loanRequests.some((r) => r.borrower === q.id && r.lender === p) && !state.loans.some((l) => l.borrower === q.id && l.lender === p));
+    if (!friend) return null;
+    return { type: 'OFFER_LOAN', player: p, to: friend.id, amount: 500, term: 5, rate: loanRateFor(this.trust(state, p, friend.id)) };
+  }
+
   protected pickDiplomacy(state: GameState, p: number, turnEvents: GameEvent[]): Action | null {
     if (turnEvents.some((e) => e.type === 'offer_made' && e.offer.from === p)) return null;
     if (state.round % this.tuning.diplomacyEvery !== p % this.tuning.diplomacyEvery) return null;
@@ -607,12 +654,8 @@ export function fallbackAction(state: GameState, p: number): Action {
       const req = ph.requests.find((r) => r.controller === p && !r.answered);
       return { type: 'RESPOND_PERMIT', player: p, straitId: req?.straitId ?? -1, decision: 'deny', toll: 0 };
     }
-    case 'upkeep': {
-      const u = state.units.find((x) => x.owner === p);
-      if (u) return { type: 'DISBAND_UNIT', player: p, unitId: u.id };
-      const b = state.structure.findIndex((x, i) => x === 'base' && state.owner[i] === p);
-      return { type: 'DEMOLISH_BASE', player: p, tile: b };
-    }
+    case 'upkeep':
+      return autoUpkeepAction(state, p);
     default:
       return { type: 'END_TURN', player: p };
   }
@@ -626,6 +669,32 @@ export function eventsThisTurn(state: GameState): GameEvent[] {
     r.push(e.event);
   }
   return r;
+}
+
+/** Güvene göre faiz yüzdesi */
+export function loanRateFor(trust: number): number {
+  return trust >= 2 ? 5 : trust === 1 ? 10 : 20;
+}
+
+/** Bakım otomatik kuralı: açık kapandıysa öde, önce gereken kadar altın boz, sonra birim terhis et, en son üs yık */
+export function autoUpkeepAction(state: GameState, p: number): Action {
+  const ph = state.phase;
+  const me = state.players[p];
+  const due = ph.kind === 'upkeep' ? ph.due : 0;
+  if (due <= me.resources.akce) return { type: 'PAY_UPKEEP', player: p };
+  if (me.resources.gold > 0) {
+    const need = Math.ceil((due - me.resources.akce) / Math.max(1, state.config.goldToAkce));
+    return { type: 'EXCHANGE_GOLD', player: p, amount: Math.min(me.resources.gold, need) };
+  }
+  const mine = state.units.filter((u) => u.owner === p);
+  const ships = mine.filter((u) => u.kind === 'ship');
+  const planes = mine.filter((u) => u.kind === 'plane');
+  const pool = planes.length >= ships.length ? planes : ships;
+  if (pool.length) return { type: 'DISBAND_UNIT', player: p, unitId: pool[pool.length - 1].id };
+  const bases = ownedStructures(state, p, 'base');
+  const cap = me.capital;
+  // Başkentten en uzak üs en az değerlidir
+  return { type: 'DEMOLISH_BASE', player: p, tile: best(bases, (t) => (cap === null ? 0 : manhattan(state.map, t, cap))) };
 }
 
 /** q, son rauntlarda p'ye saldırdı mı ya da ittifakı bozdu mu? (herkese açık günlükten) */

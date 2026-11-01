@@ -7,6 +7,7 @@
  *   npm run simulate -- --round 3         # 3. tur: B3, RB3 ve karşılaştırma için B, RB, B2, RB2 (100'er oyun)
  *   npm run simulate -- --round onayar    # yeni oyun ekranındaki hazır kural takımları (60'ar oyun)
  *   npm run simulate -- --round zorluk    # bot seviyeleri: Zor 1 + Orta 4, Orta 1 + Kolay 4 (100'er oyun)
+ *   npm run simulate -- --round ekonomi   # yeni yapı fiyatları ve borç sistemi, Dengeli (100'er oyun)
  *   npm run simulate -- --games 20        # hızlı deneme
  *   npm run simulate -- --scenarios B,C   # yalnızca seçilen senaryolar
  *   npm run simulate -- --round 3 --scenarios RB,RB2 --reuse   # yalnızca seçilenleri oynat, diğerlerini önbellekten al
@@ -87,6 +88,10 @@ const SCENARIOS: Scenario[] = [
     rusher: false,
   },
   { id: 'RB3', title: 'B3 + 1 acele eden bot', config: {}, rusher: true },
+  // Ekonomi güncellemesi: yeni fiyatlar ve borç; karşılaştırma için eski fiyatlar ve eski harita
+  { id: 'E-yeni', title: 'Dengeli: kapalı denizler, yeni yapı fiyatları (400/600/800), borç', config: {}, rusher: false },
+  { id: 'E-eskifiyat', title: 'Kapalı denizler, eski yapı fiyatları (200/300/400), borç', config: { shipyardCost: 200, factoryCost: 300, baseCost: 400 }, rusher: false },
+  { id: 'E-takimada', title: 'Takımada (eski harita üreticisi), yeni yapı fiyatları, borç', config: { continentType: 'archipelago' }, rusher: false },
   // Hazır kural takımları (5 oyuncu)
   { id: 'Z-hard', title: 'Zor 1 + Orta 4 (varsayılan kurallar)', config: {}, rusher: false, levels: { focus: 'hard', others: 'medium' } },
   { id: 'Z-medium', title: 'Orta 1 + Kolay 4 (varsayılan kurallar)', config: {}, rusher: false, levels: { focus: 'medium', others: 'easy' } },
@@ -98,6 +103,7 @@ const ROUNDS: Record<string, { scenarios: string[]; games: number }> = {
   '2': { scenarios: ['B', 'RB', 'B2', 'RB2'], games: 100 },
   '3': { scenarios: ['B', 'RB', 'B2', 'RB2', 'B3', 'RB3'], games: 100 },
   zorluk: { scenarios: ['Z-hard', 'Z-medium'], games: 100 },
+  ekonomi: { scenarios: ['E-yeni', 'E-eskifiyat', 'E-takimada'], games: 100 },
   onayar: { scenarios: BUILTIN_PRESETS.map((p) => `P-${p.id}`), games: 60 },
 };
 
@@ -190,6 +196,7 @@ async function main() {
   else if (round === '2') writeSection(out, 'tur2', buildRound2(shown, results, opt));
   else if (round === '3') writeSection(out, 'tur3', buildRound3(shown, results, opt));
   else if (round === 'zorluk') writeSection(out, 'zorluk', buildLevels(shown, results, opt), 'Bot zorluk seviyeleri');
+  else if (round === 'ekonomi') writeSection(out, 'ekonomi', buildEconomy(shown, results, opt), 'Ekonomi güncellemesi');
   else writeSection(out, 'onayar', buildPresets(shown, results, opt), 'Hazır kural takımları');
   console.log(`Rapor yazıldı: ${out}`);
 }
@@ -617,6 +624,52 @@ function buildRound3(scenarios: Scenario[], results: Map<string, GameMetrics[]>,
 // ------------------------------------------------------------------
 // Bot zorluk seviyeleri
 // ------------------------------------------------------------------
+
+function buildEconomy(scenarios: Scenario[], results: Map<string, GameMetrics[]>, opt: Opt): string {
+  const L: string[] = [];
+  L.push('## Ekonomi güncellemesi');
+  L.push('');
+  L.push(
+    `\`npm run simulate -- --round ekonomi\` ile üretilir (son çalıştırma: ${new Date().toISOString().slice(0, 10)}). ` +
+      `Her senaryo için ${opt.games} oyun, ${opt.players} oyuncu, Orta botlar, ${opt.maxRounds} tur sınırı, seed'ler 10000–${10_000 + opt.games - 1}. "3. tur" kolonu, bu raporun 3. tur bölümündeki B3 ölçümüdür (eski harita üreticisi, eski fiyatlar, borçsuz, boğazlar varsayılan açık).`,
+  );
+  L.push('');
+  for (const s of scenarios) L.push(`- **${s.id}:** ${s.title}`);
+  L.push('');
+  const col = (fn: (ms: GameMetrics[]) => string) => scenarios.map((s) => fn(results.get(s.id)!));
+  const rows: [string, string, string[]][] = [
+    ['İlk başkent fethi, medyan tur', '42', col((ms) => f(median(ms.map((m) => m.firstCapitalFall ?? opt.maxRounds))))],
+    ['Hiç başkent düşmeyen oyun', '%1', col((ms) => pct(ms.filter((m) => m.firstCapitalFall === null).length / ms.length, 0))],
+    ['Biten oyunların bitiş turu, medyan', '92', col((ms) => f(median(ms.filter((m) => !m.hitLimit).map((m) => m.endRound))))],
+    ['Tur sınırına takılan oyun', '%17', col((ms) => pct(ms.filter((m) => m.hitLimit).length / ms.length, 0))],
+    ['Tek devletle biten / ittifakla biten', '41 / 42', col((ms) => `${ms.filter((m) => m.winType === 'single').length} / ${ms.filter((m) => m.winType === 'alliance').length}`)],
+    ['Oyun başına savaş', '227', col((ms) => f(mean(ms.map((m) => m.battles.land + m.battles.base + m.battles.capital))))],
+    ['Oyun başına başkent savaşı', '22,8', col((ms) => f(mean(ms.map((m) => m.battles.capital)), 1))],
+    ['Oyun başına kurulan yapı', '—', col((ms) => f(mean(ms.map((m) => m.structures.built)), 1))],
+    ['Oyun sonunda tersane / fabrika / üs', '—', col((ms) => `${f(mean(ms.map((m) => m.structures.shipyard)), 1)} / ${f(mean(ms.map((m) => m.structures.factory)), 1)} / ${f(mean(ms.map((m) => m.structures.base)), 1)}`)],
+    ['Oyun başına yıkılan yapı', '—', col((ms) => f(mean(ms.map((m) => m.structures.demolished)), 1))],
+    ['Bakım / tüm harcama', '%56', col((ms) => {
+      const sum = (k: SpendKey) => ms.reduce((a, m) => a + m.spend[k], 0);
+      const all = sum('claim') + sum('build') + sum('produce') + sum('battle') + sum('upkeep') + sum('toll');
+      return pct(sum('upkeep') / all, 0);
+    })],
+    ['İnşa / tüm harcama', '%3', col((ms) => {
+      const sum = (k: SpendKey) => ms.reduce((a, m) => a + m.spend[k], 0);
+      const all = sum('claim') + sum('build') + sum('produce') + sum('battle') + sum('upkeep') + sum('toll');
+      return pct(sum('build') / all, 1);
+    })],
+    ['Boğaz vergisi, oyun başına akçe', '—', col((ms) => f(mean(ms.map((m) => m.spend.toll))))],
+    ['Oyun başına borç isteği / reddedilen', '—', col((ms) => `${f(mean(ms.map((m) => m.loans.asked)), 1)} / ${f(mean(ms.map((m) => m.loans.refused)), 1)}`)],
+    ['Oyun başına kurulan borç', '—', col((ms) => f(mean(ms.map((m) => m.loans.made)), 1))],
+    ['Oyun başına borç hacmi / faiz (akçe)', '—', col((ms) => `${f(mean(ms.map((m) => m.loans.amount)))} / ${f(mean(ms.map((m) => m.loans.interest)))}`)],
+    ['Borçlu duruma düşme (oyun başına)', '—', col((ms) => f(mean(ms.map((m) => m.loans.overdue)), 1))],
+  ];
+  L.push(`| Ölçüt | 3. tur (önceki) | ${scenarios.map((s) => s.id).join(' | ')} |`);
+  L.push(`|---|---|${scenarios.map(() => '---').join('|')}|`);
+  for (const [name, old, vals] of rows) L.push(`| ${name} | ${old} | ${vals.join(' | ')} |`);
+  L.push('');
+  return L.join('\n');
+}
 
 function buildLevels(scenarios: Scenario[], results: Map<string, GameMetrics[]>, opt: Opt): string {
   const L: string[] = [];

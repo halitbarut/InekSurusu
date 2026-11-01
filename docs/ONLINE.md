@@ -98,6 +98,7 @@ mesaj boyutudur (yerel ağda ve WebRTC'de sorun olmadı).
 | Diplomasi teklifleri (`state.offers`) | Yalnızca teklifin iki tarafına; izleyicilere hiç |
 | Günlükteki ve olaylardaki teklif satırları (`offer_made`, `offer_response`, `offer_cancelled`) | Yalnızca teklifin iki tarafına |
 | Boğaz izni görüşmesinin hedefi, rotası ve günlük satırları (`permit_*`) | Yalnızca sefer sahibi ve o görüşmedeki söz sahipleri. Diğerleri yalnızca kimin kimden izin beklediğini görür |
+| Borçlar ve borç görüşmeleri (`state.loans`, `state.loanRequests`, `loan_*` satırları) | Yalnızca iki tarafa. Diğerleri yalnızca vadesi geçenin "borçlu" işaretini (`Player.inDebt`) görür |
 | Teklif sonucu (ittifak kuruldu, barış, devredilen toprak ve kaynak) | Herkese: bunlar haritada ve panellerde zaten görünen değişikliklerdir |
 | Lobideki koltuk sahibi kimliği (`claimedBy`) | Oda sahibinde gerçek kimlik; katılanlara yalnızca "dolu" |
 | Geri alma geçmişi | Hiç kimseye (oda sahibinde kalır), katılana yalnızca kaç eylem geri alınabileceği |
