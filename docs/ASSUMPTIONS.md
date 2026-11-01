@@ -580,3 +580,15 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
 180. **Botlar:** güven = müttefik 2, barış 1, nötr 0; son 8 turda saldıran ya da borcunu ödemeyen -1. Verirken faiz: müttefik %5, barış %10, nötr %20; güvenmediğine vermez,
      akçesinin %35'inden fazlasını (müttefike %60) ve elinde 400 akçe kalmayacak kadarını vermez. Alırken %30'dan yüksek faizi ve vadede ödeyemeyeceği tutarı reddeder.
      Bakımı altınla da kapatamıyorsa ya da başkent savaşına 300 akçe kalmışsa ister; 2500 akçenin üstündeyken parasız kalmış dostuna teklif eder.
+
+## Topaç penceresi
+
+181. Sıra bu cihazdaki oyuncuya gelince topaç aşamasında ekranın ortasında büyük pencere açılır; cihaz geçiş ekranı varsa ondan sonra. Bakım penceresi
+     ondan önce ve aynı görünümde gelir. Pencere yalnızca üstteki şeridi değil tüm oyunu örter; "Haritaya bak" küçültür, alttaki düğme ya da üst bant geri açar.
+     Küçültülmüşken de Boşluk topacı çevirir.
+182. Gelir özeti turun günlük satırlarından gelir (maden geliri, ödenen bakım). Borç taksiti henüz kesilmediği için "Topaçtan sonra kesilecek borç" diye
+     gösterilir (yalnızca borçlunun gördüğü kendi bilgisi); kesilen tutar sonuç ekranında yazar.
+183. Sonuç ("5 → +500 akçe") 1,4 saniye durur, tıklanınca hemen kapanır. Animasyonlar kapalıysa pencere kapanır, sonuç uçan sayılarla görünür.
+184. Başkalarının topacı ortada küçük pencerede döner, oyunu engellemez (tıklamayı alttaki arayüze geçirir), kendiliğinden kapanır. Hızlı oynat açıkken
+     bot topacı gösterilmez. Sekme arka plandaysa hiç gösterilmez.
+185. Öğreticide pencere harita alanının içinde açılır, böylece rehber kutusu ve "Benim yerime yap" görünür kalır.

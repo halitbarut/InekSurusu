@@ -2413,3 +2413,55 @@ footer {
 .loan-line { display: flex; gap: 8px; align-items: center; padding: 3px 0; flex-wrap: wrap; }
 .loan-line.overdue { color: #8c1d18; font-weight: 700; }
 .loan-line .grow { flex: 1; min-width: 120px; }
+
+/* Topaç penceresi */
+.spin-layer {
+  position: fixed;
+  inset: 0;
+  background: rgba(40, 35, 20, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 40;
+  padding: var(--gutter);
+  overflow: auto;
+}
+.spin-layer.in-map { position: absolute; }
+.spin-window {
+  border-top-width: 10px;
+  border-top-style: solid;
+  padding: 14px 30px 16px;
+  min-width: min(440px, 100%);
+  margin: auto;
+}
+.spin-window .tw-head { justify-content: center; margin-bottom: 2px; }
+.spin-window .tw-name { font-size: 1.9rem; }
+.sw-summary { display: flex; flex-direction: column; gap: 2px; align-self: stretch; text-align: left; font-size: 0.95rem; }
+.sw-row { display: flex; align-items: center; gap: 6px; }
+.sw-row svg, .sw-row .icon { width: 18px; height: 18px; flex: none; }
+.sw-row.good { color: #1f7a35; }
+.sw-row.bad { color: #8c1d18; }
+.sw-result { min-height: 2.4rem; font-size: 2.2rem; font-weight: 700; line-height: 1.1; }
+.sw-debt { font-size: 1rem; color: #8c1d18; font-weight: 400; }
+.sw-controls { display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap; }
+.sw-spin { font-size: 1.4rem; padding: 10px 34px; }
+.spin-pill {
+  position: fixed;
+  left: 50%;
+  bottom: 86px;
+  transform: translateX(-50%);
+  z-index: 40;
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.2);
+}
+.map-wrap > .spin-pill { position: absolute; bottom: 12px; }
+.spin-soft {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 38;
+}
+.spin-soft .overlay-card { padding: 10px 18px; opacity: 0.97; }
+.spin-result.small { font-size: 1.3rem; }

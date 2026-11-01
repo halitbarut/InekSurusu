@@ -44,7 +44,7 @@ const spinStep = (topic: number, title: string, text: string): TutorialStep => (
   topic,
   title,
   text,
-  todo: "Topacı çevir: üstteki bantta 'Topacı çevir' ya da Boşluk tuşu.",
+  todo: "Ortadaki büyük pencerede 'Çevir'e bas ya da Boşluk tuşuna dokun.",
   allow: (a) => a.type === 'SPIN',
   done: (s) => myTurn(s, 'actions'),
   script: () => ({ type: 'SPIN', player: ME }),
@@ -66,7 +66,7 @@ export const STEPS: TutorialStep[] = [
   spinStep(
     1,
     'Topaç ve gelir',
-    'Her tur önce madenlerin 1’er kaynak verir, varsa gemi ve uçak bakımı ödenir, sonra sekizgen topacı çevirirsin: çıkan sayı × 100 akçe. Normal oyunda önce herkes başkentini ve 9 başlangıç toprağını seçer; burada hazır. Mavi sensin; doğuda Mehmet, kuzeydoğu adasında Zeynep.',
+    'Her tur önce madenlerin 1’er kaynak verir, varsa gemi ve uçak bakımı ödenir, sonra sekizgen topacı çevirirsin: çıkan sayı × 100 akçe. Sıra sana gelince ortada büyük bir pencere açılır; gelirini orada görürsün, "Haritaya bak" ile küçültebilirsin. Normal oyunda önce herkes başkentini ve 9 başlangıç toprağını seçer; burada hazır. Mavi sensin; doğuda Mehmet, kuzeydoğu adasında Zeynep.',
   ),
   {
     topic: 2,

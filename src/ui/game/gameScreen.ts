@@ -38,6 +38,7 @@ import {
   ReplayRecorder,
   expeditionCheck,
   neighbors4,
+  debtDueThisTurn,
   seriesWinProbability,
   MAX_LOAN_RATE,
   MAX_LOAN_TERM,
@@ -88,6 +89,7 @@ import type { HostRoom } from '../../net/hostRoom';
 import type { Presence } from '../../net/protocol';
 import { MapView, type Highlight } from './mapView';
 import { Spinner } from './spinner';
+import { SpinWindow, showSmallSpin } from './spinWindow';
 import { cowMark, icon, type IconName } from '../icons';
 import { HATCH_NAME, playerHatch, playerSwatch } from '../playerStyle';
 import { renderSummary } from './summary';
@@ -209,6 +211,8 @@ export class GameScreen {
   private upkeepRedraw: (() => void) | null = null;
   /** Hot-seat: açık cihaz geçiş ekranını kapatır (cevap süresi dolunca) */
   private passCancel: { player: number; cancel: () => void } | null = null;
+  /** Sıra başındaki büyük topaç penceresi */
+  private spinWin: SpinWindow | null = null;
   private elWaitBar = h('div', { class: 'wait-bar hidden', role: 'status', 'aria-live': 'off' });
   /** Oyun tekrarı kaydı: oyunu yürüten tarafta (yerel oyun, oda sahibi) */
   private recorder: ReplayRecorder | null = null;
@@ -288,6 +292,7 @@ export class GameScreen {
     if (this.clockTimer) clearInterval(this.clockTimer);
     this.connEl?.remove();
     clearNotices();
+    this.spinWin?.close();
     if (this.net?.kind === 'host') this.net.room.close();
     else if (this.net?.kind === 'client') this.net.room.leave();
     document.removeEventListener('keydown', this.keyHandler);
@@ -982,7 +987,8 @@ export class GameScreen {
         case 'spin': {
           const f = document.hidden ? 0 : animFactor(!isHuman(e.player));
           playSpin(1500 * f, !isHuman(e.player));
-          if (f > 0) await this.showSpin(e.player, e.value, f);
+          const debt = events.reduce((a, x) => a + (x.type === 'loan_payment' && x.borrower === e.player ? x.amount : 0), 0);
+          if (f > 0) await this.showSpin(e.player, e.value, e.akce, debt, f);
           break;
         }
         case 'battle': {
@@ -1416,16 +1422,56 @@ export class GameScreen {
     return el;
   }
 
-  private async showSpin(p: number, value: number, f: number) {
+  /** Kendi topacı büyük pencerede, başkalarınınki ortada küçük ve kendiliğinden kapanan pencerede */
+  private async showSpin(p: number, value: number, akce: number, debt: number, f: number) {
+    const win = this.spinWin;
+    if (win && win.playerId === p) {
+      await win.play(value, akce, debt, f);
+      return;
+    }
     const pl = this.state.players[p];
-    const spinner = new Spinner(200, pl.color);
-    const result = h('div', { class: 'spin-result' }, ' ');
-    const el = this.overlay(h('div', { class: 'overlay-title' }, h('span', { class: 'dot', style: { background: pl.color } }), `${pl.name} topacı çeviriyor…`), spinner.el, result);
-    await spinner.spinTo(value, 1500 * f);
-    result.textContent = `${value}!  +${fmtNum(value * this.state.config.spinMultiplier)} akçe`;
-    result.classList.add('pop');
-    await sleep(900 * f);
-    el.remove();
+    await showSmallSpin(pl.name, pl.color, value, akce, f);
+  }
+
+  /** Sıra bu cihazdaki oyuncuda ve topaç bekleniyorsa pencereyi açar; aşama geçince kapatır */
+  private syncSpinWindow() {
+    const s = this.state;
+    const open = s.phase.kind === 'spin' && this.isHumanTurn() && !this.handoff;
+    const win = this.spinWin;
+    if (win && !win.playing && (!open || win.playerId !== s.currentPlayer)) {
+      win.close();
+      this.spinWin = null;
+    }
+    if (!open || this.spinWin) return;
+    const p = s.players[s.currentPlayer];
+    this.spinWin = new SpinWindow({
+      playerId: p.id,
+      name: p.name,
+      color: p.color,
+      summary: this.turnSummary(p.id),
+      onSpin: () => void this.act({ type: 'SPIN', player: p.id }),
+      mount: this.guide ? this.elMapWrap : document.body,
+      inMap: !!this.guide,
+    });
+  }
+
+  /** Bu turun gelir özeti: madenler, ödenen bakım, kesilecek borç taksitleri */
+  private turnSummary(p: number): HTMLElement[] {
+    const s = this.state;
+    const rows: HTMLElement[] = [];
+    const row = (ic: IconName, text: string, cls = '') => rows.push(h('div', { class: `sw-row ${cls}` }, icon(ic), h('span', {}, text)));
+    for (let i = s.log.length - 1; i >= 0 && s.log[i].turn === s.turnCounter; i--) {
+      const e = s.log[i].event;
+      if (e.type === 'income' && e.player === p) {
+        const parts = RESOURCE_KEYS.filter((k) => e.gained[k]).map((k) => `+${e.gained[k]} ${RES_NAME[k].toLocaleLowerCase('tr')}`);
+        if (parts.length) row('mine', `Madenlerden: ${parts.join(', ')}`, 'good');
+      }
+      if (e.type === 'upkeep' && e.player === p) row('upkeep', `Bakım ödendi: −${fmtNum(e.amount)} akçe`, 'bad');
+    }
+    const due = debtDueThisTurn(s, p);
+    if (due > 0) row('akce', `Topaçtan sonra kesilecek borç: ${fmtNum(due)} akçe`, 'bad');
+    if (rows.length === 0) rows.push(h('div', { class: 'sw-row muted' }, 'Bu tur maden geliri ve bakım yok.'));
+    return rows;
   }
 
   private async showBattle(e: Extract<GameEvent, { type: 'battle' }>, f: number, needClick: boolean) {
@@ -1777,6 +1823,7 @@ export class GameScreen {
     this.syncClock();
     this.closeStaleQuestions();
     this.upkeepRedraw?.();
+    this.syncSpinWindow();
     this.renderViewers();
     this.checkEliminated();
   }
@@ -2395,7 +2442,7 @@ export class GameScreen {
         }
       }
     } else if (ph.kind === 'spin') {
-      this.setBanner('Sıra sende! Önce sekizgen topacı çevir (Boşluk).', [{ label: 'Topacı çevir', icon: 'spin', primary: true, onClick: () => void this.act({ type: 'SPIN', player: me }) }], 'spin');
+      this.setBanner('Sıra sende! Önce sekizgen topacı çevir (Boşluk).', [{ label: 'Topaç penceresi', icon: 'spin', primary: true, onClick: () => this.spinWin?.restore() }], 'spin');
     } else if (ph.kind === 'conquest') {
       hl.groups = [{ tiles: new Set(conquestCandidates(s)), style: 'attack' }];
       this.setBanner(
