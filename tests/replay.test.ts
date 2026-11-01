@@ -10,6 +10,7 @@ import {
   replayAll,
   type Action,
   type GameState,
+  phaseActor,
 } from '../src/engine';
 
 /** Arayüzün yaptığı gibi: bot eylemleri ve teklif yanıtları kaydedilir, bazı eylemler geri alınır. */
@@ -30,8 +31,7 @@ function playRecorded(seed: number, maxRounds: number) {
   };
   for (let n = 0; s.phase.kind !== 'gameover' && s.round <= maxRounds; n++) {
     if (n > 20000) throw new Error('takıldı');
-    const ph = s.phase;
-    const p = ph.kind === 'vote' ? s.players.find((pl) => pl.alive && !(pl.id in ph.votes))!.id : ph.kind === 'conquest' ? ph.taker : s.currentPlayer;
+    const p = phaseActor(s);
     const bot = getBot(s.players[p].botLevel);
     const a = bot.chooseAction(s, p);
     // Arada bir geri alınabilir eylemi uygulayıp geri al: kayıttan da çıkmalı

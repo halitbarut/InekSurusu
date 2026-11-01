@@ -1,4 +1,4 @@
-import { RESOURCE_KEYS, STRAIT_MODES, type Action, type OfferItem, type ResourceKey, type StraitMode } from './types';
+import { PERMIT_DECISIONS, RESOURCE_KEYS, STRAIT_MODES, type Action, type OfferItem, type PermitDecision, type ResourceKey, type StraitMode } from './types';
 
 /**
  * Güvenilmeyen kaynaktan (ağdan, dosyadan) gelen eylemin biçim denetimi. Alanları tek tek okuyup yeni,
@@ -70,6 +70,11 @@ export function parseAction(raw: unknown): Action | null {
     case 'SET_STRAIT_POLICY':
       if (!ints('straitId', 'target', 'toll') || !STRAIT_MODES.includes(a.mode as StraitMode)) return null;
       return { type: a.type, player, straitId: a.straitId as number, target: a.target as number, mode: a.mode as StraitMode, toll: a.toll as number };
+    case 'RESPOND_PERMIT':
+      if (!ints('straitId', 'toll') || !PERMIT_DECISIONS.includes(a.decision as PermitDecision)) return null;
+      return { type: a.type, player, straitId: a.straitId as number, decision: a.decision as PermitDecision, toll: a.toll as number };
+    case 'CONFIRM_PERMIT':
+      return isBool(a.accept) ? { type: a.type, player, accept: a.accept } : null;
     case 'PROPOSE_OFFER': {
       if (!ints('to') || !Array.isArray(a.items) || a.items.length > MAX_OFFER_ITEMS_WIRE) return null;
       const items: OfferItem[] = [];

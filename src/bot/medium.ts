@@ -1,5 +1,7 @@
 import {
+  alivePlayers,
   allAliveAllied,
+  atPeace,
   battleCost,
   battleUsed,
   targetBattleKind,
@@ -34,6 +36,7 @@ import {
   type MineType,
   type Offer,
   type ResourceKey,
+  type StraitPolicy,
 } from '../engine';
 import type { BotBrain } from './types';
 
@@ -61,6 +64,8 @@ export interface BotTuning {
   diplomacyEvery: number;
   /** Kara savaşında rakip başkentine doğru ilerlemenin alınan toprak başına ek değeri */
   pushBonus: number;
+  /** Reddedilen boğaz izni kaç tam tur sonra yeniden sorulur */
+  permitRetryRounds: number;
 }
 
 export const MEDIUM_TUNING: BotTuning = {
@@ -75,6 +80,7 @@ export const MEDIUM_TUNING: BotTuning = {
   maxPlanesBase: 2,
   diplomacyEvery: 3,
   pushBonus: 0.5,
+  permitRetryRounds: 4,
 };
 
 export class MediumBot implements BotBrain {
@@ -152,6 +158,8 @@ export class MediumBot implements BotBrain {
       }
       case 'vote':
         return { type: 'CAST_VOTE', player: p, accept: true };
+      case 'permit':
+        return this.pickPermit(state, p);
       case 'upkeep':
         return this.pickUpkeep(state, p);
       case 'actions':
@@ -159,6 +167,50 @@ export class MediumBot implements BotBrain {
       case 'gameover':
         return { type: 'END_TURN', player: p };
     }
+  }
+
+  /** İzin aşaması: söz sahibiyse cevap verir, sıra sahibiyse istenen vergiyi değerlendirir */
+  protected pickPermit(state: GameState, p: number): Action {
+    const ph = state.phase;
+    if (ph.kind !== 'permit') return fallbackAction(state, p);
+    if (ph.player === p) {
+      const total = ph.requests.reduce((a, r) => a + r.toll, 0);
+      return { type: 'CONFIRM_PERMIT', player: p, accept: ph.stage === 'confirm' && total <= state.players[p].resources.akce * 0.5 };
+    }
+    const req = ph.requests.find((r) => r.controller === p && !r.answered);
+    if (!req) return fallbackAction(state, p);
+    const stance = this.straitStance(state, p, ph.player);
+    return { type: 'RESPOND_PERMIT', player: p, straitId: req.straitId, decision: stance.mode === 'ask' ? 'once' : stance.mode, toll: stance.toll };
+  }
+
+  /** Bu oyuncuya boğazda nasıl davranılır: düşmana kapalı, müttefike açık, diğerlerinden vergi */
+  protected straitStance(state: GameState, p: number, q: number): StraitPolicy {
+    if (isAllied(state, p, q)) return { mode: 'open', toll: 0 };
+    if (hostileRecently(state, p, q)) return { mode: 'closed', toll: 0 };
+    return { mode: 'toll', toll: atPeace(state, p, q) ? 50 : 100 };
+  }
+
+  /** İlişki değiştiyse kalıcı boğaz ayarını güncelle (henüz sorulmamış oyunculara dokunmaz) */
+  protected pickStraitPolicy(state: GameState, p: number): Action | null {
+    for (const st of state.map.straits) {
+      const live = state.straits[st.id];
+      if (!live.controllers.includes(p)) continue;
+      for (const [q, pol] of Object.entries(live.policies[p] ?? {})) {
+        const want = this.straitStance(state, p, Number(q));
+        if (state.players[Number(q)]?.alive && (want.mode !== pol.mode || want.toll !== pol.toll)) {
+          return { type: 'SET_STRAIT_POLICY', player: p, straitId: st.id, target: Number(q), mode: want.mode, toll: want.toll };
+        }
+      }
+    }
+    return null;
+  }
+
+  /** Bu rota yakın zamanda reddedilmiş bir izin gerektiriyor mu? (aynı soru her tur tekrarlanmasın) */
+  protected routeRefused(state: GameState, p: number, asks: { straitId: number }[]): boolean {
+    const denied = state.players[p].permitDenied;
+    if (!denied) return false;
+    const window = alivePlayers(state).length * this.tuning.permitRetryRounds;
+    return asks.some((a) => denied[a.straitId] !== undefined && state.turnCounter - denied[a.straitId] < window);
   }
 
   /** Fetihte alınacak toprak */
@@ -224,6 +276,10 @@ export class MediumBot implements BotBrain {
     // 2b) Bakım gelirin çoğunu yiyorsa (ör. fetihle gelen birimler) fazlasını dağıt
     const excess = this.excessUnit(state, p);
     if (excess !== null) return { type: 'DISBAND_UNIT', player: p, unitId: excess };
+
+    // 2c) İlişkisi değişen oyuncuların boğaz ayarı
+    const strait = this.pickStraitPolicy(state, p);
+    if (strait) return strait;
 
     // 3) Yapılar
     const enemyBorder = attackableTiles(state, p).length > 0;
@@ -387,7 +443,7 @@ export class MediumBot implements BotBrain {
       let bestT: number | null = null;
       let bestS = -Infinity;
       for (const t of expeditionTargets(state, p, unit.id).values()) {
-        if (t.kind !== 'claim' || me.resources.akce < t.cost + reserve) continue;
+        if (t.kind !== 'claim' || me.resources.akce < t.cost + reserve || this.routeRefused(state, p, t.route.asks)) continue;
         const nearMine = unownedMinesAround(state, t.tile) > 0;
         if (claimableCount >= 3 && !nearMine) continue;
         const s = tileScore(state, p, t.tile) + (nearMine ? 6 : 0) - t.cost / 100;
@@ -448,7 +504,7 @@ export class MediumBot implements BotBrain {
       if (!unit) continue;
       const oilCost = kind === 'ship' ? cfg.shipOilCost : cfg.planeOilCost;
       for (const t of expeditionTargets(state, p, unit.id).values()) {
-        if (t.kind === 'claim') continue;
+        if (t.kind === 'claim' || this.routeRefused(state, p, t.route.asks)) continue;
         const q = state.owner[t.tile]!;
         if (!enemies.includes(q)) continue;
         const type = kind === 'ship' ? ('SHIP_EXPEDITION' as const) : ('PLANE_EXPEDITION' as const);
@@ -462,7 +518,8 @@ export class MediumBot implements BotBrain {
           const lossPool = poolValues(state, myNormal.filter((x) => touchesPlayer(state, q, x)), myNormal.length);
           value = landValue(outcomes, gainPool, lossPool);
         }
-        options.push({ action, value: value - oilCost * 0.3 - t.cost / 500 });
+        // Sorulacak izin belirsizdir: açık yol tercih edilir
+        options.push({ action, value: value - oilCost * 0.3 - t.cost / 500 - t.route.asks.length * 0.25 });
       }
     }
     let bestOpt: { action: Action; value: number } | null = null;
@@ -515,6 +572,12 @@ export function fallbackAction(state: GameState, p: number): Action {
       return { type: 'END_CONQUEST', player: p };
     case 'vote':
       return { type: 'CAST_VOTE', player: p, accept: true };
+    case 'permit': {
+      const ph = state.phase;
+      if (ph.player === p) return { type: 'CONFIRM_PERMIT', player: p, accept: false };
+      const req = ph.requests.find((r) => r.controller === p && !r.answered);
+      return { type: 'RESPOND_PERMIT', player: p, straitId: req?.straitId ?? -1, decision: 'deny', toll: 0 };
+    }
     case 'upkeep': {
       const u = state.units.find((x) => x.owner === p);
       if (u) return { type: 'DISBAND_UNIT', player: p, unitId: u.id };
@@ -534,6 +597,18 @@ export function eventsThisTurn(state: GameState): GameEvent[] {
     r.push(e.event);
   }
   return r;
+}
+
+/** q, son rauntlarda p'ye saldırdı mı ya da ittifakı bozdu mu? (herkese açık günlükten) */
+export function hostileRecently(state: GameState, p: number, q: number, rounds = 8): boolean {
+  for (let i = state.log.length - 1; i >= 0; i--) {
+    const l = state.log[i];
+    if (state.round - l.round > rounds) break;
+    const e = l.event;
+    if (e.type === 'battle' && e.attacker === q && e.defender === p) return true;
+    if (e.type === 'alliance_broken' && e.player === q && e.target === p) return true;
+  }
+  return false;
 }
 
 export function strongestOther(state: GameState, p: number): number | null {

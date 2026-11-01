@@ -16,6 +16,7 @@ import {
   mutRelation,
   validateAction,
   type GameState,
+  phaseActor,
 } from '../src/engine';
 import { act, at, own, setCapital, testState } from './helpers';
 
@@ -360,8 +361,7 @@ describe('botlar', () => {
       const bot = getBot('medium');
       let actions = 0;
       while (s.phase.kind !== 'gameover' && s.round <= 15) {
-        const ph = s.phase;
-        const p = ph.kind === 'vote' ? s.players.find((pl) => pl.alive && !(pl.id in ph.votes))!.id : s.currentPlayer;
+        const p = phaseActor(s);
         const r = dispatch(s, bot.chooseAction(s, p));
         s = r.state;
         for (const e of r.events) {

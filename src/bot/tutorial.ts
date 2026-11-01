@@ -24,6 +24,8 @@ export class TutorialBot implements BotBrain {
       case 'vote':
         a = { type: 'CAST_VOTE', player: p, accept: true };
         break;
+      case 'permit':
+        return fallbackAction(state, p);
       default:
         a = { type: 'END_TURN', player: p };
     }

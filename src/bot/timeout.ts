@@ -21,6 +21,15 @@ export function timeoutAction(state: GameState, p: number): Action | null {
       if (p in ph.votes) return null;
       a = { type: 'CAST_VOTE', player: p, accept: medium.vote() };
       break;
+    case 'permit':
+      // Söz sahibi cevaplamadıysa ret; sıra sahibi onaylamadıysa vazgeçer
+      if (ph.player === p) a = { type: 'CONFIRM_PERMIT', player: p, accept: false };
+      else {
+        const req = ph.requests.find((r) => r.controller === p && !r.answered);
+        if (!req) return null;
+        a = { type: 'RESPOND_PERMIT', player: p, straitId: req.straitId, decision: 'deny', toll: 0 };
+      }
+      break;
     case 'conquest':
       // Fetihte seçimi yapan taraf (karşı saldırıda savunan) karar verir
       if (ph.taker !== p) return null;

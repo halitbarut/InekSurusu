@@ -160,6 +160,13 @@ export function formatEvent(state: GameState, e: GameEvent): string | null {
       return e.gained ? `${N(e.player)} ${straitLabel(e.straitId)} boğazında söz sahibi oldu` : `${N(e.player)} ${straitLabel(e.straitId)} boğazında söz hakkını kaybetti`;
     case 'strait_policy':
       return `${N(e.player)}, ${straitLabel(e.straitId)} boğazında ${N(e.target)} için: ${STRAIT_MODE_NAME[e.mode].toLocaleLowerCase('tr')}${e.mode === 'toll' ? ` (${fmtNum(e.toll)} akçe)` : ''}`;
+    case 'permit_requested':
+      return `${N(e.player)}, ${tileLabel(state, e.target)} seferi için izin istedi: ${e.requests.map((r) => `${straitLabel(r.straitId)} (${N(r.controller)})`).join(', ')}`;
+    case 'permit_answered':
+      return `${N(e.controller)}, ${straitLabel(e.straitId)} boğazında ${dat(N(e.requester))} ${e.allowed ? `izin verdi${e.toll ? ` (${fmtNum(e.toll)} akçe vergi)` : ''}` : 'izin vermedi'}`;
+    case 'permit_result':
+      if (e.granted) return null;
+      return `${gen(N(e.player))} seferi yapılmadı: ${e.reason === 'denied' ? 'izin reddedildi' : e.reason === 'funds' ? 'akçe yetmedi' : 'vazgeçildi'}`;
     case 'offer_made':
       // Tekrar dosyasında kabul edilmemiş tekliflerin içeriği çıkarılır
       return `${N(e.offer.from)}, ${dat(N(e.offer.to))} teklif gönderdi: ${e.offer.items.length ? offerText(state, e.offer) : '(içeriği gizli)'}`;
@@ -251,6 +258,9 @@ export function eventIcon(e: GameEvent): IconName | null {
       return 'eliminated';
     case 'strait_control':
     case 'strait_policy':
+    case 'permit_requested':
+    case 'permit_answered':
+    case 'permit_result':
       return 'strait';
     case 'offer_made':
     case 'offer_response':

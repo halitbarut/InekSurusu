@@ -1,5 +1,5 @@
 import { TutorialBot } from '../bot/tutorial';
-import { conquestCandidates, dispatch, isAllied, validateAction, type Action, type GameEvent, type GameState } from '../engine';
+import { conquestCandidates, dispatch, isAllied, validateAction, type Action, type GameEvent, type GameState, phaseActor } from '../engine';
 import { ME, T, ZEYNEP } from './scenario';
 
 /**
@@ -214,8 +214,8 @@ export const STEPS: TutorialStep[] = [
   {
     topic: 8,
     title: 'Boğaz ayarı',
-    text: 'Boğazda artık söz sahibisin! Başka oyuncuların gemileri geçerken koyduğun vergiyi sana öder; geçişi kapatırsan hiç geçemezler. Ayarlar her oyuncu için ayrıdır.',
-    todo: "Aşağıdaki 'Boğazlarım'a bas; Mehmet için geçişi kapat ya da bir vergi yaz.",
+    text: 'Boğazda artık söz sahibisin! Yeni boğazda herkes için ayar "Sor"dur: gemi geçmek isteyince sana sorulur. Açık, Vergili ya da Kapalı da yapabilirsin; ayarlar her oyuncu için ayrıdır.',
+    todo: "Aşağıdaki 'Boğazlarım'a bas; Mehmet için ayarı Kapalı ya da Vergili yap.",
     allow: (a) => a.type === 'SET_STRAIT_POLICY',
     done: (s) => Object.keys(s.straits[0]?.policies[ME] ?? {}).length > 0,
     script: () => ({ type: 'SET_STRAIT_POLICY', player: ME, straitId: 0, target: 1, mode: 'toll', toll: 100 }),
@@ -290,8 +290,7 @@ export function runTutorialScript(initial: GameState, from = 0, to = STEPS.lengt
     const step = STEPS[i];
     for (let guard = 0; guard < 200 && !step.done(s); guard++) {
       if (s.phase.kind === 'gameover') break;
-      const ph = s.phase;
-      const actor = ph.kind === 'vote' ? s.players.find((p) => p.alive && !(p.id in ph.votes))!.id : ph.kind === 'conquest' ? ph.taker : s.currentPlayer;
+      const actor = phaseActor(s);
       if (actor !== ME) {
         apply(bot.chooseAction(s, actor));
         continue;

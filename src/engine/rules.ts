@@ -13,15 +13,17 @@ import {
   isAllied,
   mutRelation,
   refreshStraits,
+  straitPolicyOf,
   touchesOwn,
   transferTile,
   unitCanSortie,
 } from './helpers';
-import { planeRoutes, shipRoutes, type Route, type RouteMap } from './movement';
+import { pathStraits, planeRoutes, shipRoutes, type Route, type RouteMap, type TollCharge } from './movement';
 import { createRng, type Rng } from './rng';
 import { recordStats, snapshotRound } from './stats';
 import {
   MINE_TYPES,
+  PERMIT_DECISIONS,
   STRAIT_MODES,
   type Action,
   type ApplyResult,
@@ -63,6 +65,9 @@ export function validateAction(state: GameState, action: Action): ValidationResu
 
   if (ph.kind === 'vote' && action.type !== 'CAST_VOTE' && action.type !== 'SET_STRAIT_POLICY') {
     return fail('Önce oylama tamamlanmalı');
+  }
+  if (ph.kind === 'permit' && action.type !== 'RESPOND_PERMIT' && action.type !== 'CONFIRM_PERMIT' && action.type !== 'SET_STRAIT_POLICY') {
+    return fail('Önce boğaz izni sonuçlanmalı');
   }
 
   switch (action.type) {
@@ -184,6 +189,17 @@ export function validateAction(state: GameState, action: Action): ValidationResu
       if (!Number.isInteger(action.toll) || action.toll < 0 || action.toll > 1_000_000) return fail('Vergi 0 veya pozitif tam sayı olmalı');
       return OK;
     }
+    case 'RESPOND_PERMIT': {
+      if (ph.kind !== 'permit' || ph.stage !== 'answers') return fail('Bekleyen izin yok');
+      if (!ph.requests.some((r) => r.straitId === action.straitId && r.controller === action.player && !r.answered)) return fail('Bu izin senden istenmiyor');
+      if (!PERMIT_DECISIONS.includes(action.decision)) return fail('Geçersiz cevap');
+      if (!Number.isInteger(action.toll) || action.toll < 0 || action.toll > 1_000_000) return fail('Vergi 0 veya pozitif tam sayı olmalı');
+      return OK;
+    }
+    case 'CONFIRM_PERMIT':
+      if (ph.kind !== 'permit' || ph.player !== action.player) return fail('Bekleyen izin yok');
+      if (action.accept && ph.stage !== 'confirm') return fail('Cevaplar henüz tamamlanmadı');
+      return OK;
     case 'PROPOSE_OFFER': {
       if (ph.kind !== 'actions') return fail('Teklif eylem aşamasında yapılır');
       if (!myTurn) return fail('Sıra sizde değil');
@@ -376,32 +392,51 @@ export function applyAction(state: GameState, action: Action, rng: Rng): ApplyRe
       const chk = expeditionCheck(state, action);
       if (!chk.ok) throw new Error(chk.reason);
       const unit = s.units.find((u) => u.id === action.unitId)!;
-      const isShip = action.type === 'SHIP_EXPEDITION';
-      me.resources.oil -= isShip ? cfg.shipOilCost : cfg.planeOilCost;
-      for (const t of chk.route.tolls) {
-        me.resources.akce -= t.amount;
-        s.players[t.controller].resources.akce += t.amount;
+      // "Sor" durumundaki boğaz: sefer söz sahiplerinin cevabına kadar bekler, hiçbir şey ödenmez
+      if (chk.route.asks.length > 0) {
+        const requests = chk.route.asks.map((a) => ({ ...a, answered: false, toll: 0 }));
+        s.phase = { kind: 'permit', player: me.id, unitId: unit.id, unit: unit.kind, target: action.target, path: chk.route.path, requests, stage: 'answers' };
+        ev.push({ type: 'permit_requested', player: me.id, target: action.target, requests: chk.route.asks, parties: permitParties(s.phase) });
+        break;
       }
-      unit.sortiesThisTurn++;
-      ev.push({
-        type: 'expedition',
-        player: me.id,
-        unitId: unit.id,
-        unit: unit.kind,
-        from: unit.tile,
-        target: action.target,
-        path: chk.route.path,
-        tolls: chk.route.tolls,
-      });
-      const o = s.owner[action.target];
-      const via: AttackVia = isShip ? 'ship' : 'plane';
-      if (o === null) {
-        me.resources.akce -= chk.claimCost;
-        s.owner[action.target] = me.id;
-        ev.push({ type: 'claim', player: me.id, tile: action.target, via, cost: chk.claimCost });
-      } else {
-        startBattle(s, me.id, o, action.target, via, rng, ev);
+      runExpedition(s, unit.id, action.target, chk.route.path, chk.route.tolls, chk.claimCost, rng, ev);
+      break;
+    }
+    case 'RESPOND_PERMIT': {
+      const ph = s.phase;
+      if (ph.kind !== 'permit') break;
+      const parties = permitParties(ph);
+      const req = ph.requests.find((r) => r.straitId === action.straitId && r.controller === me.id && !r.answered)!;
+      const allowed = action.decision !== 'deny' && action.decision !== 'closed';
+      const toll = action.decision === 'once' || action.decision === 'toll' ? action.toll : 0;
+      // Kalıcı ayar: aynı zamanda bu seferin cevabıdır
+      if (action.decision === 'open' || action.decision === 'toll' || action.decision === 'closed') {
+        const mode = action.decision === 'toll' && toll === 0 ? 'open' : action.decision;
+        (s.straits[action.straitId].policies[me.id] ??= {})[ph.player] = { mode, toll };
+        ev.push({ type: 'strait_policy', player: me.id, straitId: action.straitId, target: ph.player, mode, toll });
       }
+      req.answered = true;
+      req.toll = toll;
+      ev.push({ type: 'permit_answered', requester: ph.player, controller: me.id, straitId: action.straitId, allowed, toll, parties });
+      if (!allowed) {
+        (s.players[ph.player].permitDenied ??= {})[action.straitId] = s.turnCounter;
+        ev.push({ type: 'permit_result', player: ph.player, granted: false, reason: 'denied', by: me.id, parties });
+        s.phase = { kind: 'actions' };
+        break;
+      }
+      if (ph.requests.every((r) => r.answered)) {
+        if (ph.requests.some((r) => r.toll > 0)) ph.stage = 'confirm';
+        else finishPermit(s, rng, ev);
+      }
+      break;
+    }
+    case 'CONFIRM_PERMIT': {
+      const ph = s.phase;
+      if (ph.kind !== 'permit') break;
+      if (!action.accept) {
+        ev.push({ type: 'permit_result', player: me.id, granted: false, reason: 'declined', parties: permitParties(ph) });
+        s.phase = { kind: 'actions' };
+      } else finishPermit(s, rng, ev);
       break;
     }
     case 'CONQUER_TILE': {
@@ -489,6 +524,67 @@ export function dispatch(state: GameState, action: Action): ApplyResult {
   const r = applyAction(state, action, rng);
   r.state.rngState = rng.getState();
   return r;
+}
+
+// ------------------------------------------------------------------
+// Sefer ve boğaz izni
+// ------------------------------------------------------------------
+
+/** İzin görüşmesinin tarafları: yalnızca bunlar ayrıntıyı görür */
+export function permitParties(ph: Extract<GameState['phase'], { kind: 'permit' }>): number[] {
+  return [...new Set([ph.player, ...ph.requests.map((r) => r.controller)])];
+}
+
+/** Bedelleri öder, seferi yapar: hedef sahipsizse alınır, sahipliyse savaş başlar. */
+function runExpedition(s: GameState, unitId: number, target: number, path: number[], tolls: TollCharge[], claimCost: number, rng: Rng, ev: GameEvent[]) {
+  const unit = s.units.find((u) => u.id === unitId)!;
+  const me = s.players[unit.owner];
+  const isShip = unit.kind === 'ship';
+  me.resources.oil -= isShip ? s.config.shipOilCost : s.config.planeOilCost;
+  for (const t of tolls) {
+    me.resources.akce -= t.amount;
+    s.players[t.controller].resources.akce += t.amount;
+  }
+  unit.sortiesThisTurn++;
+  ev.push({ type: 'expedition', player: me.id, unitId: unit.id, unit: unit.kind, from: unit.tile, target, path, tolls });
+  const o = s.owner[target];
+  const via: AttackVia = isShip ? 'ship' : 'plane';
+  if (o === null) {
+    me.resources.akce -= claimCost;
+    s.owner[target] = me.id;
+    ev.push({ type: 'claim', player: me.id, tile: target, via, cost: claimCost });
+  } else {
+    startBattle(s, me.id, o, target, via, rng, ev);
+  }
+}
+
+/** Bütün izinler alındı: vergiler bu görüşmedeki cevaplar ve kalıcı ayarlarla hesaplanır. Akçe yetmezse sefer yapılmaz. */
+function finishPermit(s: GameState, rng: Rng, ev: GameEvent[]) {
+  const ph = s.phase;
+  if (ph.kind !== 'permit') return;
+  const parties = permitParties(ph);
+  const tolls: TollCharge[] = [];
+  for (const sid of pathStraits(s, ph.path)) {
+    for (const c of s.straits[sid].controllers) {
+      if (c === ph.player) continue;
+      const req = ph.requests.find((r) => r.straitId === sid && r.controller === c);
+      const pol = straitPolicyOf(s, sid, c, ph.player);
+      const amount = req ? req.toll : pol.mode === 'toll' ? pol.toll : 0;
+      if (amount > 0) tolls.push({ straitId: sid, controller: c, amount });
+    }
+  }
+  const total = tolls.reduce((a, t) => a + t.amount, 0);
+  const o = s.owner[ph.target];
+  const claimCost = o === null ? s.config.expeditionClaimCost : 0;
+  const short = o === null ? s.players[ph.player].resources.akce < total + claimCost : battleCostProblem(s, ph.player, targetBattleKind(s, ph.target), total) !== null;
+  const { unitId, target, path, player } = ph;
+  s.phase = { kind: 'actions' };
+  if (short) {
+    ev.push({ type: 'permit_result', player, granted: false, reason: 'funds', parties });
+    return;
+  }
+  ev.push({ type: 'permit_result', player, granted: true, parties });
+  runExpedition(s, unitId, target, path, tolls, claimCost, rng, ev);
 }
 
 // ------------------------------------------------------------------

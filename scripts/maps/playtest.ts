@@ -1,5 +1,5 @@
 import { getBot } from '../../src/bot';
-import { DEFAULT_CONFIG, buildMap, createGameFromMap, dispatch, draftFromRows, type BotLevel, type GameState } from '../../src/engine';
+import { DEFAULT_CONFIG, buildMap, createGameFromMap, dispatch, draftFromRows, type BotLevel, type GameState, phaseActor } from '../../src/engine';
 import { BUILTIN_MAPS } from '../../src/maps/builtin';
 
 /**
@@ -24,8 +24,7 @@ for (const m of BUILTIN_MAPS) {
       const st = { battles: 0, capitalFalls: 0, expeditions: 0, shipExp: 0, planeExp: 0, straitHeld: new Set<number>(), firstFall: 0 };
       let n = 0;
       while (s.phase.kind !== 'gameover' && s.round <= MAX_ROUNDS) {
-        const ph = s.phase;
-        const p = ph.kind === 'vote' ? s.players.find((pl) => pl.alive && !(pl.id in ph.votes))!.id : ph.kind === 'conquest' ? ph.taker : s.currentPlayer;
+        const p = phaseActor(s);
         const r = dispatch(s, getBot(s.players[p].botLevel).chooseAction(s, p));
         s = r.state;
         for (const e of r.events) {

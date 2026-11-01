@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { getBot } from '../src/bot';
-import { DEFAULT_CONFIG, buildMap, checkMap, createGameFromMap, dispatch, draftFromRows, neighbors4, type GameState } from '../src/engine';
+import { DEFAULT_CONFIG, buildMap, checkMap, createGameFromMap, dispatch, draftFromRows, neighbors4, type GameState, phaseActor } from '../src/engine';
 import { BUILTIN_MAPS } from '../src/maps/builtin';
 
 const c = DEFAULT_CONFIG;
@@ -22,8 +22,7 @@ function play(rows: string[], name: string, players: number, seed: number, maxRo
   let actions = 0;
   const seen = { battles: 0, expeditions: 0, straitControl: 0 };
   while (s.phase.kind !== 'gameover' && s.round <= maxRounds) {
-    const ph = s.phase;
-    const p = ph.kind === 'vote' ? s.players.find((pl) => pl.alive && !(pl.id in ph.votes))!.id : ph.kind === 'conquest' ? ph.taker : s.currentPlayer;
+    const p = phaseActor(s);
     const r = dispatch(s, bot.chooseAction(s, p));
     s = r.state;
     for (const e of r.events) {

@@ -1,14 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { getBot } from '../src/bot';
-import { SPEND_KEYS, createGame, dispatch, snapshotPlayers, type GameState } from '../src/engine';
+import { SPEND_KEYS, createGame, dispatch, snapshotPlayers, type GameState, phaseActor } from '../src/engine';
 
 function play(rounds: number): { s: GameState; spent: number[]; battles: number } {
   let s = createGame({ players: ['A', 'B', 'C'].map((n) => ({ name: n, color: '#000', kind: 'bot' as const, botLevel: 'hard' as const })), width: 35, height: 26, seed: 2024 });
   const spent = [0, 0, 0];
   let battles = 0;
   while (s.phase.kind !== 'gameover' && s.round <= rounds) {
-    const ph = s.phase;
-    const p = ph.kind === 'vote' ? s.players.find((x) => x.alive && !(x.id in ph.votes))!.id : ph.kind === 'conquest' ? ph.taker : s.currentPlayer;
+    const p = phaseActor(s);
     const r = dispatch(s, getBot('hard').chooseAction(s, p));
     s = r.state;
     for (const e of r.events) {

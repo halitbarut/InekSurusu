@@ -101,6 +101,24 @@ export function attackBlockReason(state: GameState, a: number, b: number): strin
   return null;
 }
 
+/**
+ * Şu an kararı beklenen oyuncu: oylamada oyunu vermemiş ilk oyuncu, izinde cevap vermemiş ilk söz sahibi,
+ * fetihte toprağı seçen (karşı saldırıda savunan), aksi halde sıra sahibi.
+ */
+export function phaseActor(state: GameState): number {
+  const ph = state.phase;
+  switch (ph.kind) {
+    case 'vote':
+      return state.players.find((p) => p.alive && !(p.id in ph.votes))?.id ?? state.currentPlayer;
+    case 'conquest':
+      return ph.taker;
+    case 'permit':
+      return ph.stage === 'confirm' ? ph.player : (ph.requests.find((r) => !r.answered)?.controller ?? ph.player);
+    default:
+      return state.currentPlayer;
+  }
+}
+
 export function alivePlayers(state: GameState): number[] {
   return state.players.filter((p) => p.alive).map((p) => p.id);
 }
@@ -158,7 +176,7 @@ export function straitControllers(state: GameState, straitId: number): number[] 
 }
 
 /** Yeni söz sahibi olunan boğazda herkes için başlangıç ayarı */
-export const DEFAULT_STRAIT_POLICY: StraitPolicy = { mode: 'open', toll: 0 };
+export const DEFAULT_STRAIT_POLICY: StraitPolicy = { mode: 'ask', toll: 0 };
 
 /** Söz sahibi c'nin p oyuncusu için ayarı */
 export function straitPolicyOf(state: GameState, straitId: number, c: number, p: number): StraitPolicy {
@@ -188,6 +206,11 @@ export function straitPassage(state: GameState, straitId: number, p: number): St
       r.tolls.push({ controller: c, amount: pol.toll });
       r.toll += pol.toll;
     }
+  }
+  // Bu tur reddedilmiş izin yeniden sorulamaz: o söz sahibi bu turluk kapalı sayılır
+  if (r.asks.length && state.players[p].permitDenied?.[straitId] === state.turnCounter) {
+    r.closedBy.push(...r.asks);
+    r.asks = [];
   }
   return r;
 }

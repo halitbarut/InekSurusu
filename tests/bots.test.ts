@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BOT_LEVEL_NAME, getBot } from '../src/bot';
-import { BOT_LEVELS, createGame, dispatch, validateAction, type GameState } from '../src/engine';
+import { BOT_LEVELS, createGame, dispatch, validateAction, type GameState, phaseActor } from '../src/engine';
 import { own, setCapital, testState } from './helpers';
 
 /** Botlarla birkaç tur oynatır; her eylemin geçerli olduğunu ve botun durumu değiştirmediğini denetler. */
@@ -13,8 +13,7 @@ function playRounds(levels: (typeof BOT_LEVELS)[number][], rounds: number, seed:
   });
   let guard = 0;
   while (s.phase.kind !== 'gameover' && s.round <= rounds && guard++ < 60_000) {
-    const ph = s.phase;
-    const p = ph.kind === 'vote' ? s.players.find((x) => x.alive && !(x.id in ph.votes))!.id : ph.kind === 'conquest' ? ph.taker : s.currentPlayer;
+    const p = phaseActor(s);
     const before = JSON.stringify(s);
     const a = getBot(s.players[p].botLevel).chooseAction(s, p);
     // Bot düşünürken durumu (RNG dahil) değiştirmez

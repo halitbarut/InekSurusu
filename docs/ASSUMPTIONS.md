@@ -476,3 +476,28 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
 142. **Eski kayıtlar** `migrateState` ile açılır: eski idareci söz sahibi olur, `{allow, toll}` ayarları karşılığına çevrilir,
      söz sahipleri yeni kurala göre yeniden hesaplanır. Eski kayıtların tekrar verisi yeni kurallarla aynı sonucu
      vermeyeceği için bırakılır; `REPLAY_VERSION` 2'ye çıktı, eski tekrar dosyaları "sürümü desteklenmiyor" der.
+
+## Boğaz izni
+
+143. Boğaz ayarında dört durum vardır: **Sor** (yeni söz sahibinde herkes için başlangıç), **Açık**, **Vergili**, **Kapalı**.
+     Teklifle verilen boğaz izni Açık ya da Vergili ayarı yazar.
+144. **İzin aşaması motordadır** (`phase.kind === 'permit'`): rotası Sor durumundaki boğazdan geçen sefer eylemi hemen
+     uygulanmaz; söz sahiplerine sorulur. Bu sırada sefer sahibinden hiçbir şey alınmaz ve (boğaz ayarı dışında) hiçbir
+     eylem yapılamaz; böylece cevap verildiğinde hedef ve söz sahipleri değişmiş olamaz.
+145. **Soru sayısı:** rotadaki her boğaz ve her söz sahibi için bir soru. Sıra önemsizdir; çevrimiçinde herkese aynı anda sorulur,
+     hot-seat'te cihaz sırayla el değiştirir. Biri bile reddederse görüşme hemen biter.
+146. **Vergi onayı (görevde yok, eklendi):** söz sahibi bu seferlik ya da kalıcı vergi isterse sefer sahibi tutarı görüp onaylar
+     ya da vazgeçer. Aksi halde söz sahibi sorunun ardından istediği kadar akçeyi kendiliğinden çekebilirdi. Vazgeçince hiçbir
+     şey ödenmez. Süre dolarsa vazgeçmiş sayılır.
+147. **Yeniden sorma:** reddedilen boğazdan aynı tur yeniden izin istenemez (rota o tur kapalı sayılır), yoksa sıra sahibi söz
+     sahibini sorularla bloke edebilirdi. Sonraki turda sorulabilir. Botlar reddedilen boğazı 4 tam tur sormaz.
+148. Akçe, vergi ve masrafa son anda yetmezse sefer yapılmaz, hiçbir şey ödenmez.
+149. **Rota seçimi:** önce en ucuz, sonra en kısa. Sorulacak boğaz açık yoldan pahalı, vergili yoldan ucuz sayılır (1 akçe gibi).
+     Kapalı denizlerde havza grafiği ağaç olduğu için pratikte tek yol vardır.
+150. **Gizlilik:** izin görüşmesinin hedefi ve rotası yalnızca sefer sahibinde ve o görüşmedeki söz sahiplerinde görünür; günlük
+     satırları da yalnızca onlara gider. Başkaları "X boğaz izni istiyor, Y bekleniyor" görür. Reddedilen seferin hedefi bu
+     sayede sızmaz.
+151. **Botlar:** söz sahibi bot kalıcı ayarla cevaplar: müttefike Açık, son 8 turda kendisine saldıran ya da ittifakı bozana
+     Kapalı, diğerlerine Vergili (100, barıştakine 50). İlişki değişince kendi turunda ayarı günceller. Sefer sahibi bot, vergi
+     akçesinin yarısını aşıyorsa vazgeçer.
+152. Geri alma: izin istemek başka bir oyuncuya ulaşan bir bilgidir, geri alınamaz; geçmişi temizler (#64 gibi).

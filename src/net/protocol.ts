@@ -1,4 +1,4 @@
-import type { Action, BotLevel, GameEvent, GameState, ReplayData } from '../engine';
+import { permitParties, type Action, type BotLevel, type GameEvent, type GameState, type ReplayData } from '../engine';
 import type { ChatMessage, ChatSend } from './chat';
 
 /**
@@ -8,8 +8,9 @@ import type { ChatMessage, ChatSend } from './chat';
  * 5: tur süresi (clock, timeout mesajları).
  * 6: izleyiciler: izleyici listesi (viewers), izleyici sohbeti ayarı (chatcfg).
  * 7: oyun bitince tekrar kaydı (replay; kabul edilmemiş teklif içerikleri çıkarılmış).
+ * 8: boğazda birden çok söz sahibi ve izin aşaması (permit: yalnızca taraflara ayrıntı).
  */
-export const PROTOCOL_VERSION = 7;
+export const PROTOCOL_VERSION = 8;
 
 /** Oyunu izleyen biri: oturmamış katılımcı ya da elenmiş oyuncu */
 export interface ViewerInfo {
@@ -119,14 +120,18 @@ export type HostMessage =
 /** Lobide katılanlara giden maskeli koltuk sahibi */
 export const CLAIMED_MASK = 'dolu';
 
-/** Bu olay yalnızca teklifin iki tarafına mı gösterilir? */
-function privateTo(e: GameEvent): [number, number] | null {
+/** Bu olay yalnızca belli oyunculara mı gösterilir? (teklifin iki tarafı, izin görüşmesinin tarafları) */
+function privateTo(e: GameEvent): number[] | null {
   switch (e.type) {
     case 'offer_made':
       return [e.offer.from, e.offer.to];
     case 'offer_response':
     case 'offer_cancelled':
       return [e.from, e.to];
+    case 'permit_requested':
+    case 'permit_answered':
+    case 'permit_result':
+      return e.parties;
     default:
       return null;
   }
@@ -148,9 +153,13 @@ export function eventsFor(events: GameEvent[], viewer: number | null): GameEvent
  * Teklifin sonucu olan ittifak, barış, toprak ve kaynak devri herkesin gördüğü değişikliklerdir.
  */
 export function viewFor(state: GameState, viewer: number | null): GameState {
+  const ph = state.phase;
+  // İzin görüşmesinde hedef ve rota yalnızca taraflarda: kim nereye gitmek istiyor, başkası görmez
+  const hidePermit = ph.kind === 'permit' && (viewer === null || !permitParties(ph).includes(viewer));
   return {
     ...state,
     rngState: 0,
+    phase: hidePermit ? { ...ph, target: -1, path: [], unitId: -1 } : ph,
     offers: viewer === null ? [] : state.offers.filter((o) => o.from === viewer || o.to === viewer),
     log: state.log.filter((l) => eventVisibleTo(l.event, viewer)),
   };

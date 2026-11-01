@@ -46,6 +46,7 @@ import {
   type GameState,
   type Offer,
   type OfferItem,
+  type PermitDecision,
   type ResourceKey,
   type StraitMode,
   type UnitKind,
@@ -167,6 +168,8 @@ export class GameScreen {
   private lastTickSecond = -1;
   /** Hot-seat: "Cihazı X'e verin" ekranı açık (saat durur) */
   private handoff = false;
+  /** Hot-seat: cihaz en son kime verildi (izin ve teklif için el değiştirdikten sonra geri vermek için) */
+  private deviceAt: number | null = null;
   /** Hot-seat: teklifine yanıt beklenen oyuncunun kendi süresi */
   private responseSeg: ClockSegment | null = null;
   /** Oyun tekrarı kaydı: oyunu yürüten tarafta (yerel oyun, oda sahibi) */
@@ -222,6 +225,7 @@ export class GameScreen {
     this.map.onHover = (t, x, y) => this.onHover(t, x, y);
     this.map.onViewChange = () => this.tileMenu.close();
     this.tileMenu.onPick = (a) => this.pickTileAction(a);
+    this.tileMenu.names = (p) => pname(this.state, p);
     this.tileMenu.onFocusAction = (a) => {
       this.hoverRoute = a?.route ?? null;
       this.applyHighlight();
@@ -363,7 +367,7 @@ export class GameScreen {
   private isHumanTurn(): boolean {
     const s = this.state;
     const a = this.actor();
-    return s.phase.kind !== 'gameover' && s.phase.kind !== 'vote' && s.players[a].kind === 'human' && this.mine(a);
+    return s.phase.kind !== 'gameover' && s.phase.kind !== 'vote' && s.phase.kind !== 'permit' && s.players[a].kind === 'human' && this.mine(a);
   }
 
   private botDelay(): number {
@@ -416,6 +420,11 @@ export class GameScreen {
           }
           continue;
         }
+        if (s.phase.kind === 'permit') {
+          if (await this.pumpPermit(s.phase)) continue;
+          this.render();
+          return;
+        }
         const cur = s.players[this.actor()];
         if (cur.kind === 'bot') {
           this.render();
@@ -439,6 +448,10 @@ export class GameScreen {
           return;
         }
         // İnsan sırası
+        // Cihaz başka oyuncudaysa (ör. boğaz izni için verildi) sıra sahibine geri ver
+        if (!this.net && this.deviceAt !== null && this.deviceAt !== cur.id && this.humanCount() > 1 && this.lastHumanKey.endsWith(`-${cur.id}-${s.turnCounter}`)) {
+          await this.passDevice(cur.id, 'Sıra yine sende.');
+        }
         const setup = s.phase.kind === 'setup_capital' || s.phase.kind === 'setup_territory';
         const counter = s.phase.kind === 'conquest' && s.phase.counter;
         const key = `${setup ? s.phase.kind : counter ? 'counter' : 'turn'}-${cur.id}-${s.turnCounter}`;
@@ -463,6 +476,30 @@ export class GameScreen {
     } finally {
       this.pumping = false;
     }
+  }
+
+  /**
+   * İzin aşamasında bir sonraki karar: bot hemen cevaplar, bu cihazdaki insana sorulur. Bir adım atıldıysa
+   * true; uzaktaki oyuncu bekleniyorsa false (cevabı gelince akış sürer).
+   */
+  private async pumpPermit(ph: Extract<GameState['phase'], { kind: 'permit' }>): Promise<boolean> {
+    const s = this.state;
+    const who = ph.stage === 'confirm' ? ph.player : ph.requests.find((r) => !r.answered && (s.players[r.controller].kind === 'bot' || this.mine(r.controller)))?.controller;
+    if (who === undefined) return false;
+    if (s.players[who].kind === 'bot') {
+      await sleep(this.botDelay());
+      const a = this.brain(who).chooseAction(this.state, who);
+      await this.enqueue(() => this.commit(a, true));
+      return true;
+    }
+    if (!this.mine(who)) return false;
+    if (!this.net && this.humanCount() > 1 && this.deviceAt !== who) {
+      await this.passDevice(who, ph.stage === 'confirm' ? 'Boğazdan geçmek için vergi istendi.' : `${pname(s, ph.player)} boğazından geçmek istiyor.`);
+    }
+    const a = ph.stage === 'confirm' ? await this.askPermitConfirm(who) : await this.askPermit(who);
+    if (a) await this.enqueue(() => this.commit(a));
+    else await this.chain;
+    return true;
   }
 
   /** Sıradaki oyuncunun geri alabileceği eylem sayısı */
@@ -658,6 +695,12 @@ export class GameScreen {
         notify({ icon: e.kind === 'land' ? 'attack' : STRUCT_ICON[e.kind], title, text, kind: named ? 'info' : won ? 'good' : lost ? 'bad' : 'info', onClick: () => this.map.centerOn(e.target) });
         return;
       }
+      case 'permit_answered':
+        if (mine(e.requester) && !mine(e.controller)) notify({ icon: 'strait', title: `${N(e.controller)} ${straitLabel(e.straitId)} boğazında ${e.allowed ? 'izin verdi' : 'izin vermedi'}`, text: e.toll ? `${fmtNum(e.toll)} akçe vergi istiyor` : undefined, kind: e.allowed ? 'good' : 'bad' });
+        return;
+      case 'permit_result':
+        if (mine(e.player) && !e.granted) notify({ icon: 'strait', title: 'Sefer yapılmadı', text: `${e.reason === 'denied' ? `${e.by !== undefined ? N(e.by) : 'Söz sahibi'} izin vermedi` : e.reason === 'funds' ? 'Vergi ve masraf için akçe yetmedi' : 'Vazgeçtin'}. Ödeme alınmadı, yakıt harcanmadı.`, kind: 'bad' });
+        return;
       case 'offer_made':
         if (mine(e.offer.to)) notify({ icon: 'diplomacy', title: `${gen(N(e.offer.from))} teklifi${named ? ` → ${N(e.offer.to)}` : ''}`, text: offerText(s, e.offer) || undefined, kind: 'info' });
         return;
@@ -727,7 +770,7 @@ export class GameScreen {
       const unit = s.units.find((u) => u.id === a.unitId);
       const chk = expeditionCheck(s, a);
       if (unit && chk.ok) {
-        this.hoverRoute = { from: unit.tile, path: chk.route.path, tolls: chk.route.tolls };
+        this.hoverRoute = { from: unit.tile, path: chk.route.path, tolls: chk.route.tolls, asks: chk.route.asks };
         this.applyHighlight();
         const crossed = routeStraits(s, me, chk.route.path, chk.route.tolls);
         routeRow = row('strait', 'Rota', crossed.length ? crossed.join(' · ') : `${chk.route.path.length} kare, boğaz yok`);
@@ -824,6 +867,7 @@ export class GameScreen {
     }
     const m = this.state.map;
     const labels = r.tolls.map((t) => ({ tile: r.path.find((x) => m.straitOf[x] === t.straitId) ?? m.straits[t.straitId].tiles[0], text: `${t.amount} akçe` }));
+    for (const a of r.asks ?? []) labels.push({ tile: r.path.find((x) => m.straitOf[x] === a.straitId) ?? m.straits[a.straitId].tiles[0], text: 'izin?' });
     this.map.setHighlight({ ...this.lastHl, route: [r.from, ...r.path], labels });
   }
 
@@ -1034,6 +1078,10 @@ export class GameScreen {
       }
       return;
     }
+    if (s.phase.kind === 'permit') {
+      this.clientPermitPrompt(s.phase);
+      return;
+    }
     const a = this.actor();
     const counter = s.phase.kind === 'conquest' && s.phase.counter;
     const key = `${counter ? 'counter' : s.phase.kind}-${a}-${s.turnCounter}`;
@@ -1043,6 +1091,20 @@ export class GameScreen {
       this.turnNotice(a, counter);
       this.render();
     }
+  }
+
+  /** Katılan: izin sorusu bana geldiyse sor */
+  private clientPermitPrompt(ph: Extract<GameState['phase'], { kind: 'permit' }>) {
+    const me = this.mySeat();
+    if (me === null) return;
+    const s = this.state;
+    const req = ph.requests.find((r) => r.controller === me && !r.answered);
+    const key = req ? `permit-${s.turnCounter}-${s.log.length}-${req.straitId}` : `permit-confirm-${s.turnCounter}-${s.log.length}`;
+    if (ph.stage === 'answers' && !req) return;
+    if (ph.stage === 'confirm' && ph.player !== me) return;
+    if (this.prompted.has(key)) return;
+    this.prompted.add(key);
+    void (ph.stage === 'confirm' ? this.askPermitConfirm(me) : this.askPermit(me)).then((a) => a && this.act(a));
   }
 
   private connEl: HTMLElement | null = null;
@@ -1239,6 +1301,7 @@ export class GameScreen {
   private passDevice(p: number, message: string, isTurn = false): Promise<void> {
     const pl = this.state.players[p];
     this.handoff = true;
+    this.deviceAt = p;
     this.syncClock();
     return new Promise((resolve) => {
       const btn = h('button', { class: 'btn btn-primary btn-big' }, 'Hazırım');
@@ -1288,6 +1351,77 @@ export class GameScreen {
     });
     const v = await m.result;
     return v === 'timeout' ? null : v === 'yes';
+  }
+
+  /** Söz sahibine izin sorusu; süre dolup pencere kapandıysa null */
+  private async askPermit(p: number): Promise<Action | null> {
+    const s = this.state;
+    const ph = s.phase;
+    if (ph.kind !== 'permit') return null;
+    const req = ph.requests.find((r) => r.controller === p && !r.answered);
+    if (!req) return null;
+    const owner = s.owner[ph.target];
+    const oneToll = h('input', { type: 'number', class: 'num', min: 0, step: 50, value: 0 });
+    const keepToll = h('input', { type: 'number', class: 'num', min: 0, step: 50, value: 100 });
+    const amount = (el: HTMLInputElement) => Math.max(0, Math.floor(Number(el.value) || 0));
+    const m = openModal({
+      title: `Boğaz izni — ${pname(s, p)}`,
+      icon: 'strait',
+      closable: false,
+      className: 'permit-modal',
+      body: h(
+        'div',
+        { class: 'permit-body' },
+        h('p', {}, `${pname(s, ph.player)} ${ph.unit === 'ship' ? 'gemisiyle' : 'uçağıyla'} ${straitLabel(req.straitId)} boğazından geçmek istiyor.`),
+        h('p', { class: 'small' }, `Hedef: ${tileLabel(s, ph.target)} · ${owner === null ? 'sahipsiz toprak' : owner === p ? 'senin toprağın' : `${pname(s, owner)} toprağı`}`),
+        this.countdownEl(`permit-${p}-${req.straitId}`),
+        h('div', { class: 'row' }, 'Bu seferlik vergi: ', oneToll, ' akçe (0 = vergisiz)'),
+        h('div', { class: 'row' }, 'Kalıcı vergili ayar için: ', keepToll, ' akçe'),
+        h('p', { class: 'muted small' }, `Kalıcı ayarlar ${pname(s, ph.player)} için bu boğazda geçerli olur; "Boğazlarım"dan değiştirebilirsin.`),
+      ),
+      buttons: [
+        { label: 'Reddet', value: 'deny', danger: true },
+        { label: 'Kalıcı: Kapalı', value: 'closed' },
+        { label: 'Kalıcı: Vergili', value: 'toll' },
+        { label: 'Kalıcı: Açık', value: 'open' },
+        { label: 'Bu seferlik izin ver', value: 'once', primary: true },
+      ],
+    });
+    const v = await m.result;
+    if (v === 'timeout' || this.state.phase.kind !== 'permit') return null;
+    const decision = v as PermitDecision;
+    return { type: 'RESPOND_PERMIT', player: p, straitId: req.straitId, decision, toll: decision === 'once' ? amount(oneToll) : decision === 'toll' ? amount(keepToll) : 0 };
+  }
+
+  /** Sıra sahibine: söz sahiplerinin istediği vergi ödensin mi? */
+  private async askPermitConfirm(p: number): Promise<Action | null> {
+    const s = this.state;
+    const ph = s.phase;
+    if (ph.kind !== 'permit') return null;
+    const total = ph.requests.reduce((a, r) => a + r.toll, 0);
+    const m = openModal({
+      title: 'Boğaz vergisi',
+      icon: 'strait',
+      closable: false,
+      body: h(
+        'div',
+        {},
+        h('ul', { class: 'offer-items' }, ph.requests.filter((r) => r.toll > 0).map((r) => h('li', {}, `${pname(s, r.controller)} · ${straitLabel(r.straitId)}: ${fmtNum(r.toll)} akçe`))),
+        h('p', {}, `Toplam ${fmtNum(total)} akçe. Vazgeçersen hiçbir şey ödemezsin.`),
+      ),
+      buttons: [
+        { label: 'Vazgeç', value: 'no' },
+        { label: 'Öde ve geç', value: 'yes', primary: true },
+      ],
+    });
+    const v = await m.result;
+    if (v === 'timeout' || this.state.phase.kind !== 'permit') return null;
+    return { type: 'CONFIRM_PERMIT', player: p, accept: v === 'yes' };
+  }
+
+  /** Cevap penceresindeki geri sayım yeri (süre sistemi doldurur) */
+  private countdownEl(_key: string): HTMLElement {
+    return h('p', { class: 'wait-left muted small' });
   }
 
   private async askOffer(offer: Offer, allowLater: boolean): Promise<'accept' | 'reject' | 'later'> {
@@ -1489,6 +1623,8 @@ export class GameScreen {
         return `Fetih: ${s.phase.remaining} toprak seç`;
       case 'vote':
         return 'Oylama';
+      case 'permit':
+        return 'Boğaz izni bekleniyor';
       case 'upkeep':
         return `Bakım ödenemiyor (${s.phase.due} akçe)`;
       case 'gameover':
@@ -1506,7 +1642,7 @@ export class GameScreen {
     ];
     const idx = steps.findIndex(([k]) => k === ph);
     if (idx < 0) {
-      const special: IconName = ph === 'conquest' ? 'attack' : ph === 'vote' ? 'vote' : ph === 'gameover' ? 'trophy' : 'capital';
+      const special: IconName = ph === 'conquest' ? 'attack' : ph === 'vote' ? 'vote' : ph === 'permit' ? 'strait' : ph === 'gameover' ? 'trophy' : 'capital';
       return h('div', { class: 'phase-steps', role: 'status', 'aria-live': 'polite' }, h('span', { class: 'phase-step current' }, icon(special), this.phaseText()));
     }
     return h(
@@ -1949,6 +2085,12 @@ export class GameScreen {
       const waiting = s.players.filter((p) => p.alive && !(p.id in ph.votes)).map((p) => p.name);
       return `${spectator}Oylama: ${waiting.join(', ')} bekleniyor…`;
     }
+    if (s.phase.kind === 'permit') {
+      const ph = s.phase;
+      if (ph.stage === 'confirm') return `${spectator}${pname(s, ph.player)} boğaz vergisini değerlendiriyor…`;
+      const waiting = [...new Set(ph.requests.filter((r) => !r.answered).map((r) => pname(s, r.controller)))];
+      return `${spectator}${pname(s, ph.player)} boğaz izni istiyor: ${waiting.join(', ')} bekleniyor…`;
+    }
     const a = this.actor();
     const p = s.players[a];
     const pres = this.presence[a];
@@ -1975,7 +2117,7 @@ export class GameScreen {
     }
     if (!this.isHumanTurn()) {
       const a = this.state.players[this.actor()];
-      this.setBanner(this.waitingText(), [], this.state.phase.kind === 'vote' ? 'vote' : a?.kind === 'bot' ? 'bot' : 'hourglass');
+      this.setBanner(this.waitingText(), [], this.state.phase.kind === 'vote' ? 'vote' : this.state.phase.kind === 'permit' ? 'strait' : a?.kind === 'bot' ? 'bot' : 'hourglass');
       this.lastHl = hl;
       this.applyHighlight();
       return;
@@ -2302,11 +2444,11 @@ export class GameScreen {
       if (mode.kind === 'none' && (m.terrain[t] === 'land' || m.straitOf[t] >= 0)) lines.push(h('div', { class: 'tip-good' }, '▶ Tıkla: bu karede yapabileceklerin'));
       if (mode.kind === 'expedition' && mode.unitId !== null) {
         hint = { type: mode.unit === 'ship' ? 'SHIP_EXPEDITION' : 'PLANE_EXPEDITION', player: me, unitId: mode.unitId, target: t };
-        const extra = this.targetCache?.extra as { targets?: Map<number, { kind: string; cost: number; route: { toll: number; path: number[]; tolls: RoutePreview['tolls'] } }> } | undefined;
+        const extra = this.targetCache?.extra as { targets?: Map<number, { kind: string; cost: number; route: { toll: number; path: number[]; tolls: RoutePreview['tolls']; asks: NonNullable<RoutePreview['asks']> } }> } | undefined;
         const info = extra?.targets?.get(t);
         const unit = s.units.find((u) => u.id === mode.unitId);
         // Rota haritada çizilir; geçilen boğazlar ve vergileri ipucunda
-        const route = info && unit ? { from: unit.tile, path: info.route.path, tolls: info.route.tolls } : null;
+        const route = info && unit ? { from: unit.tile, path: info.route.path, tolls: info.route.tolls, asks: info.route.asks } : null;
         if (route?.path.join() !== this.hoverRoute?.path.join()) {
           this.hoverRoute = route;
           this.applyHighlight();
@@ -2873,6 +3015,7 @@ export class GameScreen {
           h('li', {}, `Gemi seferi: ${c.shipOilCost} petrol, deniz yoluyla kıyı topraklarına. Uçak seferi: ${c.planeOilCost} petrol, her yere — düşman üslerinin ${c.baseBlockRadius} kare çevresi hariç.`),
           h('li', {}, `Sefer hedefi sahipsizse ${c.expeditionClaimCost} akçeyle alınır, sahipliyse savaş olur. Maden kareleri seferle doğrudan alınamaz; başkente gemi ya da uçakla saldırılamaz (yalnızca karadan).`),
           h('li', {}, 'Boğaz karesinin iki yanında birbirinin tam karşısındaki iki kara kareye sahipsen o boğazda söz sahibisin: her oyuncu için geçiş ayarını ve vergiyi belirlersin. Birden çok söz sahibi varsa gemi her birinden ayrı izin alır ve her birinin vergisini öder.'),
+          h('li', {}, 'Boğaz ayarı oyuncu başına Sor (varsayılan), Açık, Vergili ya da Kapalıdır. Rotası "Sor" durumundaki boğazdan geçen sefer önce söz sahibine sorulur; biri bile reddederse sefer yapılmaz, ödeme alınmaz, yakıt harcanmaz.'),
           h('li', {}, 'Müttefiklere ve barış yapılanlara saldırılamaz. İttifak kendi turunda bozulabilir; o tur eski müttefike saldırılamaz.'),
           h('li', {}, 'Kazanma: tek devlet kalırsa ya da kalan herkes müttefikse ve oybirliğiyle bitirmeye karar verirse.'),
         ),
@@ -2897,6 +3040,8 @@ function routeStraits(s: GameState, me: number, path: number[], tolls: { straitI
     const ctls = s.straits[id].controllers;
     const toll = tolls.filter((t) => t.straitId === id).reduce((a, t) => a + t.amount, 0);
     const who = ctls.length === 0 ? '' : ` (${ctls.map((c) => (c === me ? 'senin' : pname(s, c))).join(', ')})`;
+    const asks = straitPassage(s, id, me).asks;
+    if (asks.length) return `${straitLabel(id)}${who}: izin sorulacak (${asks.map((c) => pname(s, c)).join(', ')})${toll ? ` + ${toll} akçe vergi` : ''}`;
     return `${straitLabel(id)}${who}: ${toll ? `${toll} akçe vergi` : 'vergisiz'}`;
   });
 }

@@ -4,6 +4,20 @@ import type { GameState } from './types';
 
 /** Vergi her zaman mesafeden önce gelir: önce en ucuz, sonra en kısa rota */
 const TOLL_WEIGHT = 1_000_000;
+/** İzin sorulacak boğaz, açık yoldan pahalı sayılır ama vergili yoldan önce gelir */
+const ASK_COST = 1;
+
+/** Yol üzerindeki boğaz geçişleri (bitişik kareler aynı geçiştir) */
+export function pathStraits(state: GameState, path: number[]): number[] {
+  const out: number[] = [];
+  let last = -1;
+  for (const t of path) {
+    const sid = state.map.straitOf[t];
+    if (sid >= 0 && sid !== last) out.push(sid);
+    last = sid;
+  }
+  return out;
+}
 
 export interface TollCharge {
   straitId: number;
@@ -17,6 +31,8 @@ export interface Route {
   path: number[];
   toll: number;
   tolls: TollCharge[];
+  /** Geçmeden önce izin sorulacak söz sahipleri */
+  asks: { straitId: number; controller: number }[];
 }
 
 export interface RouteMap {
@@ -79,7 +95,7 @@ export function shipRoutes(state: GameState, player: number, from: number): Rout
     if (sid < 0 || (fromTile >= 0 && map.straitOf[fromTile] === sid)) return 1;
     const pass = straitPassage(state, sid, player);
     if (pass.closedBy.length) return Infinity;
-    return 1 + pass.toll * TOLL_WEIGHT;
+    return 1 + (pass.toll + (pass.asks.length ? ASK_COST * pass.asks.length : 0)) * TOLL_WEIGHT;
   };
 
   for (const s of neighbors4(map, from)) {
@@ -125,15 +141,13 @@ export function shipRoutes(state: GameState, player: number, from: number): Rout
       for (let c = s; c !== -1; c = prev[c]) sea.push(c);
       sea.reverse();
       const tolls: TollCharge[] = [];
-      let last = -1;
-      for (const t of sea) {
-        const sid = map.straitOf[t];
-        if (sid >= 0 && (last < 0 || map.straitOf[last] !== sid)) {
-          for (const t of straitPassage(state, sid, player).tolls) tolls.push({ straitId: sid, controller: t.controller, amount: t.amount });
-        }
-        last = t;
+      const asks: Route['asks'] = [];
+      for (const sid of pathStraits(state, sea)) {
+        const pass = straitPassage(state, sid, player);
+        for (const t of pass.tolls) tolls.push({ straitId: sid, controller: t.controller, amount: t.amount });
+        for (const c of pass.asks) if (!asks.some((a) => a.straitId === sid && a.controller === c)) asks.push({ straitId: sid, controller: c });
       }
-      return { target, path: [...sea, target], toll: tolls.reduce((a, b) => a + b.amount, 0), tolls };
+      return { target, path: [...sea, target], toll: tolls.reduce((a, b) => a + b.amount, 0), tolls, asks };
     },
   };
 }
@@ -171,7 +185,7 @@ export function planeRoutes(state: GameState, player: number, from: number): Rou
       const path: number[] = [];
       for (let c = target; c !== from; c = prev[c]) path.push(c);
       path.reverse();
-      return { target, path, toll: 0, tolls: [] };
+      return { target, path, toll: 0, tolls: [], asks: [] };
     },
   };
 }

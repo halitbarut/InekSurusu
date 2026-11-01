@@ -26,6 +26,8 @@ export interface RoutePreview {
   from: number;
   path: number[];
   tolls: { straitId: number; controller: number; amount: number }[];
+  /** İzin sorulacak boğazlar */
+  asks?: { straitId: number; controller: number }[];
 }
 
 export interface TileAction {
@@ -114,7 +116,7 @@ function expeditionAction(state: GameState, me: number, tile: number, kind: Unit
         label: claim ? `${name} al` : `${name} saldır`,
         cost: `${oil} petrol + ${fmtNum(money)} akçe${extra}${chk.route.toll ? ` (${chk.route.toll} vergi dahil)` : ''}`,
         reason: null,
-        route: { from: u.tile, path: chk.route.path, tolls: chk.route.tolls },
+        route: { from: u.tile, path: chk.route.path, tolls: chk.route.tolls, asks: chk.route.asks },
         pick: { kind: 'act', action },
       };
     }
@@ -202,6 +204,8 @@ export class TileMenu {
    *  dokunuşun ardından gelen tıklama, parmağın altındaki ilk eyleme düşmesin. */
   private pressed = false;
 
+  /** Oyuncu adı (izin satırı için) */
+  names: ((p: number) => string) | null = null;
   onPick: ((a: TileAction) => void) | null = null;
   /** Bir eylemin üzerine gelindi (rota önizlemesi için); null = ayrıldı */
   onFocusAction: ((a: TileAction | null) => void) | null = null;
@@ -239,7 +243,7 @@ export class TileMenu {
           },
         },
         icon(a.icon, { cls: 'tm-icon' }),
-        h('span', { class: 'tm-main' }, h('span', { class: 'tm-label' }, a.label), a.cost ? h('span', { class: 'tm-cost' }, a.cost) : null, a.reason ? h('span', { class: 'tm-reason' }, a.reason) : null, a.route && a.route.tolls.length ? h('span', { class: 'tm-tolls' }, icon('strait'), ` ${a.route.tolls.map((t) => `${straitLabel(t.straitId)} boğazı: ${t.amount} akçe vergi`).join(', ')}`) : null),
+        h('span', { class: 'tm-main' }, h('span', { class: 'tm-label' }, a.label), a.cost ? h('span', { class: 'tm-cost' }, a.cost) : null, a.reason ? h('span', { class: 'tm-reason' }, a.reason) : null, a.route && a.route.tolls.length ? h('span', { class: 'tm-tolls' }, icon('strait'), ` ${a.route.tolls.map((t) => `${straitLabel(t.straitId)} boğazı: ${t.amount} akçe vergi`).join(', ')}`) : null, a.route?.asks?.length ? h('span', { class: 'tm-tolls' }, icon('strait'), ` İzin sorulacak: ${a.route.asks.map((x) => `${straitLabel(x.straitId)} (${this.names?.(x.controller) ?? x.controller})`).join(', ')}`) : null),
       );
       if (a.route) {
         b.addEventListener('pointerenter', () => this.onFocusAction?.(a));

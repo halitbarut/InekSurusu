@@ -127,7 +127,6 @@ function tryGenerate(opts: MapGenOptions, seed: number): GameMap {
   const d: Dims = { width, height };
   const n = width * height;
   const rng = createRng(seed);
-  const feature = Math.max(7, Math.min(14, width / 4));
   const terrain = (opts.continentType ?? 'closed') === 'closed'
     ? closedTerrain(d, opts.players, rng, (x, y) => fbm(x / 5, y / 5, seed))
     : archipelagoTerrain(opts, seed, rng);

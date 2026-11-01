@@ -51,6 +51,8 @@ export interface Player {
   /** Bu oyuncu turunda yapılan savaş sayısı (turda tek savaş) */
   battlesThisTurn: number;
   eliminatedBy: number | null;
+  /** Boğaz kimliği → iznin en son reddedildiği turCounter (bu tur aynı boğazdan yeniden sorulamaz) */
+  permitDenied?: Record<number, number>;
 }
 
 export interface Unit {
@@ -106,6 +108,19 @@ export interface Offer {
   createdTurn: number;
 }
 
+/** Söz sahibine sorulan tek bir geçiş izni */
+export interface PermitRequest {
+  straitId: number;
+  controller: number;
+  answered: boolean;
+  /** Söz sahibinin istediği vergi */
+  toll: number;
+}
+
+/** Söz sahibinin izin cevabı: bu seferlik izin/ret ya da bu oyuncu için kalıcı ayar */
+export type PermitDecision = 'once' | 'deny' | 'open' | 'toll' | 'closed';
+export const PERMIT_DECISIONS: readonly PermitDecision[] = ['once', 'deny', 'open', 'toll', 'closed'];
+
 export type Phase =
   | { kind: 'setup_capital' }
   | { kind: 'setup_territory'; picksLeft: number }
@@ -124,6 +139,11 @@ export type Phase =
       counter: boolean;
     }
   | { kind: 'vote'; proposer: number; votes: Record<number, boolean> }
+  /**
+   * Rotası "Sor" durumundaki boğazdan geçen sefer: söz sahiplerinin cevabı bekleniyor. Hiçbir ödeme yapılmaz,
+   * yakıt harcanmaz. stage 'confirm': istenen vergiyi sıra sahibi onaylayacak.
+   */
+  | { kind: 'permit'; player: number; unitId: number; unit: UnitKind; target: number; path: number[]; requests: PermitRequest[]; stage: 'answers' | 'confirm' }
   /** Bakım ödenemiyor: oyuncu birim/üs dağıtarak borcu akçesine indirir */
   | { kind: 'upkeep'; due: number }
   | { kind: 'gameover' };
@@ -179,6 +199,10 @@ export type GameEvent =
   | { type: 'eliminated'; player: number; by: number }
   | { type: 'strait_control'; straitId: number; player: number; gained: boolean }
   | { type: 'strait_policy'; player: number; straitId: number; target: number; mode: StraitMode; toll: number }
+  | { type: 'permit_requested'; player: number; target: number; requests: { straitId: number; controller: number }[]; parties: number[] }
+  | { type: 'permit_answered'; requester: number; controller: number; straitId: number; allowed: boolean; toll: number; parties: number[] }
+  /** granted: sefer yapıldı; aksi halde neden: reddedildi, sıra sahibi vazgeçti ya da akçe yetmedi */
+  | { type: 'permit_result'; player: number; granted: boolean; reason?: 'denied' | 'declined' | 'funds'; by?: number; parties: number[] }
   | { type: 'offer_made'; offer: Offer }
   | { type: 'offer_response'; offerId: number; from: number; to: number; accepted: boolean; failedReason?: string }
   | { type: 'offer_cancelled'; offerId: number; from: number; to: number }
@@ -254,6 +278,10 @@ export type Action =
   | { type: 'CONQUER_TILE'; player: number; tile: number }
   | { type: 'END_CONQUEST'; player: number }
   | { type: 'SET_STRAIT_POLICY'; player: number; straitId: number; target: number; mode: StraitMode; toll: number }
+  /** Söz sahibinin geçiş izni cevabı (toll: 'once' ve 'toll' için vergi) */
+  | { type: 'RESPOND_PERMIT'; player: number; straitId: number; decision: PermitDecision; toll: number }
+  /** Sıra sahibi: istenen vergiyi onayla ya da seferden vazgeç */
+  | { type: 'CONFIRM_PERMIT'; player: number; accept: boolean }
   | { type: 'PROPOSE_OFFER'; player: number; to: number; items: OfferItem[] }
   | { type: 'RESPOND_OFFER'; player: number; offerId: number; accept: boolean }
   | { type: 'CANCEL_OFFER'; player: number; offerId: number }

@@ -1,5 +1,5 @@
 import { EasyBot, HardBot, MediumBot, MEDIUM_TUNING, RusherBot, type BotBrain, type BotTuning } from '../../src/bot';
-import { battleCost, createGame, defaultMapSize, dispatch, neighbors4, structureCost, type BotLevel, type GameConfig, type GameState } from '../../src/engine';
+import { battleCost, createGame, defaultMapSize, dispatch, neighbors4, phaseActor, structureCost, type BotLevel, type GameConfig, type GameState } from '../../src/engine';
 
 export const SNAPSHOT_ROUNDS = [10, 25, 50, 100] as const;
 
@@ -99,7 +99,7 @@ export function playGame(spec: GameSpec): GameMetrics {
   let perTurn = 0;
   while (s.phase.kind !== 'gameover' && s.round <= spec.maxRounds) {
     const ph = s.phase;
-    const p = ph.kind === 'vote' ? s.players.find((pl) => pl.alive && !(pl.id in ph.votes))!.id : ph.kind === 'conquest' ? ph.taker : s.currentPlayer;
+    const p = phaseActor(s);
     let action = brain(p).chooseAction(s, p);
     if (s.turnCounter !== lastTurn) {
       lastTurn = s.turnCounter;
