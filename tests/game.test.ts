@@ -194,16 +194,16 @@ describe('tur akışı', () => {
     let s = testState(['....', '####', '####'], 3);
     own(s, 0, [[0, 1], [1, 1], [0, 2], [1, 2]]);
     setCapital(s, 0, 1, 2);
-    s.players[0].resources = { akce: 2000, gold: 0, oil: 0, iron: 2, steel: 2 };
+    s.players[0].resources = { akce: 3000, gold: 0, oil: 0, iron: 2, steel: 2 };
     expect(validateAction(s, { type: 'BUILD', player: 0, tile: at(s, 0, 2), structure: 'shipyard' }).ok).toBe(false); // kıyı değil
     expect(validateAction(s, { type: 'BUILD', player: 0, tile: at(s, 1, 2), structure: 'base' }).ok).toBe(false); // başkent
     s = act(s, { type: 'BUILD', player: 0, tile: at(s, 0, 1), structure: 'shipyard' });
     s = act(s, { type: 'BUILD', player: 0, tile: at(s, 1, 1), structure: 'factory' });
     s = act(s, { type: 'BUILD', player: 0, tile: at(s, 0, 2), structure: 'base' });
-    expect(s.players[0].resources.akce).toBe(2000 - 200 - 300 - 400);
+    expect(s.players[0].resources.akce).toBe(3000 - 400 - 600 - 800);
     s = act(s, { type: 'PRODUCE', player: 0, tile: at(s, 0, 1), unit: 'ship' });
     s = act(s, { type: 'PRODUCE', player: 0, tile: at(s, 1, 1), unit: 'plane' });
-    expect(s.players[0].resources).toMatchObject({ akce: 1100 - 100 - 200, iron: 0, steel: 0 });
+    expect(s.players[0].resources).toMatchObject({ akce: 1200 - 100 - 200, iron: 0, steel: 0 });
     expect(s.units.map((u) => [u.kind, u.tile])).toEqual([
       ['ship', at(s, 0, 1)],
       ['plane', at(s, 1, 1)],

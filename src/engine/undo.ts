@@ -20,6 +20,7 @@ export function isUndoable(state: GameState, action: Action): boolean {
     case 'EXCHANGE_GOLD':
     case 'DISBAND_UNIT':
     case 'DEMOLISH_BASE':
+    case 'DEMOLISH':
       return ph === 'actions' || ph === 'spin' || ph === 'upkeep';
     case 'SHIP_EXPEDITION':
     case 'PLANE_EXPEDITION':

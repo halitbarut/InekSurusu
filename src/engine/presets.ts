@@ -15,8 +15,8 @@ export const BUILTIN_PRESETS: readonly GamePreset[] = [
   {
     id: 'classic',
     name: 'Klasik',
-    description: 'Kâğıt oyuna en yakın kurallar: savaşlar bedelsiz, gemi ve uçak bakımı yok.',
-    config: { battleCostsEnabled: false, upkeepEnabled: false },
+    description: 'Kâğıt oyuna en yakın kurallar: savaşlar bedelsiz, gemi ve uçak bakımı yok, yapılar ucuz (200 / 300 / 400 akçe).',
+    config: { battleCostsEnabled: false, upkeepEnabled: false, shipyardCost: 200, factoryCost: 300, baseCost: 400 },
     mapScale: 1,
   },
   {

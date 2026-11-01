@@ -192,8 +192,12 @@ export function formatEvent(state: GameState, e: GameEvent): string | null {
       return `${N(e.player)} bakım ödedi: ${fmtNum(e.amount)} akçe (${parts})`;
     }
     case 'disband': {
-      const what = e.what === 'base' ? 'askeri üssünü yıktı' : e.what === 'ship' ? 'gemiyi dağıttı' : 'uçağı dağıttı';
+      const what = e.what === 'base' ? 'askeri üssünü yıktı' : e.what === 'ship' ? 'gemiyi terhis etti' : 'uçağı terhis etti';
       return `${N(e.player)} ${tileLabel(state, e.tile)} karesindeki ${what}${e.voluntary ? '' : ' (bakım ödenemedi)'}`;
+    }
+    case 'demolish': {
+      const extra = [e.moved ? `${e.moved} birim taşındı` : '', e.disbanded ? `${e.disbanded} birim terhis edildi` : ''].filter(Boolean).join(', ');
+      return `${N(e.player)} ${tileLabel(state, e.tile)} karesindeki ${STRUCT_NAME[e.structure].toLocaleLowerCase('tr')} yapısını yıktı (${fmtNum(e.cost)} akçe)${extra ? `: ${extra}` : ''}`;
     }
     case 'game_over':
       return `Oyun bitti! Kazanan: ${e.winners.map(N).join(', ')}`;
@@ -218,9 +222,11 @@ export function actionLabel(state: GameState, a: Action): string {
     case 'PLANE_EXPEDITION':
       return 'uçak seferi';
     case 'DISBAND_UNIT':
-      return 'birim dağıtma';
+      return 'terhis';
     case 'DEMOLISH_BASE':
       return 'üs yıkma';
+    case 'DEMOLISH':
+      return 'yapı yıkma';
     default:
       return 'eylem';
   }
@@ -280,6 +286,8 @@ export function eventIcon(e: GameEvent): IconName | null {
       return 'upkeep';
     case 'disband':
       return e.voluntary ? 'trash' : 'upkeep';
+    case 'demolish':
+      return 'trash';
     case 'game_over':
       return 'trophy';
     default:

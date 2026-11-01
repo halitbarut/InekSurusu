@@ -17,6 +17,7 @@ import {
   capitalCandidates,
   claimableTiles,
   conquestCandidates,
+  demolishPlan,
   dispatch,
   expeditionTargets,
   getRelation,
@@ -881,6 +882,9 @@ export class GameScreen {
       case 'expeditionMode':
         this.setMode({ kind: 'expedition', unit: p.unit, unitId: p.unitId });
         return;
+      case 'demolish':
+        void this.confirmDemolish(p.tile);
+        return;
       case 'composer':
         this.openComposer(this.newDraft(p.to));
         return;
@@ -891,6 +895,35 @@ export class GameScreen {
         this.openStraits();
         return;
     }
+  }
+
+  /** Yapıda konuşlu birim varsa yıkmadan önce uyarır */
+  private async confirmDemolish(tile: number) {
+    const s = this.state;
+    const me = this.actor();
+    const action: Action = { type: 'DEMOLISH', player: me, tile };
+    const plan = demolishPlan(s, me, tile);
+    if (plan.moves.length + plan.disbanded.length > 0) {
+      const name = s.structure[tile] === 'shipyard' ? 'gemi' : 'uçak';
+      const m = openModal({
+        title: 'Yapıyı yık',
+        icon: 'warning',
+        body: h(
+          'div',
+          {},
+          h('p', {}, `Bu yapıda ${plan.moves.length + plan.disbanded.length} ${name} konuşlu.`),
+          plan.moves.length ? h('p', {}, `${plan.moves.length} ${name} aynı türden en yakın yapıya taşınır: ${tileLabel(s, plan.moves[0].to)}.`) : null,
+          plan.disbanded.length ? h('p', { class: 'tip-bad' }, `Aynı türden başka yapın yok: ${plan.disbanded.length} ${name} terhis edilir.`) : null,
+          h('p', { class: 'muted small' }, `Ücret ${fmtNum(s.config.demolishCost)} akçe. Bu tur içinde geri alabilirsin.`),
+        ),
+        buttons: [
+          { label: 'Vazgeç', value: 'no' },
+          { label: 'Yık', value: 'yes', danger: true },
+        ],
+      });
+      if ((await m.result) !== 'yes') return;
+    }
+    await this.act(action);
   }
 
   /** Son hedef vurgusu + (varsa) üzerine gelinen seferin rotası ve boğaz vergileri */
@@ -2690,7 +2723,7 @@ export class GameScreen {
         res.gold > 0
           ? h('p', {}, h('button', { class: 'btn btn-small btn-primary', onClick: () => run({ type: 'EXCHANGE_GOLD', player: me, amount: res.gold }) }, icon('exchange'), `${res.gold} altını bozdur (+${fmtNum(res.gold * c.goldToAkce)} akçe)`))
           : null,
-        units.map((u) => row(UNIT_ICON[u.kind], `${u.kind === 'ship' ? 'Gemi' : 'Uçak'} ${tileLabel(s, u.tile)}`, u.kind === 'ship' ? c.shipUpkeep : c.planeUpkeep, 'Dağıt', { type: 'DISBAND_UNIT', player: me, unitId: u.id })),
+        units.map((u) => row(UNIT_ICON[u.kind], `${u.kind === 'ship' ? 'Gemi' : 'Uçak'} ${tileLabel(s, u.tile)}`, u.kind === 'ship' ? c.shipUpkeep : c.planeUpkeep, 'Terhis et', { type: 'DISBAND_UNIT', player: me, unitId: u.id })),
         // Bakımsız üsleri yıkmak borcu azaltmaz
         c.baseUpkeep <= 0 ? null : bases.map((t) => row('base', `Askeri üs ${tileLabel(s, t)} (toprak sende kalır)`, c.baseUpkeep, 'Yık', { type: 'DEMOLISH_BASE', player: me, tile: t })),
       ),
@@ -3156,12 +3189,13 @@ export class GameScreen {
           h('li', {}, `Sahipsiz komşu toprak: ${c.claimCost} akçe. 1 altın = ${c.goldToAkce} akçe.`),
           h('li', {}, `Tersane ${c.shipyardCost} (denize kıyı), uçak fabrikası ${c.factoryCost}, askeri üs ${c.baseCost} akçe (başkente kurulamaz). Karede tek yapı.`),
           h('li', {}, `Gemi: ${c.shipIronCost} demir + ${c.shipAkceCost} akçe. Uçak: ${c.planeSteelCost} çelik + ${c.planeAkceCost} akçe. Kalıcıdırlar.`),
+          h('li', {}, `Kendi yapını kendi turunda ${c.demolishCost} akçeye yıkabilirsin; başkent yıkılamaz. Konuşlu birimler aynı türden başka yapıya taşınır, yoksa terhis edilir. Gemi ya da uçağı istediğin zaman ücretsiz terhis edebilirsin (geri ödeme yok, sonraki turdan bakımı ödenmez).`),
           h('li', {}, 'Turda yalnızca 1 savaş (kara, gemi/uçakla saldırı, başkent ya da üs savaşı). Sahipsiz toprak almak savaş sayılmaz.'),
           c.battleCostsEnabled
             ? h('li', {}, `Savaş masrafı (başlatırken, sonuçtan bağımsız): normal ${battleCostText(battleCost(this.state, 'land'))}, üs ${battleCostText(battleCost(this.state, 'base'))}, başkent ${battleCostText(battleCost(this.state, 'capital'))}.`)
             : null,
           c.upkeepEnabled
-            ? h('li', {}, `Tur başı bakım (topaçtan önce): gemi ${c.shipUpkeep}, uçak ${c.planeUpkeep}, askeri üs ${c.baseUpkeep} akçe. Ödenemeyen kadar birim dağıtılır, üs yıkılır.`)
+            ? h('li', {}, `Tur başı bakım (topaçtan önce): gemi ${c.shipUpkeep}, uçak ${c.planeUpkeep}, askeri üs ${c.baseUpkeep} akçe. Ödenemeyen kadar birim terhis edilir.`)
             : null,
           c.weaknessRule ? h('li', {}, 'Zayıflık şartı: başkente saldırmak için savunanın toprağı saldıranınkinin yarısından az olmalı.') : null,
           c.openingPeace ? h('li', {}, `Açılış barışı: ilk ${c.openingPeaceRounds} tur kimse başka oyuncunun toprağına saldıramaz.`) : null,

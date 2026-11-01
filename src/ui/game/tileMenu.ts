@@ -1,6 +1,7 @@
 import {
   battleCost,
   battleCostText,
+  demolishPlan,
   expeditionCheck,
   straitPairs,
   straitPairsOf,
@@ -43,6 +44,8 @@ export interface TileAction {
   pick:
     | { kind: 'act'; action: Action }
     | { kind: 'expeditionMode'; unit: UnitKind; unitId: number }
+    /** Birim konuşlu yapı için önce uyarı gösterilir */
+    | { kind: 'demolish'; tile: number }
     | { kind: 'composer'; to: number }
     | { kind: 'chat'; to: number }
     | { kind: 'straits' };
@@ -175,8 +178,23 @@ export function tileMenuModel(state: GameState, me: number, tile: number, opts: 
           pick: { kind: 'expeditionMode', unit, unitId: (ready[0] ?? here[0]).id },
         });
       }
-    } else if (st === 'base') {
-      actions.push({ id: 'demolish', icon: 'trash', label: 'Üssü yık', cost: c.upkeepEnabled && c.baseUpkeep > 0 ? `bakımdan ${c.baseUpkeep} akçe kurtarır` : 'toprak sende kalır', reason: null, pick: { kind: 'act', action: { type: 'DEMOLISH_BASE', player: me, tile } } });
+      // Terhis: ücretsiz, geri ödeme yok; bir sonraki turdan bakımı ödenmez
+      if (here.length) {
+        actions.push({
+          id: `disband-${unit}`,
+          icon: 'trash',
+          label: `${unit === 'ship' ? 'Gemi' : 'Uçak'} terhis et`,
+          cost: `ücretsiz${c.upkeepEnabled ? ` · bakımdan ${unit === 'ship' ? c.shipUpkeep : c.planeUpkeep} akçe kurtarır` : ''}`,
+          reason: null,
+          pick: { kind: 'act', action: { type: 'DISBAND_UNIT', player: me, unitId: here[here.length - 1].id } },
+        });
+      }
+    }
+    if (st && st !== 'capital') {
+      const plan = demolishPlan(state, me, tile);
+      const n = plan.moves.length + plan.disbanded.length;
+      const note = n === 0 ? 'toprak sende kalır' : plan.moves.length ? `${n} birim başka yapıya taşınır` : `${n} birim terhis edilir`;
+      actions.push({ id: 'demolish', icon: 'trash', label: 'Yapıyı yık', cost: `${fmtNum(c.demolishCost)} akçe · ${note}`, reason: check(state, { type: 'DEMOLISH', player: me, tile }), pick: { kind: 'demolish', tile } });
     }
     const sub = [st ? STRUCT_NAME[st] : 'Senin toprağın', mine ? ' · maden' : '', isCoastal(m, tile) ? ' · kıyı' : ''].join('');
     return { title: tileLabel(state, tile), sub, notes: bankNotes(state, tile), actions };

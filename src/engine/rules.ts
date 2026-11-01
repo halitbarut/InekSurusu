@@ -10,6 +10,7 @@ import {
   weaknessProblem,
   capitalProblem,
   conquestCandidates,
+  demolishPlan,
   isAllied,
   mutRelation,
   refreshStraits,
@@ -164,10 +165,20 @@ export function validateAction(state: GameState, action: Action): ValidationResu
       return OK;
     }
     case 'DEMOLISH_BASE':
-      if (ph.kind !== 'upkeep' && ph.kind !== 'actions') return fail('Üsler bakım ya da eylem aşamasında yıkılır');
+      if (ph.kind !== 'upkeep') return fail('Ücretsiz üs yıkma yalnızca bakım ödenemezken yapılır');
       if (!myTurn) return fail('Sıra sizde değil');
       if (!validTile(state, action.tile) || state.owner[action.tile] !== action.player || state.structure[action.tile] !== 'base') return fail('Burada senin askeri üssün yok');
       return OK;
+    case 'DEMOLISH': {
+      if (ph.kind !== 'actions') return fail('Şu an eylem yapılamaz');
+      if (!myTurn) return fail('Sıra sizde değil');
+      if (!validTile(state, action.tile) || state.owner[action.tile] !== action.player) return fail('Bu toprak senin değil');
+      const st = state.structure[action.tile];
+      if (st === 'capital') return fail('Başkent yıkılamaz');
+      if (st === null) return fail('Burada yapı yok');
+      if (res.akce < cfg.demolishCost) return fail(`${cfg.demolishCost} akçe gerekli`);
+      return OK;
+    }
     case 'SHIP_EXPEDITION':
     case 'PLANE_EXPEDITION': {
       const r = expeditionCheck(state, action);
@@ -364,6 +375,16 @@ export function applyAction(state: GameState, action: Action, rng: Rng): ApplyRe
       ev.push({ type: 'disband', player: me.id, what: 'base', tile: action.tile, voluntary: s.phase.kind !== 'upkeep' });
       if (s.phase.kind === 'upkeep') tryPayUpkeep(s, ev);
       break;
+    case 'DEMOLISH': {
+      const structure = s.structure[action.tile] as BuildableStructure;
+      const plan = demolishPlan(s, me.id, action.tile);
+      me.resources.akce -= cfg.demolishCost;
+      for (const m of plan.moves) s.units.find((u) => u.id === m.unitId)!.tile = m.to;
+      s.units = s.units.filter((u) => !plan.disbanded.includes(u.id));
+      s.structure[action.tile] = null;
+      ev.push({ type: 'demolish', player: me.id, tile: action.tile, structure, cost: cfg.demolishCost, moved: plan.moves.length, disbanded: plan.disbanded.length });
+      break;
+    }
     case 'BUILD':
       me.resources.akce -= structureCost(s, action.structure);
       s.structure[action.tile] = action.structure;

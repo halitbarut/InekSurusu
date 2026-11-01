@@ -277,6 +277,10 @@ export class MediumBot implements BotBrain {
     const excess = this.excessUnit(state, p);
     if (excess !== null) return { type: 'DISBAND_UNIT', player: p, unitId: excess };
 
+    // 2b') İşe yaramayan yapıyı yık
+    const demolish = this.pickDemolish(state, p);
+    if (demolish) return demolish;
+
     // 2c) İlişkisi değişen oyuncuların boğaz ayarı
     const strait = this.pickStraitPolicy(state, p);
     if (strait) return strait;
@@ -365,6 +369,31 @@ export class MediumBot implements BotBrain {
     const planes = mine.filter((u) => u.kind === 'plane');
     const pool = planes.length >= ships.length ? planes : ships;
     return pool[pool.length - 1].id;
+  }
+
+  /**
+   * Yapı yıkma: bakım isteyen ve düşmandan uzak üs ile gidecek yeri kalmamış, boş tersane. Ücret akçenin
+   * küçük bir payıysa; yeni tersane kurmaktansa eskisini tutmak daha ucuz olduğu için başka durumda yıkılmaz.
+   */
+  protected pickDemolish(state: GameState, p: number): Action | null {
+    const cfg = state.config;
+    if (state.players[p].resources.akce < cfg.demolishCost * 4) return null;
+    if (cfg.upkeepEnabled && cfg.baseUpkeep > 0) {
+      for (const t of ownedStructures(state, p, 'base')) {
+        let near = false;
+        for (let i = 0; i < state.owner.length && !near; i++) {
+          const o = state.owner[i];
+          near = o !== null && o !== p && !isAllied(state, o, p) && manhattan(state.map, i, t) <= 6;
+        }
+        if (!near) return { type: 'DEMOLISH', player: p, tile: t };
+      }
+    }
+    for (const t of ownedStructures(state, p, 'shipyard')) {
+      if (state.units.some((u) => u.tile === t)) continue;
+      const reach = [...shipRoutes(state, p, t).targets].some((x) => state.owner[x] !== p);
+      if (!reach) return { type: 'DEMOLISH', player: p, tile: t };
+    }
+    return null;
   }
 
   /** Bakım ödenemiyor: önce altını boz, sonra en az işe yarayanı dağıt. */

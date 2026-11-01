@@ -57,6 +57,7 @@ const GROUPS: Group[] = [
       { key: 'shipyardCost', label: 'Tersane', min: 0, max: 10000 },
       { key: 'factoryCost', label: 'Uçak fabrikası', min: 0, max: 10000 },
       { key: 'baseCost', label: 'Askeri üs', min: 0, max: 10000 },
+      { key: 'demolishCost', label: 'Yapı yıkma ücreti', min: 0, max: 10000 },
       { key: 'shipAkceCost', label: 'Gemi: akçe', min: 0, max: 10000 },
       { key: 'shipIronCost', label: 'Gemi: demir', min: 0, max: 100 },
       { key: 'planeAkceCost', label: 'Uçak: akçe', min: 0, max: 10000 },

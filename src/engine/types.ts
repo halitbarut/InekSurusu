@@ -214,7 +214,9 @@ export type GameEvent =
   | { type: 'vote_result'; accepted: boolean }
   | { type: 'game_over'; winners: number[] }
   | { type: 'upkeep'; player: number; amount: number; ships: number; planes: number; bases: number }
-  | { type: 'disband'; player: number; what: 'ship' | 'plane' | 'base'; tile: number; voluntary: boolean };
+  | { type: 'disband'; player: number; what: 'ship' | 'plane' | 'base'; tile: number; voluntary: boolean }
+  /** Yapı yıkıldı: konuşlu birimler aynı türden başka yapıya taşındı ya da terhis edildi */
+  | { type: 'demolish'; player: number; tile: number; structure: BuildableStructure; cost: number; moved: number; disbanded: number };
 
 export interface BattleCost {
   akce: number;
@@ -291,7 +293,10 @@ export type Action =
   | { type: 'PROPOSE_VICTORY'; player: number }
   | { type: 'CAST_VOTE'; player: number; accept: boolean }
   | { type: 'DISBAND_UNIT'; player: number; unitId: number }
+  /** Bakım ödenemezken üs yıkma (ücretsiz, yalnızca bakım aşamasında) */
   | { type: 'DEMOLISH_BASE'; player: number; tile: number }
+  /** Kendi yapısını yıkma (ücretli, eylem aşamasında) */
+  | { type: 'DEMOLISH'; player: number; tile: number }
   | { type: 'END_TURN'; player: number };
 
 export type ActionType = Action['type'];

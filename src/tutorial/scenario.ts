@@ -34,7 +34,7 @@ export const T = {
   zeynepCapital: at(21, 3),
   island: at(22, 13),
   far: at(14, 3),
-  /** Boğazın oyuncuda olmayan tek yakası */
+  /** Boğazın oyuncuda olmayan yakası: kuzeyindeki kareyle karşılıklı çift olur */
   bank: at(4, 9),
 };
 
@@ -60,15 +60,15 @@ export function tutorialState(): GameState {
     else if (x >= 12 && x <= 19 && y >= 6 && y <= 9) s.owner[i] = MEHMET;
     else if (x >= 19 && y <= 5) s.owner[i] = ZEYNEP;
   }
-  // Boğazın beş yakası oyuncuda, biri sahipsiz
-  for (const [x, y] of [[2, 7], [3, 7], [4, 7], [2, 9], [3, 9]]) s.owner[at(x, y)] = ME;
+  // Boğazın kuzey yakası oyuncuda; karşılıklı çift için güneydeki kareler sahipsiz
+  for (const [x, y] of [[2, 7], [3, 7], [4, 7]]) s.owner[at(x, y)] = ME;
   // Mehmet'in başkentine giden yolun kuzeyi sahipsiz kalsın (yalnızca savaşla alınır)
   for (const [i, p] of [[T.capital, ME], [T.mehmetCapital, MEHMET], [T.zeynepCapital, ZEYNEP]] as const) {
     s.owner[i] = p;
     s.structure[i] = 'capital';
     s.players[p].capital = i;
   }
-  s.players[ME].resources = { akce: 2500, gold: 1, oil: 3, iron: 4, steel: 2 };
+  s.players[ME].resources = { akce: 3500, gold: 1, oil: 3, iron: 4, steel: 2 };
   s.players[MEHMET].resources = { akce: 300, gold: 0, oil: 0, iron: 0, steel: 0 };
   s.players[ZEYNEP].resources = { akce: 300, gold: 0, oil: 0, iron: 0, steel: 0 };
   s.phase = { kind: 'spin' };

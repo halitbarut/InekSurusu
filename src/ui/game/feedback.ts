@@ -40,6 +40,8 @@ export function actionCost(state: GameState, a: Action): Partial<Resources> | nu
       return { akce: c.claimCost };
     case 'BUILD':
       return { akce: structureCost(state, a.structure) };
+    case 'DEMOLISH':
+      return { akce: c.demolishCost };
     case 'PRODUCE':
       return a.unit === 'ship' ? { iron: c.shipIronCost, akce: c.shipAkceCost } : { steel: c.planeSteelCost, akce: c.planeAkceCost };
     case 'EXCHANGE_GOLD':

@@ -77,6 +77,9 @@ export function recordStats(s: GameState, events: GameEvent[]) {
       case 'build':
         T[e.player].spend.build += e.structure === 'shipyard' ? cfg.shipyardCost : e.structure === 'factory' ? cfg.factoryCost : cfg.baseCost;
         break;
+      case 'demolish':
+        T[e.player].spend.build += e.cost;
+        break;
       case 'produce':
         T[e.player].spend.produce += e.unit === 'ship' ? cfg.shipAkceCost : cfg.planeAkceCost;
         break;

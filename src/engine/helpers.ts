@@ -148,6 +148,28 @@ export function unitCanSortie(state: GameState, u: Unit): boolean {
   return max <= 0 || u.sortiesThisTurn < max;
 }
 
+/** Yapı yıkılırsa konuşlu birimlere ne olur: aynı türden en yakın yapıya taşınır, yoksa terhis edilir. */
+export function demolishPlan(state: GameState, p: number, tile: number): { moves: { unitId: number; to: number }[]; disbanded: number[] } {
+  const st = state.structure[tile];
+  const plan: { moves: { unitId: number; to: number }[]; disbanded: number[] } = { moves: [], disbanded: [] };
+  let home = -1;
+  let best = Infinity;
+  for (let i = 0; i < state.owner.length; i++) {
+    if (i === tile || state.owner[i] !== p || state.structure[i] !== st) continue;
+    const d = chebyshev(state.map, i, tile);
+    if (d < best) {
+      best = d;
+      home = i;
+    }
+  }
+  for (const u of state.units) {
+    if (u.tile !== tile || u.owner !== p) continue;
+    if (home >= 0) plan.moves.push({ unitId: u.id, to: home });
+    else plan.disbanded.push(u.id);
+  }
+  return plan;
+}
+
 /** Karenin sahipliğini değiştirir; üzerindeki yapı ve birimler de yeni sahibine geçer. */
 export function transferTile(state: GameState, tile: number, to: number) {
   state.owner[tile] = to;

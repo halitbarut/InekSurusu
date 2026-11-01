@@ -139,9 +139,8 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
     başkent savaşı için sınır komşuluğu gerekir. Üs savaşı gemiyle yapılabilir (uçakla yapılamaz, çünkü üs
     kendi engel alanının içindedir).
 46. **Bakım** her oyuncu turunun başında, gelirden (madenler) sonra ve topaçtan önce ödenir. Akçe yetmezse
-    bakım aşamasına geçilir: oyuncu altın bozdurabilir, gemi/uçak dağıtabilir ya da üs yıkabilir; borç akçesine
-    inince kalan bakım otomatik ödenir ve topaç aşaması başlar. Dağıtılan birim tamamen yok olur. Oyuncu eylem
-    aşamasında da kendi isteğiyle birim dağıtıp üs yıkabilir (motor destekler).
+    bakım aşamasına geçilir: oyuncu altın bozdurabilir, gemi/uçak terhis edebilir ya da üs yıkabilir (bkz. #165 ve Görev 6).
+    Terhis edilen birim tamamen yok olur.
 47. Başkentin kendisi ve tersane/uçak fabrikası bakım gerektirmez; yalnızca gemi, uçak ve askeri üs.
 48. **Zayıflık şartı** yalnızca başkent savaşına uygulanır ve toprak sayılarıyla (başkent dahil) karşılaştırılır:
     savunanın toprağı × 2 < saldıranın toprağı.
@@ -417,7 +416,7 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
      (TutorialBot) için RNG hep aynı sırayla kullanılır. Başlangıç RNG durumu (175) `scripts/tutorialSeed.ts` ile,
      2. turdaki savaş kaybedilecek, 3. turdaki savaşta en az 2 toprak alınacak ve 4. turdaki başkent savaşı
      kazanılacak biçimde arandı; `tests/tutorial.test.ts` bunu doğrular.
-126. Öğreticide oyuncuya baştan yeterli kaynak verilir (2500 akçe, 1 altın, 3 petrol, 4 demir, 2 çelik) ki adımlar
+126. Öğreticide oyuncuya baştan yeterli kaynak verilir (3500 akçe, 1 altın, 3 petrol, 4 demir, 2 çelik) ki adımlar
      topaç sonucuna takılmasın. Savaş önizlemesi açık kalır (öğreticinin parçası), tur sonu hatırlatması ve ipuçları
      kapalıdır. Öğretici otomatik kaydı ve tekrar kaydını etkilemez; ilerlemesi ayrı saklanır (`inek-surusu-tutorial`:
      adım + o adımın başındaki durum).
@@ -535,3 +534,18 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
 159. Bot → insan teklifi hot-seat'te alıcının turu gelene kadar süre saymaz: alıcı başka oyuncunun sırasında cihazın başında
      olmayabilir, görmeden reddedilmesin.
 160. Öğreticide cevap süresi yoktur: botlar anında cevaplar, oyuncu tek eyleme yönlendirilir.
+
+## Yapı fiyatları, yıkma ve terhis
+
+161. Yeni varsayılan fiyatlar: tersane 400, uçak fabrikası 600, askeri üs 800 akçe; bütün önayarlar bunları kullanır. **Klasik**
+     kağıt oyuna en yakın eski değerleri (200 / 300 / 400) korur. Öğreticinin başlangıç akçesi 3500'e çıktı ve metinleri güncellendi.
+162. **Yapı yıkma** (`DEMOLISH`, ücret `demolishCost`, varsayılan 100): kendi turunda, eylem aşamasında; tersane, fabrika ve üs için.
+     Başkent yıkılamaz. Toprak sahibinde kalır. Ücret harcama özetinde "inşa" kalemine sayılır.
+163. Yapıda birim varsa pencereyle uyarılır. Birimler aynı türden **en yakın** yapıya taşınır (Chebyshev; eşitlikte küçük kare
+     numarası), aynı türden yapı yoksa terhis edilir. Taşınan birim o tur sefere çıkabilir.
+164. **Terhis** (`DISBAND_UNIT`): kendi turunda ücretsiz, geri ödeme yok; bir sonraki turdan bakımı ödenmez. Kare menüsünde yapı
+     üzerinden yapılır. Aynı yapıdaki birimler eşdeğer olduğu için en son üretilen seçilir.
+165. Eski ücretsiz üs yıkma (`DEMOLISH_BASE`) yalnızca bakım ödenemezken kalır: o an akçesi olmayan oyuncudan ücret istenmez.
+166. Yıkma ve terhis rastgelelik içermez, başka oyuncuyu ilgilendirmez, geri alınabilir.
+167. **Botlar:** Orta ve üstü, terhisi bakım gelirin %60'ını aşınca kullanır (eskisi gibi). Yapı yıkmayı iki durumda kullanır: bakım
+     isteyen ve 6 kare içinde düşman olmayan üs; gidecek yabancı kıyısı kalmamış boş tersane. Ücret akçesinin dörtte birinden azsa.

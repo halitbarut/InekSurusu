@@ -96,6 +96,7 @@ export function parseAction(raw: unknown): Action | null {
     case 'DISBAND_UNIT':
       return ints('unitId') ? { type: a.type, player, unitId: a.unitId as number } : null;
     case 'DEMOLISH_BASE':
+    case 'DEMOLISH':
       return ints('tile') ? { type: a.type, player, tile: a.tile as number } : null;
     default:
       return null;

@@ -23,6 +23,8 @@ export interface GameConfig {
   shipyardCost: number;
   factoryCost: number;
   baseCost: number;
+  /** Kendi yapısını yıkma ücreti */
+  demolishCost: number;
   shipAkceCost: number;
   shipIronCost: number;
   planeAkceCost: number;
@@ -80,9 +82,10 @@ export const DEFAULT_CONFIG: GameConfig = {
   goldToAkce: 200,
   spinFaces: 8,
   spinMultiplier: 100,
-  shipyardCost: 200,
-  factoryCost: 300,
-  baseCost: 400,
+  shipyardCost: 400,
+  factoryCost: 600,
+  baseCost: 800,
+  demolishCost: 100,
   shipAkceCost: 100,
   shipIronCost: 2,
   planeAkceCost: 200,
@@ -124,6 +127,7 @@ export const AKCE_FIELDS: readonly (keyof GameConfig)[] = [
   'shipyardCost',
   'factoryCost',
   'baseCost',
+  'demolishCost',
   'shipAkceCost',
   'planeAkceCost',
   'landBattleAkce',

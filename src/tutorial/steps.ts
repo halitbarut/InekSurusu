@@ -100,7 +100,7 @@ export const STEPS: TutorialStep[] = [
   {
     topic: 4,
     title: 'İnşa: tersane',
-    text: 'Tersane (200 akçe) denize kıyısı olan bir toprağa kurulur ve gemi üretir. Bu koy, batıdaki dar boğazla açık denize bağlı. Bir karede tek yapı olur.',
+    text: 'Tersane (400 akçe) denize kıyısı olan bir toprağa kurulur ve gemi üretir. Bu koy, batıdaki dar boğazla açık denize bağlı. Bir karede tek yapı olur.',
     todo: "Vurgulanan kıyı karesine tıkla, 'Tersane kur'u seç.",
     targets: () => [T.shipyard],
     allow: (a) => a.type === 'BUILD' && a.tile === T.shipyard && a.structure === 'shipyard',
@@ -110,7 +110,7 @@ export const STEPS: TutorialStep[] = [
   {
     topic: 4,
     title: 'İnşa: uçak fabrikası',
-    text: 'Uçak fabrikası (300 akçe) herhangi bir toprağa kurulur ve uçak üretir. Üçüncü yapı olan askeri üssü (400 akçe) biraz sonra kuracaksın.',
+    text: 'Uçak fabrikası (600 akçe) herhangi bir toprağa kurulur ve uçak üretir. Üçüncü yapı olan askeri üssü (800 akçe) biraz sonra kuracaksın.',
     todo: "Vurgulanan kareye tıkla, 'Uçak fabrikası kur'u seç.",
     targets: () => [T.factory],
     allow: (a) => a.type === 'BUILD' && a.tile === T.factory && a.structure === 'factory',
@@ -223,7 +223,7 @@ export const STEPS: TutorialStep[] = [
   {
     topic: 9,
     title: 'Askeri üs',
-    text: 'Askeri üs (400 akçe) başkente kurulamaz; çevresindeki 3 karede düşman uçaklarını engeller. Üs karesine saldıran 2 kez art arda yüksek atmalıdır.',
+    text: 'Askeri üs (800 akçe) başkente kurulamaz; çevresindeki 3 karede düşman uçaklarını engeller. Üs karesine saldıran 2 kez art arda yüksek atmalıdır.',
     todo: "Vurgulanan sınır karesine tıkla, 'Askeri üs kur'u seç.",
     targets: () => [T.base],
     allow: (a) => a.type === 'BUILD' && a.tile === T.base && a.structure === 'base',
