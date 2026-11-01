@@ -466,9 +466,10 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
      kendi izninden muaftır, öbürlerine tabidir.
 140. Bir çiftini kaybeden ama başka çifti kalan oyuncu söz sahibi kalır ve ayarları durur. Hiç çifti kalmayınca ayarları silinir;
      aynı boğazda yeniden söz sahibi olursa baştan başlar.
-141. Haritadaki simge kanalın yanındaki yakanın üstüne çizilir: halka söz sahiplerinin renkleri (birden çoksa dilimler, kimse
-     yoksa gri), içi bakan oyuncu için durum: ✓ açık, ? sorulacak, ¤ vergili, ✕ kapalı (en kısıtlayıcı söz sahibi belirler).
-     Kendi söz sahibi olduğu tek boğazda ✓ görünür. İzleyici yalnızca söz sahiplerini görür. Hot-seat'te bakan oyuncu sıradaki
+141. Haritadaki **geçiş tabelası** kanalın yanındaki yakanın üstüne çizilir: gemi ve durum işareti; rengi bakan oyuncu için durumu verir:
+     yeşil ✓ açık, mavi ? izin sorulur, sarı akçe vergili, kırmızı ✕ ve üstü çizili gemi kapalı (en kısıtlayıcı söz sahibi belirler). Altındaki noktalar
+     söz sahiplerinin rengidir. Ekranda her zaman okunacak boyutta çizilir, yakınlaşınca durum yazıyla da yazar; yakanın üzerine gelince ipucunda geçiş durumu görünür.
+     Kendi söz sahibi olduğu tek boğazda yeşil görünür. İzleyici yalnızca söz sahiplerini görür. Hot-seat'te bakan oyuncu sıradaki
      insandır, çevrimiçinde kendi koltuğu.
 142. **Eski kayıtlar** `migrateState` ile açılır: eski idareci söz sahibi olur, `{allow, toll}` ayarları karşılığına çevrilir,
      söz sahipleri yeni kurala göre yeniden hesaplanır. Eski kayıtların tekrar verisi yeni kurallarla aynı sonucu

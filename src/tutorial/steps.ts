@@ -204,7 +204,7 @@ export const STEPS: TutorialStep[] = [
   {
     topic: 8,
     title: 'Boğazlar',
-    text: 'Boğaz, iki kara arasındaki tek kare genişliğindeki deniz geçididir (haritada kesik çizgi). Boğaz karesinin iki yanında birbirinin tam karşısındaki iki kara karesine sahip olan, o boğazda söz sahibidir. Batıdaki boğazda karşılıklı çiftin bir karesi eksik.',
+    text: 'Boğaz, iki kara arasındaki tek kare genişliğindeki deniz geçididir (haritada kesik çizgi; yanındaki gemili tabela geçişin senin için durumunu gösterir). Boğaz karesinin iki yanında birbirinin tam karşısındaki iki kara karesine sahip olan, o boğazda söz sahibidir. Batıdaki boğazda karşılıklı çiftin bir karesi eksik.',
     todo: 'Vurgulanan yakayı al.',
     targets: () => [T.bank],
     allow: (a) => is(a, 'CLAIM_TILE', T.bank),

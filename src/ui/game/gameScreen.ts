@@ -2746,7 +2746,10 @@ export class GameScreen {
         lines.push(h('div', { class: 'tip-line' }, ships ? [icon('ship'), `${ships} gemi `] : null, planes ? [icon('plane'), `${planes} uçak`] : null));
       }
       const banks = m.straits.filter((x) => x.banks.includes(t));
-      for (const b of banks) lines.push(h('div', { class: 'muted tip-line' }, icon('strait'), `${straitLabel(b.id)} boğazının yakası`));
+      for (const b of banks) {
+        lines.push(h('div', { class: 'muted tip-line' }, icon('strait'), `${straitLabel(b.id)} boğazının yakası`));
+        if (this.isHumanTurn() && s.straits[b.id].controllers.length) lines.push(h('div', { class: 'tip-line' }, icon('ship'), `Geçiş: ${this.passageText(b.id, s.currentPlayer)}`));
+      }
     }
     const sid = m.straitOf[t];
     if (sid >= 0) {
@@ -3506,6 +3509,13 @@ export class GameScreen {
         {},
         mine.length ? cards : h('p', {}, 'Hiçbir boğazda söz sahibi değilsin. Bir boğaz karesinin iki yanında birbirinin tam karşısındaki iki kara kareye sahip olursan söz sahibi olursun.'),
         h('p', { class: 'muted' }, 'Ayarlar her oyuncu için ayrıdır ve hemen geçerli olur. Söz hakkını kaybedersen ayarların silinir.'),
+        h(
+          'div',
+          { class: 'strait-legend', 'aria-label': 'Haritadaki geçiş tabelaları' },
+          h('b', {}, 'Haritadaki geçiş tabelası: '),
+          (['open', 'ask', 'toll', 'closed'] as const).map((k) => h('span', { class: `strait-sign ${k}` }, icon('ship'), h('b', {}, { open: '✓', ask: '?', toll: '¤', closed: '✕' }[k]), h('span', {}, { open: 'açık', ask: 'izin sorulur', toll: 'vergili', closed: 'kapalı' }[k]))),
+          h('span', { class: 'muted small' }, ' Noktalar söz sahiplerinin rengidir.'),
+        ),
         h('h3', {}, 'Tüm boğazlar'),
         h('table', { class: 'table' }, h('tbody', {}, all)),
       ),
@@ -3654,7 +3664,7 @@ export class GameScreen {
           h('li', {}, `Gemi seferi: ${c.shipOilCost} petrol, deniz yoluyla kıyı topraklarına. Uçak seferi: ${c.planeOilCost} petrol, her yere — düşman üslerinin ${c.baseBlockRadius} kare çevresi hariç.`),
           h('li', {}, `Sefer hedefi sahipsizse ${c.expeditionClaimCost} akçeyle alınır, sahipliyse savaş olur. Maden kareleri seferle doğrudan alınamaz; başkente gemi ya da uçakla saldırılamaz (yalnızca karadan).`),
           h('li', {}, 'Boğaz karesinin iki yanında birbirinin tam karşısındaki iki kara kareye sahipsen o boğazda söz sahibisin: her oyuncu için geçiş ayarını ve vergiyi belirlersin. Birden çok söz sahibi varsa gemi her birinden ayrı izin alır ve her birinin vergisini öder.'),
-          h('li', {}, 'Boğaz ayarı oyuncu başına Sor (varsayılan), Açık, Vergili ya da Kapalıdır. Rotası "Sor" durumundaki boğazdan geçen sefer önce söz sahibine sorulur; biri bile reddederse sefer yapılmaz, ödeme alınmaz, yakıt harcanmaz.'),
+          h('li', {}, 'Boğazın yanındaki gemili tabela geçişin senin için durumunu gösterir: yeşil ✓ açık, mavi ? izin sorulur, sarı ¤ vergili, kırmızı ✕ kapalı. Boğaz ayarı oyuncu başına Sor (varsayılan), Açık, Vergili ya da Kapalıdır. Rotası "Sor" durumundaki boğazdan geçen sefer önce söz sahibine sorulur; biri bile reddederse sefer yapılmaz, ödeme alınmaz, yakıt harcanmaz.'),
           h('li', {}, 'Müttefiklere ve barış yapılanlara saldırılamaz. İttifak kendi turunda bozulabilir; o tur eski müttefike saldırılamaz.'),
           h('li', {}, 'Borç: devletler birbirine akçe borç verebilir. İsteyen miktar ve vadeyi söyler; veren reddeder ya da faizini (0 = faizsiz) belirleyip kabul eder; borçlu son koşulları onaylar. Geri ödenecek toplam = miktar × (1 + oran). Vade gelince borçlunun turunda topaçtan sonra kesilir, yetmezse kalan her tur kesilir ve "borçlu" görünür. Erken ödenebilir. Başkent düşerse borç ve alacaklar fatihe geçer. Ayrıntıları yalnızca iki taraf görür.'),
           h('li', {}, 'Gelen teklife karşı teklif yapabilirsin: eski teklif reddedilir, yenisi karşı tarafa gider (zincirde en fazla 2 kez).'),

@@ -332,44 +332,79 @@ export class MapView {
   }
 
   /**
-   * Boğazın yanındaki küçük simge: halka söz sahiplerinin renkleri (birden çoksa dilimler), içi geçişin
-   * bakan oyuncu için durumu: ✓ açık, ? sorulacak, ¤ vergili, ✕ kapalı.
+   * Boğazın yanındaki geçiş tabelası: gemi ve durum işareti, rengi geçişin bakan oyuncu için durumu (yeşil ✓ açık,
+   * mavi ? izin sorulur, sarı akçe vergili, kırmızı ✕ ve üstü çizili gemi kapalı). Altındaki noktalar söz sahipleridir.
+   * Yakınlaşınca durum yazıyla da görünür.
    */
   private drawStraitBadge(id: number, tile: number, orientation: 'h' | 'v', ctls: number[], px: number) {
     const s = this.state!;
     const m = s.map;
     const ctx = this.ctx;
-    // Kanalın üstüne binmesin: yakanın üstüne, dış tarafa
-    const cx = (tile % m.width) + 0.5 + (orientation === 'v' ? 0.95 : 0);
-    const cy = Math.floor(tile / m.width) + 0.5 - (orientation === 'h' ? 0.95 : 0);
-    const r = Math.max(0.36, 7 * px);
-    ctx.fillStyle = '#fbf8ef';
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.lineWidth = r * 0.34;
-    if (ctls.length === 0) {
-      ctx.strokeStyle = '#a79c86';
-      ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.stroke();
-    } else {
-      const step = (Math.PI * 2) / ctls.length;
-      ctls.forEach((c, i) => {
-        ctx.strokeStyle = s.players[c].color;
-        ctx.beginPath();
-        ctx.arc(cx, cy, r, -Math.PI / 2 + i * step, -Math.PI / 2 + (i + 1) * step);
-        ctx.stroke();
-      });
-    }
+    const ready = () => (this.dirty = true);
     const status = this.viewer === null || !s.players[this.viewer]?.alive ? null : ctls.length === 0 ? 'open' : straitStatusFor(s, id, this.viewer);
-    if (!status) return;
-    const glyph = { open: '✓', ask: '?', toll: '¤', closed: '✕' }[status];
-    ctx.fillStyle = { open: '#1f7a35', ask: '#2b47c9', toll: '#a06a00', closed: '#b3261e' }[status];
-    ctx.font = `bold ${r * 1.45}px "Patrick Hand", sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(glyph, cx, cy + r * 0.05);
+    const color = status ? { open: '#1f7a35', ask: '#2b47c9', toll: '#a06a00', closed: '#b3261e' }[status] : '#6f6655';
+    // Tabela ekranda da okunabilir kalsın: uzaktayken kare boyutundan büyük çizilir
+    const ph = Math.max(0.74, 21 * px);
+    const pw = ph * 1.9;
+    const cx = (tile % m.width) + 0.5 + (orientation === 'v' ? 0.5 + pw / 2 : 0);
+    const cy = Math.floor(tile / m.width) + 0.5 - (orientation === 'h' ? 0.5 + ph / 2 : 0);
+    const x = cx - pw / 2;
+    const y = cy - ph / 2;
+    ctx.fillStyle = color;
+    ctx.strokeStyle = '#fbf8ef';
+    ctx.lineWidth = ph * 0.09;
+    ctx.beginPath();
+    ctx.roundRect(x, y, pw, ph, ph * 0.28);
+    ctx.fill();
+    ctx.stroke();
+    const size = ph * 0.82;
+    const ship = iconImage('ship', '#ffffff', ready);
+    if (ship) ctx.drawImage(ship, x + ph * 0.1, cy - size / 2, size, size);
+    if (status === 'closed') {
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = ph * 0.09;
+      ctx.beginPath();
+      ctx.moveTo(x + ph * 0.2, cy + size * 0.38);
+      ctx.lineTo(x + ph * 0.82, cy - size * 0.38);
+      ctx.stroke();
+    }
+    if (status) {
+      const gx = x + pw - ph * 0.5;
+      if (status === 'toll') {
+        const coin = iconImage('akce', '#ffffff', ready);
+        if (coin) ctx.drawImage(coin, gx - size * 0.42, cy - size * 0.42, size * 0.84, size * 0.84);
+      } else {
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `bold ${ph * 0.82}px "Patrick Hand", sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText({ open: '✓', ask: '?', closed: '✕' }[status], gx, cy + ph * 0.04);
+      }
+    }
+    // Söz sahipleri
+    const r = ph * 0.17;
+    ctls.forEach((c, i) => {
+      const dx = cx + (i - (ctls.length - 1) / 2) * r * 2.5;
+      ctx.fillStyle = s.players[c].color;
+      ctx.strokeStyle = '#fbf8ef';
+      ctx.lineWidth = r * 0.5;
+      ctx.beginPath();
+      ctx.arc(dx, y + ph + r * 0.5, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    });
+    if (status && this.scale >= 30) {
+      const text = { open: 'Geçiş açık', ask: 'İzin sorulur', toll: 'Vergili geçiş', closed: 'Geçiş kapalı' }[status];
+      ctx.font = `bold ${13 * px}px "Patrick Hand", sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.lineWidth = 3 * px;
+      ctx.strokeStyle = '#fbf8ef';
+      ctx.fillStyle = color;
+      const ty = y + ph + r * 2;
+      ctx.strokeText(text, cx, ty);
+      ctx.fillText(text, cx, ty);
+    }
   }
 
   private loop = () => {

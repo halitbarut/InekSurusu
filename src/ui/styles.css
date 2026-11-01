@@ -2465,3 +2465,12 @@ footer {
 }
 .spin-soft .overlay-card { padding: 10px 18px; opacity: 0.97; }
 .spin-result.small { font-size: 1.3rem; }
+
+/* Geçiş tabelası açıklaması (Boğazlarım) */
+.strait-legend { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin: 6px 0 10px; }
+.strait-sign { display: inline-flex; align-items: center; gap: 3px; color: #fff; border-radius: 7px; padding: 1px 8px 1px 5px; font-size: 0.85rem; }
+.strait-sign svg, .strait-sign .icon { width: 18px; height: 18px; }
+.strait-sign.open { background: #1f7a35; }
+.strait-sign.ask { background: #2b47c9; }
+.strait-sign.toll { background: #a06a00; }
+.strait-sign.closed { background: #b3261e; }
