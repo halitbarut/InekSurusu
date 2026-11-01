@@ -7,6 +7,12 @@
 <h3 align="center">Kareli defterden çıkıp gelen, topaçlı strateji oyunu</h3>
 
 <p align="center">
+  <a href="https://halitbarut.github.io/InekSurusu/"><b>▶ Tarayıcıda hemen oyna</b></a><br>
+  <sub>https://halitbarut.github.io/InekSurusu/</sub>
+</p>
+
+<p align="center">
+  <a href="https://halitbarut.github.io/InekSurusu/"><img src="https://img.shields.io/badge/oyna-GitHub%20Pages-2ea44f?logo=github&logoColor=white" alt="GitHub Pages'te oyna"></a>
   <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white" alt="TypeScript"></a>
   <a href="https://vite.dev/"><img src="https://img.shields.io/badge/Vite-8-646cff?logo=vite&logoColor=white" alt="Vite"></a>
   <a href="https://vitest.dev/"><img src="https://img.shields.io/badge/test-281%20test-4c9a2a?logo=vitest&logoColor=white" alt="281 test"></a>
@@ -17,6 +23,11 @@
 <p align="center">
   <b>Aynı ekranda · botlara karşı · arkadaşlarınızla çevrimiçi</b><br>
   Tarayıcıda çalışır; son kullanıcı için ayrı bir oyun sunucusu, hesap veya kurulum gerektirmez.
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/readme-game.png" alt="Oyun ekranı: kapalı denizli harita, devlet panelleri ve olay günlüğü" width="860"><br>
+  <sub>Beş devletli bir oyunun 14. turu: kara tek parça, denizler boğazlarla bağlı havzalar</sub>
 </p>
 
 ---
@@ -31,6 +42,7 @@ kurallar testlerde, botlarda, çevrimiçi hakemlikte ve tekrar oynatmada birebir
 [Hikâye](#hikâye) ·
 [Özellikler](#özellikler) ·
 [Ekran görüntüleri](#ekran-görüntüleri) ·
+[Hemen oyna](#hemen-oyna) ·
 [Hızlı başlangıç](#hızlı-başlangıç) ·
 [Nasıl oynanır](#nasıl-oynanır) ·
 [Kurallar](#kurallar) ·
@@ -66,9 +78,13 @@ yaşatma çabası.
 |---|---|
 | **Sıra tabanlı strateji** | 3–8 oyuncu; topaç, akçe ekonomisi, fetih, yapılar ve birimler |
 | **Üç oyun modu** | Aynı ekranda sırayla (hot-seat), botlara karşı ve çevrimiçi (WebRTC) |
-| **Haritalar** | Tohumlanabilir rastgele üretim (kapalı denizler ya da takımada), dört hazır harita ve harita editörü |
-| **Deniz ve hava** | Gemi ve uçak seferleri, boğaz geçişleri, askeri üs engelleri |
-| **Diplomasi** | İttifak, süreli barış, akçe/kaynak/toprak takası, karşı teklif, boğaz izni, devletler arası borç |
+| **Haritalar** | Kapalı denizler ya da takımada olarak tohumlanabilir rastgele üretim, dört hazır harita, harita editörü |
+| **Deniz ve hava** | Gemi ve uçak seferleri, askeri üs engelleri, deniz havzaları arasında boğaz geçişleri |
+| **Boğaz siyaseti** | Karşılıklı iki kareyle söz sahipliği, oyuncu başına Sor / Açık / Vergili / Kapalı, geçiş izni görüşmesi |
+| **Diplomasi** | İttifak, süreli barış, akçe/kaynak/toprak takası, karşı teklif |
+| **Borç** | Faizli ya da faizsiz devletler arası borç, vade, kademeli tahsilat, gizli ayrıntılar |
+| **Dört bot seviyesi** | Kolay, Orta, Zor ve kişiliği, hafızası olan **Gerçekçi** |
+| **Kilitlenmeyen akış** | Bilgilendirme pencereleri kimseyi bekletmez; her soruya cevap süresi ve otomatik karar |
 | **Öğretici** | 11 konulu, adım adım, sabit senaryolu rehber |
 | **Oyun tekrarı** | Her oyun deterministik; zafer ekranından veya dosyadan izlenebilir |
 | **Test edilmiş motor** | 24 test dosyasında 281 Vitest testi; arayüzden bağımsız kural motoru |
@@ -77,20 +93,34 @@ yaşatma çabası.
 
 ## Ekran görüntüleri
 
-<p align="center">
-  <img src="docs/screenshots/after-07-actions.png" alt="İnek Sürüsü oyun ekranı: harita, devletler ve olay günlüğü" width="860"><br>
-  <sub><b>Oyun ekranı</b> — kareli harita, devlet panelleri, olay günlüğü ve eylem çubuğu</sub>
-</p>
-
-| Diplomasi | Harita editörü |
+| | |
 |:---:|:---:|
-| <img src="docs/screenshots/after-10-diplomacy.png" alt="Diplomasi penceresi" width="420"> | <img src="docs/screenshots/after-16-map-editor.png" alt="Harita editörü" width="420"> |
-| Teklifler, ittifaklar ve ilişkiler | Kara, deniz, maden, göl ve boğaz çizimi |
+| <img src="docs/screenshots/readme-tile-menu.png" alt="Kare menüsü" width="420"> | <img src="docs/screenshots/readme-battle-preview.png" alt="Savaş önizlemesi" width="420"> |
+| **Kare menüsü:** kareye tıkla, yapabileceklerini bedelleriyle gör | **Savaş önizlemesi:** masraf, sonuçlar ve olasılık |
+| <img src="docs/screenshots/readme-spin.png" alt="Topaç penceresi" width="420"> | <img src="docs/screenshots/readme-upkeep.png" alt="Bakım penceresi" width="420"> |
+| **Topaç penceresi:** gelir özeti, büyük topaç, "Haritaya bak" | **Bakım penceresi:** kısmi bozdurma, tek tek terhis, borç |
+| <img src="docs/screenshots/readme-permit.png" alt="Boğaz izni penceresi" width="420"> | <img src="docs/screenshots/readme-straits.png" alt="Boğazlarım penceresi" width="420"> |
+| **Boğaz izni:** söz sahibine sorulur, süre işler | **Boğazlarım:** kare çiftleri ve oyuncu başına ayar |
+| <img src="docs/screenshots/readme-diplomacy.png" alt="Diplomasi penceresi" width="420"> | <img src="docs/screenshots/readme-online.png" alt="Çevrimiçi oyun ve sohbet" width="420"> |
+| **Diplomasi:** teklifler, borçlar ve alacaklar | **Çevrimiçi:** sunucusuz oda, sohbet, izleyiciler |
+| <img src="docs/screenshots/readme-tutorial.png" alt="Öğretici" width="420"> | <img src="docs/screenshots/readme-map-list.png" alt="Harita editörü ve hazır haritalar" width="420"> |
+| **Öğretici:** vurgulanan hedef ve tek eylem | **Haritalar:** editör ve dört hazır harita |
+| <img src="docs/screenshots/readme-victory.png" alt="Oyun sonu özeti" width="420"> | <img src="docs/screenshots/readme-replay.png" alt="Oyun tekrarı" width="420"> |
+| **Oyun sonu:** tur tur grafikler ve özet | **Oyun tekrarı:** her oyun baştan izlenebilir |
 
 <p align="center">
-  <img src="docs/screenshots/after-13-mobile.png" alt="Mobil görünüm" width="300"><br>
+  <img src="docs/screenshots/readme-mobile.png" alt="Telefonda oyun ekranı" width="260">
+  <img src="docs/screenshots/readme-mobile-spin.png" alt="Telefonda topaç penceresi" width="260"><br>
   <sub>Telefon ve tabletlerde dokunmatik düzen</sub>
 </p>
+
+## Hemen oyna
+
+Kurulum gerekmez: **[https://halitbarut.github.io/InekSurusu/](https://halitbarut.github.io/InekSurusu/)**
+
+Oyunu açıp **Yeni oyun** ile botlara karşı başlayabilir, **Öğretici** ile kuralları adım adım öğrenebilir ya da **Çevrimiçi oyun → Oda kur**
+ile arkadaşlarına davet linki gönderebilirsin. Site, `main` dalına her gönderimde GitHub Actions ile yeniden yayınlanır
+([`.github/workflows/pages.yml`](.github/workflows/pages.yml)). Kayıtlar tarayıcında (`localStorage`) tutulur, hiçbir yere gönderilmez.
 
 ## Hızlı başlangıç
 
@@ -108,7 +138,7 @@ npm install
 npm run dev
 ```
 
-Geliştirme sunucusu `http://localhost:5173` adresinde açılır. Üretim derlemesi:
+Oynamak için kurulum gerekmez ([Hemen oyna](#hemen-oyna)); bunlar geliştirme içindir. Geliştirme sunucusu `http://localhost:5173` adresinde açılır. Üretim derlemesi:
 
 ```bash
 npm run build      # tsc --noEmit + vite build → dist/
@@ -140,6 +170,8 @@ klasörde de sorunsuz çalışır.
 
 ### 1. Oyunu kur
 
+<img src="docs/screenshots/readme-new-game.png" alt="Yeni oyun ekranı" width="420" align="right">
+
 **Yeni oyun** ekranında 3–8 oyuncu ekleyin. Her koltuk için ad, renk ve **İnsan** ya da
 **Bot** (Kolay / Orta / Zor / Gerçekçi) seçilir. Harita olarak rastgele üretim (boyut, seed ve kıta tipi
 girilebilir, önizleme gösterilir), hazır haritalardan biri ya da harita editöründe
@@ -150,6 +182,8 @@ işaretler. Başlangıçta maden kareleri seçilemez; madenler oyun başladıkta
 sınır kuralıyla alınır. Başlangıç akçesi varsayılan olarak 0'dır; kural önayarı veya özel
 ayarlarla değiştirilebilir.
 
+<br clear="right">
+
 ### 2. Tur döngüsü
 
 1. **Gelir:** Sahip olunan her maden, o tur için 1 birim ilgili kaynak verir.
@@ -158,6 +192,11 @@ ayarlarla değiştirilebilir.
 4. **Eylemler:** İstenildiği kadar toprak alınır, yapı kurulur, üretim yapılır, sefer
    düzenlenir, diplomasi yürütülür ve turda en fazla bir savaş yapılır.
 5. **Turu bitir:** Sıra bir sonraki oyuncuya geçer; elenenler atlanır.
+
+<p align="center">
+  <img src="docs/screenshots/readme-spin-result.png" alt="Topaç sonucu" width="560"><br>
+  <sub>Topaç durunca sonuç büyük görünür; varsa borç taksiti de yazar</sub>
+</p>
 
 ### 3. Kazan
 
@@ -230,11 +269,19 @@ olabilir: gemi her birinden ayrı izin alır, her birinin vergisini öder. Söz 
 değiştirdikçe anında güncellenir, söz hakkı kaybedilince ayarlar silinir. Her boğazın yanındaki simge söz sahiplerinin
 rengini ve geçişin senin için durumunu gösterir: ✓ açık, ? sorulacak, ¤ vergili, ✕ kapalı.
 
+<p align="center">
+  <img src="docs/screenshots/readme-strait-badges.png" alt="Boğaz simgeleri: açık, sorulacak, vergili ve kapalı" width="860"><br>
+  <sub>Soldan sağa açık, sorulacak, vergili, kapalı. Halkanın rengi söz sahibini gösterir. Tek çift (soldaki) söz sahibi olmaya yeter; ikinci boğazda aynı oyuncu iki çift tutuyor</sub>
+</p>
+
 **Boğazlarım** panelinden her oyuncu için dört ayar seçilir: **Sor** (varsayılan), **Açık**, **Vergili**
 (miktarla), **Kapalı**. Rotası Sor durumundaki boğazdan geçen sefer önce söz sahibine sorulur; söz sahibi bu
 seferlik izin verir (isteğe bağlı vergiyle), reddeder ya da kalıcı ayar yapar. Biri bile reddederse sefer yapılmaz,
 ödeme alınmaz, yakıt harcanmaz; aynı boğazdan o tur yeniden sorulamaz. Vergi istenirse sefer sahibi onaylar ya da vazgeçer.
 Rota önizlemesinde hangi boğazlar için izin sorulacağı görünür.
+
+Tersane karesi hangi deniz havzalarına kıyıysa gemi o havzaların hepsine çıkabilir. Kapalı denizler haritasında havzalar arasında
+başka yol yoktur: kapatılan boğazın arkasına gemiyle dolaşılamaz, ancak uçakla ya da karadan gidilir.
 
 ### Cevap süresi
 
@@ -248,6 +295,11 @@ bekler (Maç ayarlarından değişir, tur süresi kapalıyken de işler); bekley
 | Diplomasi teklifi, borç, boğaz izni | Reddedilir |
 | Zafer oylaması | "Hayır" sayılır |
 | Bakım penceresi | Otomatik dağıtma kuralı uygulanır |
+
+<p align="center">
+  <img src="docs/screenshots/readme-pass.png" alt="Cihazı oyuncuya verin ekranı ve kalan süre" width="560"><br>
+  <sub>Hot-seat'te soru için cihaz el değiştirir; süre o ekranda da işler, masadan kalkan oyuncu kimseyi bekletmez</sub>
+</p>
 
 ### Diplomasi
 
@@ -271,6 +323,11 @@ belirleyip kabul eder; borçlu son koşulları onaylar. Borç veren isteyen olma
   kesilir; bu sürede borçlu herkese "borçlu" görünür.
 - **Başkent düşerse** elenenin borç ve alacakları fatihe geçer.
 - Ayrıntıları yalnızca iki taraf görür; oyuncu panelinde kendi borç ve alacakların vadeleriyle yazar.
+
+<p align="center">
+  <img src="docs/screenshots/readme-debt-panel.png" alt="Oyuncu panelinde borç satırları ve borçlu etiketi" width="560"><br>
+  <sub>Oyuncu panelinde kendi borç ve alacakların vadeleriyle; vadesini geçiren herkese "borçlu" görünür</sub>
+</p>
 
 Bakım ödenemediğinde açılan pencerede altın kısmi bozdurulur (açığı kapatacak en az altın önerilir), birimler tek tek
 terhis edilir ve borç istenebilir; hepsi birlikte kullanılabilir, açık kapanınca **Devam** etkinleşir.
@@ -301,7 +358,7 @@ ve sonra listeden seçilebilir.
 | **Özel** | Bütün ayarlar katlanabilir gruplarda (Harita, Ekonomi, Savaş, Bakım, İsteğe bağlı kurallar) |
 
 Bütün önayarlar **Kapalı denizler** kıta tipini kullanır: kara tek parça, harita kenarı kara, denizler kara içinde ayrı
-havzalar ve birbirine yalnızca boğazlarla bağlı; göller de vardır. **Takımada** (Özel → Harita ve kurulum) eski adalı üreticidir.
+havzalar ve birbirine yalnızca boğazlarla bağlı; göller de vardır. **Takımada** (Özel → Harita ve kurulum) eski adalı üreticidir. Seçim kayda ve tekrara girer.
 
 ## Oyun modları
 
@@ -322,7 +379,33 @@ ek kaynak almaz, oyunun RNG'sine dokunmaz.
 | **Zor** | En yakın rakip başkentini hedefler, başkent savaşı için birikir, kendi başkentine dayanan düşmanı önce geri iter |
 | **Gerçekçi** | En güçlüsü değil, insan gibi oynayanı: kişiliği (saldırgan, temkinli, tüccar, fırsatçı, sadık müttefik) ve hafızası var; kin tutar, öne geçene karşı ittifak arar, işine gelince ittifakı bozar, pazarlık eder, ara sıra hata yapar ve kısa sözler söyler |
 
-Denge sonuçları: [`docs/BALANCE_REPORT.md`](docs/BALANCE_REPORT.md).
+Dört Orta botun arasına konan tek botun kazanma payı (adil pay %20, 100 oyun): Zor %30,7, Gerçekçi %24,1. Örneklem küçük olduğu için
+güven aralıkları örtüşüyor. Ayrıntılar: [`docs/BALANCE_REPORT.md`](docs/BALANCE_REPORT.md).
+
+#### Gerçekçi bot
+
+Amaç en güçlü rakip değil, gerçek bir insan gibi oynayan, tahmin edilmesi zor bir rakip.
+
+| Kişilik | Nasıl oynar? |
+|---|---|
+| **Saldırgan** | Çok savaşır, kin tutar, yalnız yürür; ittifakı ancak çok geride kalınca arar |
+| **Temkinli** | Sınırlarını sağlama alır, öne geçenle barış arar, verdiği sözü nadiren bozar |
+| **Tüccar** | Bol takas önerir, faizi ve boğaz vergisi yüksektir |
+| **Fırsatçı** | Zayıf komşuya saldırır, en çok pazarlık eden odur, işine gelince ittifakı bozar |
+| **Sadık müttefik** | En az savaşan, en çok ittifak kuran, ittifakı bozmayan; ihanete uğrarsa unutmaz |
+
+- **Kişilik** oyun başında bot tohumundan gelir, arayüzde yazmaz; davranışından anlarsın. Gidişata göre hafifçe kayar.
+- **Hafıza:** kimin saldırdığını, ittifakı bozduğunu, izni reddettiğini, borcunu ödemediğini ve kimin yardım ettiğini hatırlar.
+- **Diplomasi:** öne geçene karşı ittifak arar, teklifi biraz aleyhine bulursa karşı teklif yapar; boğaz vergisini, izinleri ve faizi ilişkiye göre belirler.
+- **İnsan gibi:** kolay kararlar hızlı, zor kararlar yavaş (Hızlı oynat açıkken gecikme yok); ara sıra hata yapar, önemli anlarda kısa bir söz söyler.
+- **Hile yapmaz:** RNG'yi, başkalarının tekliflerini, borçlarını ve özel mesajlarını görmez; kararlarını bir oyuncunun göreceği görünümle verir (testlerle doğrulanır).
+
+<p align="center">
+  <img src="docs/screenshots/readme-bot-words.png" alt="Botların sözleri kenar bildirimi olarak" width="560"><br>
+  <sub>Botun sözleri kenar bildirimi ve olay günlüğü olarak görünür; çevrimiçinde genel sohbete düşer</sub>
+</p>
+
+Geliştirme modunda (`npm run dev`) oyun menüsündeki **Bot günlüğü** her botun kişiliğini ve kararlarının gerekçesini gösterir.
 
 Bot hamleleri izlenebilir bir hızda oynanır; üst çubuktaki **Hızlı oynat** ile hızlandırılır.
 Hızlı oynat açıkken botların yalnızca önemli olaylarının sesi çalar.
@@ -351,6 +434,7 @@ tarayıcıya WebRTC (PeerJS) ile bağlanır.
   tarayıcıdan aynı linkle dönüldüğünde koltuk geri alınır.
 - **Oda sahibi ayrılırsa** oyun durur; her tur sonunda oda sahibinde otomatik kaydedilen
   oyun daha sonra yerel olarak sürdürülebilir.
+- **Gizlilik:** teklifler, borç ayrıntıları ve boğaz izni görüşmelerinin hedefi yalnızca taraflara gider; oda sahibi her oyuncuya kendi görünümünü gönderir.
 - İlk eşleşme için PeerJS'in ücretsiz bulut sunucusu kullanılır; bağlantı kurulduktan
   sonra veri doğrudan tarayıcılar arasında akar.
 - Yerel ağda denemek için `npm run dev -- --host` yeterlidir. İnternetten katılacaklar
@@ -373,7 +457,7 @@ menüde önerilir.
 ### Arayüz ve geri bildirim
 
 - **Kare menüsü:** Bir kareye tıklamak, o karede yapılabilecek eylemleri maliyetleriyle
-  gösterir. Yapılamayanlar soluk görünür ve nedeni yazar (ör. "Yetersiz demir: 1 demir
+  gösterir (toprak, inşa, üretim, terhis, yapı yıkma, saldırı, sefer, teklif, borç). Yapılamayanlar soluk görünür ve nedeni yazar (ör. "Yetersiz demir: 1 demir
   daha lazım").
 - **Savaş öncesi önizleme:** Masraf, kazanılırsa alınabilecek toprak sayısı, kaybedilirse
   karşı saldırı riski ve başarı olasılığı gösterilir (normal savaşta yaklaşık %44, başkent
@@ -589,6 +673,8 @@ ve en çok oyuncu sayısında botlara karşı doğrulanır.
 - **Özel mesaj güvenli bağlam ister:** `crypto.subtle` yalnızca `https://` veya
   `localhost` üzerinde çalışır. Yerel ağda `http://192.168…` ile açıldığında genel kanal
   çalışır, özel mesaj kapalı olur.
+- **Eski tekrar dosyaları oynatılamaz:** kurallar değiştiği için önceki sürümlerin tekrar kayıtları desteklenmez; kayıtlı oyunlar açılmaya devam eder.
+- **Denge ölçümleri bot oyunlarıdır:** tur sınırına (simülasyonda 300) takılan oyunlar hâlâ %10 hedefinin üstünde; gerçek oyunda tur sınırı yoktur.
 - Aynı tarayıcının iki sekmesi aynı odaya aynı kimlikle bağlanır ve birbirini düşürür;
   ikinci katılımcı için başka bir tarayıcı veya gizli pencere gerekir.
 
