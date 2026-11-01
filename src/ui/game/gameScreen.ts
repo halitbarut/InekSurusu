@@ -2842,6 +2842,7 @@ export class GameScreen {
           h('li', {}, 'Kara savaşı: iki taraf topaç çevirir. A > D ise saldıran A − D toprak seçer; A < D ise savunan karşı saldırıyla ⌈(D − A) / 2⌉ toprak seçer; eşitlik sonuçsuz.'),
           h('li', {}, `Başkent savaşı: ${c.capitalStreak} kez art arda yüksek at (eşitlik tekrar). Başkent düşerse oyuncu elenir, her şeyi saldırana geçer.`),
           h('li', {}, `Askeri üs savaşı: ${c.baseStreak} kez art arda yüksek at. Başkent/üs savaşını kaybetmenin toprak bedeli yok.`),
+          h('li', {}, 'Tersane karesi hangi deniz havzalarına kıyıysa, gemi o havzaların hepsine çıkabilir. Havzalar arasında geçişin tek yolu boğazlardır.'),
           h('li', {}, `Gemi seferi: ${c.shipOilCost} petrol, deniz yoluyla kıyı topraklarına. Uçak seferi: ${c.planeOilCost} petrol, her yere — düşman üslerinin ${c.baseBlockRadius} kare çevresi hariç.`),
           h('li', {}, `Sefer hedefi sahipsizse ${c.expeditionClaimCost} akçeyle alınır, sahipliyse savaş olur. Maden kareleri seferle doğrudan alınamaz; başkente gemi ya da uçakla saldırılamaz (yalnızca karadan).`),
           h('li', {}, 'Boğazın iki yakası da senin ise boğazı idare edersin: her oyuncu için geçiş izni ve vergi belirleyebilirsin.'),

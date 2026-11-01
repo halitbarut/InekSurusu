@@ -9,6 +9,7 @@ import {
   defaultMapSize,
   farthestFromMine,
   fitsStartAreas,
+  closedMineLimit,
   generateMap,
   mapFromAscii,
   mapProblems,
@@ -70,13 +71,14 @@ describe('harita üretici', () => {
     }
   });
 
-  it.each([4, 5, 6, 8])('%i oyuncu: madenler dengeli; her türden oyuncu sayısı kadar, her kareye en fazla 10 kare', (players) => {
+  it.each([4, 5, 6, 8])('%i oyuncu: madenler dengeli; her türden oyuncu sayısı kadar, her kare sınır içinde', (players) => {
     for (let seed = 1; seed <= 5; seed++) {
       const m = generateMap(opts(players, seed));
       // Türler arası oran korunur
       for (const t of MINE_TYPES) expect(m.mines.filter((x) => x === t)).toHaveLength(players);
       const far = farthestFromMine(m, 10);
-      for (const t of MINE_TYPES) expect(far[t]).toBeLessThanOrEqual(10);
+      const limit = closedMineLimit(m, { players, maxMineDistance: DEFAULT_CONFIG.maxMineDistance });
+      for (const t of MINE_TYPES) expect(far[t]).toBeLessThanOrEqual(limit);
       // Madenler birbirine bitişik değil
       for (let i = 0; i < m.mines.length; i++) {
         if (!m.mines[i]) continue;

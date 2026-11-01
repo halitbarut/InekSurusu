@@ -444,6 +444,7 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
       minCapitalDistance: config.minCapitalDistance,
       mineLayout: config.mineLayout,
       maxMineDistance: config.maxMineDistance,
+      continentType: config.continentType,
     });
     paintThumb(preview, map);
     const land = map.terrain.filter((t) => t === 'land').length;

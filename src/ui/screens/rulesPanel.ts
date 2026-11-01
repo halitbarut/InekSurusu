@@ -37,6 +37,7 @@ const GROUPS: Group[] = [
     id: 'map',
     title: 'Harita ve kurulum',
     fields: [
+      { key: 'continentType', label: 'Kıta tipi', kind: 'select', options: [['closed', 'Kapalı denizler'], ['archipelago', 'Takımada']], map: true },
       { key: 'startTerritoryCount', label: 'Başlangıç toprağı (başkent hariç)', min: 0, max: 30, map: true },
       { key: 'minCapitalDistance', label: 'Başkentler arası en az mesafe', min: 1, max: 20, map: true },
       { key: 'minesPerTypePerPlayer', label: 'Oyuncu başına maden (her türden)', min: 0, max: 20, map: true },

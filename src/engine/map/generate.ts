@@ -1,7 +1,8 @@
 import { chebyshev, idx, neighbors4, neighbors8, type Dims } from '../grid';
 import { createRng, mixSeed, shuffle, type Rng } from '../rng';
-import { MINE_TYPES, type GameMap, type MineType, type Terrain } from '../types';
-import { STRAIT_DETOUR_LIMIT, buildStraitIndex, detectStraits, waterDistance } from './straits';
+import { MINE_TYPES, type ContinentType, type GameMap, type MineType, type Terrain } from '../types';
+import { basinCount, closedMapProblems, closedTerrain } from './closed';
+import { LAKE_MAX_SIZE, STRAIT_DETOUR_LIMIT, buildStraitIndex, detectStraits, labelComponents, waterDistance } from './straits';
 
 export interface MapGenOptions {
   width: number;
@@ -16,10 +17,11 @@ export interface MapGenOptions {
   mineLayout?: 'spread' | 'random';
   /** 'spread' düzeninde her türün en yakın madenine en fazla uzaklık (varsayılan 10) */
   maxMineDistance?: number;
+  /** Kıta tipi (varsayılan 'closed': kapalı denizler; 'archipelago': eski adalı üretici) */
+  continentType?: ContinentType;
 }
 
-/** Bu büyüklüğe kadar, haritanın kenarına değmeyen su kütleleri göl sayılır */
-export const LAKE_MAX_SIZE = 14;
+export { LAKE_MAX_SIZE, labelComponents };
 const LAND_RATIO = 0.5;
 const MAX_ATTEMPTS = 25;
 
@@ -30,7 +32,9 @@ const MAX_ATTEMPTS = 25;
 export function generateMap(opts: MapGenOptions): GameMap {
   let best: GameMap | null = null;
   let bestProblems = Infinity;
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+  // Maden yerleşimi büyük haritalarda pahalı; çok büyük özel boyutta az denemeyle yetin
+  const attempts = opts.width * opts.height > 3000 ? 4 : MAX_ATTEMPTS;
+  for (let attempt = 0; attempt < attempts; attempt++) {
     const map = tryGenerate(opts, mixSeed(opts.seed, attempt));
     const problems = mapProblems(map, opts).length;
     if (problems === 0) return map;
@@ -46,9 +50,10 @@ export function generateMap(opts: MapGenOptions): GameMap {
 /** Harita gereksinimlerini kontrol eder; sorun yoksa boş dizi döner. */
 export function mapProblems(
   map: GameMap,
-  opts: Pick<MapGenOptions, 'players' | 'startTerritoryCount' | 'minCapitalDistance' | 'mineLayout' | 'maxMineDistance'>,
+  opts: Pick<MapGenOptions, 'players' | 'startTerritoryCount' | 'minCapitalDistance' | 'mineLayout' | 'maxMineDistance' | 'continentType'> & { minesPerTypePerPlayer?: number },
 ): string[] {
-  const problems: string[] = [];
+  const closed = (opts.continentType ?? 'closed') === 'closed';
+  const problems: string[] = closed ? closedMapProblems(map, opts.players) : [];
   const land = map.terrain.filter((t) => t === 'land').length;
   const perPlayer = opts.startTerritoryCount + 1;
   if (land < opts.players * perPlayer * 3) problems.push('Yeterli kara yok');
@@ -58,14 +63,27 @@ export function mapProblems(
   if (!fitsStartAreas(map, opts.players, opts.startTerritoryCount, opts.minCapitalDistance ?? 5)) {
     problems.push('Her oyuncuya madensiz başlangıç alanı ayrılamıyor');
   }
-  if (map.straits.length < 3) problems.push('Yeterli boğaz yok');
+  const minStraits = closed ? Math.max(1, basinCount(map.width, map.height, opts.players) - 1) : 3;
+  if (map.straits.length < minStraits) problems.push('Yeterli boğaz yok');
   if ((opts.mineLayout ?? 'spread') === 'spread') {
     const far = farthestFromMine(map, opts.startTerritoryCount + 1);
-    const limit = opts.maxMineDistance ?? 10;
+    const limit = closed ? closedMineLimit(map, opts) : opts.maxMineDistance ?? 10;
     for (const t of MINE_TYPES) if (far[t] > limit) problems.push(`${t} madenine ${far[t]} kare uzak kara var (sınır ${limit})`);
   }
   if (!map.terrain.includes('lake')) problems.push('Göl yok');
   return problems;
+}
+
+/**
+ * Kapalı denizlerde kara haritanın köşelerine kadar uzanır; her türden oyuncu sayısı kadar madenle sabit 10 kare
+ * sınırı geometrik olarak tutmayabilir (ör. 3 maden 35×26'yı örtemez). Sınır, o kadar karenin haritayı
+ * örtebildiği en küçük yarıçapa göre gevşer; ayar ondan büyükse ayar geçerlidir.
+ */
+export function closedMineLimit(d: Dims, opts: Pick<MapGenOptions, 'players' | 'maxMineDistance'> & { minesPerTypePerPlayer?: number }): number {
+  const perType = opts.players * (opts.minesPerTypePerPlayer ?? 1);
+  let r = 1;
+  while (Math.ceil(d.width / (2 * r + 1)) * Math.ceil(d.height / (2 * r + 1)) > perType) r++;
+  return Math.max(opts.maxMineDistance ?? 10, r) + 1;
 }
 
 /**
@@ -109,6 +127,28 @@ function tryGenerate(opts: MapGenOptions, seed: number): GameMap {
   const d: Dims = { width, height };
   const n = width * height;
   const rng = createRng(seed);
+  const feature = Math.max(7, Math.min(14, width / 4));
+  const terrain = (opts.continentType ?? 'closed') === 'closed'
+    ? closedTerrain(d, opts.players, rng, (x, y) => fbm(x / feature, y / feature, seed))
+    : archipelagoTerrain(opts, seed, rng);
+  const straits = detectStraits(d, terrain);
+  const closed = (opts.continentType ?? 'closed') === 'closed';
+  // Yapısı tutmayan denemede pahalı maden yerleşimine hiç girme
+  const bare = (): GameMap => ({ width, height, seed: opts.seed, terrain, mines: new Array(n).fill(null), straits, straitOf: buildStraitIndex(n, straits) });
+  if (closed && closedMapProblems(bare(), opts.players).length > 0) return bare();
+  const perType = opts.players * opts.minesPerTypePerPlayer;
+  const mines =
+    (opts.mineLayout ?? 'spread') === 'spread'
+      ? placeMinesSpread(d, terrain, perType, opts.startTerritoryCount + 1, rng)
+      : placeMinesRandom(d, terrain, perType, rng);
+  return { width, height, seed: opts.seed, terrain, mines, straits, straitOf: buildStraitIndex(n, straits) };
+}
+
+/** Takımada kıta tipi: kenarları okyanus olan, adalardan oluşan eski üretici */
+function archipelagoTerrain(opts: MapGenOptions, seed: number, rng: Rng): Terrain[] {
+  const { width, height } = opts;
+  const d: Dims = { width, height };
+  const n = width * height;
 
   // 1) Yükseklik haritası: fraktal değer gürültüsü + kenarlara doğru batış
   const feature = Math.max(7, Math.min(14, width / 4));
@@ -176,14 +216,7 @@ function tryGenerate(opts: MapGenOptions, seed: number): GameMap {
       }
     }
   }
-
-  const straits = detectStraits(d, terrain);
-  const perType = opts.players * opts.minesPerTypePerPlayer;
-  const mines =
-    (opts.mineLayout ?? 'spread') === 'spread'
-      ? placeMinesSpread(d, terrain, perType, opts.startTerritoryCount + 1, rng)
-      : placeMinesRandom(d, terrain, perType, rng);
-  return { width, height, seed: opts.seed, terrain, mines, straits, straitOf: buildStraitIndex(n, straits) };
+  return terrain;
 }
 
 function findStraitCandidate(d: Dims, water: Uint8Array, carved: number[], rng: Rng): number[] | null {
@@ -380,37 +413,6 @@ function placeMinesRandom(d: Dims, terrain: Terrain[], perType: number, rng: Rng
 }
 
 // ---------- yardımcılar ----------
-
-export function labelComponents(d: Dims, pred: (i: number) => boolean) {
-  const n = d.width * d.height;
-  const labels = new Int32Array(n).fill(-1);
-  const sizes: number[] = [];
-  const touchesBorder: boolean[] = [];
-  for (let i = 0; i < n; i++) {
-    if (labels[i] !== -1 || !pred(i)) continue;
-    const l = sizes.length;
-    let size = 0;
-    let border = false;
-    const stack = [i];
-    labels[i] = l;
-    while (stack.length) {
-      const c = stack.pop()!;
-      size++;
-      const x = c % d.width;
-      const y = Math.floor(c / d.width);
-      if (x === 0 || y === 0 || x === d.width - 1 || y === d.height - 1) border = true;
-      for (const nb of neighbors4(d, c)) {
-        if (labels[nb] === -1 && pred(nb)) {
-          labels[nb] = l;
-          stack.push(nb);
-        }
-      }
-    }
-    sizes.push(size);
-    touchesBorder.push(border);
-  }
-  return { labels, sizes, touchesBorder };
-}
 
 /** Her kara karesinin en yakın suya 4-yönlü uzaklığı (su kareleri 0). */
 function landDistance(d: Dims, water: Uint8Array): Int32Array {

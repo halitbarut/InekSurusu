@@ -35,6 +35,7 @@ export function createGame(settings: NewGameSettings): GameState {
     minCapitalDistance: config.minCapitalDistance,
     mineLayout: config.mineLayout,
     maxMineDistance: config.maxMineDistance,
+    continentType: config.continentType,
   });
   return createGameFromMap(map, settings.players, config);
 }

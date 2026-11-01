@@ -1,6 +1,8 @@
 import { idx, inBounds, neighbors4, type Dims } from '../grid';
 import type { Strait, Terrain } from '../types';
 
+/** Bu büyüklüğe kadar, haritanın kenarına değmeyen su kütleleri göl sayılır */
+export const LAKE_MAX_SIZE = 14;
 /** Boğaz en fazla bu kadar kare uzunluğunda olabilir */
 export const STRAIT_MAX_LENGTH = 4;
 /** Boğaz kapatıldığında iki uç arasında bundan kısa bir su yolu varsa boğaz sayılmaz */
@@ -122,4 +124,35 @@ export function buildStraitIndex(size: number, straits: Strait[]): number[] {
   const straitOf = new Array<number>(size).fill(-1);
   for (const s of straits) for (const t of s.tiles) straitOf[t] = s.id;
   return straitOf;
+}
+
+export function labelComponents(d: Dims, pred: (i: number) => boolean) {
+  const n = d.width * d.height;
+  const labels = new Int32Array(n).fill(-1);
+  const sizes: number[] = [];
+  const touchesBorder: boolean[] = [];
+  for (let i = 0; i < n; i++) {
+    if (labels[i] !== -1 || !pred(i)) continue;
+    const l = sizes.length;
+    let size = 0;
+    let border = false;
+    const stack = [i];
+    labels[i] = l;
+    while (stack.length) {
+      const c = stack.pop()!;
+      size++;
+      const x = c % d.width;
+      const y = Math.floor(c / d.width);
+      if (x === 0 || y === 0 || x === d.width - 1 || y === d.height - 1) border = true;
+      for (const nb of neighbors4(d, c)) {
+        if (labels[nb] === -1 && pred(nb)) {
+          labels[nb] = l;
+          stack.push(nb);
+        }
+      }
+    }
+    sizes.push(size);
+    touchesBorder.push(border);
+  }
+  return { labels, sizes, touchesBorder };
 }

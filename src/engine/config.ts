@@ -1,5 +1,9 @@
+import type { ContinentType } from './types';
+
 /** Tüm ayarlanabilir kural değerleri. Oyun durumu içinde saklanır. */
 export interface GameConfig {
+  /** Rastgele haritanın kıta tipi */
+  continentType: ContinentType;
   /** Başlangıç akçesi */
   startAkce: number;
   /** Başkent dışında seçilecek başlangıç toprağı sayısı */
@@ -67,6 +71,7 @@ export interface GameConfig {
 }
 
 export const DEFAULT_CONFIG: GameConfig = {
+  continentType: 'closed',
   startAkce: 0,
   startTerritoryCount: 9,
   minCapitalDistance: 5,

@@ -73,7 +73,7 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
 ## Harita ve boğazlar
 
 21. Varsayılan harita boyutu 3–4 oyuncuda 35×26, 5–6 oyuncuda 44×32, 7–8 oyuncuda 53×37'dir (3. denge turunda
-    önceki 40×30 / 50×36 / 60×42 boyutlarından %12 küçültüldü). Harita kenarları okyanustur; kara oranı yaklaşık %50'dir. Her harita en az 3 boğaz ve en az
+    önceki 40×30 / 50×36 / 60×42 boyutlarından %12 küçültüldü). Kıta tipi "Takımada" iken harita kenarları okyanustur ve kara oranı yaklaşık %50'dir; "Kapalı denizler" için bkz. #130. Takımada haritası en az 3 boğaz ve en az
     1 göl içerir; sağlanamazsa tohumdan türetilen yeni denemeler yapılır (aynı seed hep aynı haritayı verir).
 22. **Göl:** Haritanın kenarına değmeyen, en fazla 14 karelik kapalı su kütlesi. Daha büyük kapalı sular
     iç denizdir.
@@ -432,3 +432,29 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
      için ilk kez yapılabilir olunca tur başına en fazla bir kısa ipucu (toprak alma, altın bozdurma, tersane,
      fabrika, gemi/uçak üretimi, sefer, saldırı, başkent savaşı, boğaz idaresi, diplomasi). Her ipucu cihazda bir kez
      gösterilir; ayarlardaki "Sıfırla" ile yeniden gösterilir.
+
+## Kapalı denizler ve kıta tipi
+
+130. **Kıta tipi** (`continentType`) kural ayarıdır (Özel → Harita ve kurulum), bu yüzden `GameState.config` içinde kayda ve
+     tekrara girer. Bütün önayarlar **Kapalı denizler** kullanır; **Takımada** eski adalı üreticidir. Üretilen haritanın
+     kendisi de zaten kayıtta olduğu için ayar sonradan değişse de kayıtlı oyun aynı haritayla açılır.
+131. **Kapalı denizler üreticisi** (`src/engine/map/closed.ts`): havza merkezleri birbirinden uzak seçilir, havzalar en az
+     3 kare arayla büyütülür, tek kare genişliğindeki su uzantıları karaya çevrilir, havzalar en kısa kıstaklardan düz
+     kanallarla bağlanır, sonra göller açılır. Su oranı yaklaşık %40'tır (kara %58–60, eski üreticide %50). Şartlar
+     `closedMapProblems` ile denetlenir; tutmayan deneme tohumdan türetilen yeni denemeyle tekrarlanır.
+132. **Havza grafiği ağaçtır (zorunlu sonuç):** kara tek parça ve kenar kara olunca bir su halkası içinde kalan karayı
+     koparırdı. Bu yüzden her boğaz bir köprüdür: kapanırsa arkası gerçekten kopar, dolaşan yol yoktur. Boğaz sayısı
+     havza sayısının bir eksiğidir. Havza sayısı `basinCount`: harita alanı / 260 ile 2 + ⌈oyuncu / 2⌉ değerinin büyüğü,
+     alan / 150 ve 14 ile sınırlı (35×26: 4, 44×32: 5, 53×37: 8).
+133. Kanalın ortası 1–4 kare uzunluğunda boğazdır. Kıstak daha uzunsa iki uçtan 2 kare genişliğinde koy açılır; koy
+     dar olmadığı için boğaza sayılmaz. Böylece Görev 2'deki karşılıklı kare çiftlerini sınayan çok kareli boğazlar da oluşur.
+134. **Maden uzaklığı sınırı kapalı denizlerde gevşer:** kara haritanın köşelerine kadar uzandığı için oyuncu sayısı kadar
+     madenle 10 kare sınırı geometrik olarak tutmaz (3 maden 35×26'yı 10 kare yarıçapla örtemez; önceki üreticide bunu
+     kenardaki okyanus sağlıyordu). Sınır, o sayıda karenin haritayı örttüğü en küçük yarıçapın bir fazlası ya da ayarın
+     bir fazlasıdır (`closedMineLimit`; varsayılan boyutlarda 11–14). Takımada kıta tipinde sınır aynen `maxMineDistance`'tır.
+135. **Her oyuncuya kıyı:** kıyı karelerinden birbirine en az 6 kare uzak, oyuncu sayısı kadar kare seçilebilmeli. Bu, herkesin
+     denize çıkma *imkânını* garanti eder; başkentin kıyıda olmasını zorunlu kılmaz.
+136. **Tersane kuralı:** Tersane karesi hangi deniz havzalarına kıyıysa gemi o havzaların hepsine çıkabilir. Rota tersanenin
+     bütün komşu deniz karelerinden başlar; bir boğaz karesine doğrudan kıyı olan tersane de o boğazdan çıkabilir ve
+     boğazın kurallarına uyar (`tests/closedMaps.test.ts`).
+137. Eski bir kaydın ya da önayarın `continentType` değeri yoksa varsayılan (Kapalı denizler) kullanılır.

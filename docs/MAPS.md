@@ -16,6 +16,18 @@ npx tsx scripts/maps/playtest.ts 4   # her haritada önerilen en az ve en çok o
 | Büyük kıta | 70×46 | 8 | %53 | 2 | 5 | Güneyde boğazla okyanusa açılan iç deniz, doğuda kapalı iç deniz (oradaki tersane yalnızca orada yüzer), kuzeyde boğazlı koy. |
 | İkiz kıtalar | 58×36 | 4–6 | %49 | 4 | 4 | İki kıtayı ayıran kanal kuzey ve güney okyanuslarını yalnızca iki dar boğazla bağlar; yakaları iki ayrı kıtadadır. Her kıtada boğazla açılan bir körfez. |
 
+## Boğazları atlayıp dolaşma
+
+Rastgele haritalardaki "gemiyle haritanın etrafından dolaşma" sorunu hazır haritalarda da arandı: her boğaz tek başına
+kapatıldığında iki ucunun deniz yoluyla kopup kopmadığı ölçüldü (`tests/builtinMaps.test.ts`).
+
+| Harita | Boğaz | Sonuç |
+|---|---|---|
+| Anadolu ve Balkanlar | 3 | Üçü de köprü. Marmara yalnızca İstanbul ve Çanakkale'den, Azak yalnızca Kerç'ten açılır. Değişiklik gerekmedi. |
+| Büyük kıta | 2 | İkisi de köprü: iç deniz ve koy yalnızca boğazdan okyanusa açılır. Değişiklik gerekmedi. |
+| İkiz kıtalar | 4 | Dördü de köprü. Kıtalar haritanın iki kenarına dayandığı için kuzey ve güney okyanusu yalnızca kanaldan bağlıdır. Değişiklik gerekmedi. |
+| Takımadalar | 1 | Özel harita olarak olduğu gibi kaldı (adalı, açık okyanuslu). |
+
 ## Doğrulama
 
 - Dördü de editörün doğrulamasından hatasız geçer ve varsayılan kurallarla (madensiz başkent + 9 bitişik toprak,

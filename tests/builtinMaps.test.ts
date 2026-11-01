@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { getBot } from '../src/bot';
-import { DEFAULT_CONFIG, buildMap, checkMap, createGameFromMap, dispatch, draftFromRows, type GameState } from '../src/engine';
+import { DEFAULT_CONFIG, buildMap, checkMap, createGameFromMap, dispatch, draftFromRows, neighbors4, type GameState } from '../src/engine';
 import { BUILTIN_MAPS } from '../src/maps/builtin';
 
 const c = DEFAULT_CONFIG;
@@ -71,6 +71,21 @@ describe('hazır haritalar', () => {
     // Yakaların yarısı batı, yarısı doğu kıtasında
     for (const st of bankSides) expect(new Set(st.banks.map((b) => (b % map.width < 28 ? 'batı' : 'doğu')))).toEqual(new Set(['batı', 'doğu']));
   });
+
+  for (const m of BUILTIN_MAPS) {
+    it(`${m.name}: her boğaz köprü, kapatılınca iki ucu deniz yoluyla kopar`, () => {
+      const { map } = check(m.rows, m.name);
+      for (const st of map.straits) {
+        const closed = new Set(st.tiles);
+        const seen = new Set<number>();
+        const ends = st.tiles.flatMap((t) => neighbors4(map, t)).filter((t) => map.terrain[t] === 'sea' && !closed.has(t));
+        const stack = [ends[0]];
+        seen.add(ends[0]);
+        while (stack.length) for (const nb of neighbors4(map, stack.pop()!)) if (map.terrain[nb] === 'sea' && !closed.has(nb) && !seen.has(nb)) (seen.add(nb), stack.push(nb));
+        expect(ends.every((e) => seen.has(e))).toBe(false);
+      }
+    });
+  }
 
   for (const m of BUILTIN_MAPS) {
     it(`${m.name}: ${m.players[1]} Orta botla oyun takılmadan ilerler`, () => {

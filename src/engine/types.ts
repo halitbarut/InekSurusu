@@ -2,6 +2,8 @@ import type { GameConfig } from './config';
 import type { GameStats } from './stats';
 
 export type Terrain = 'land' | 'sea' | 'lake';
+/** Rastgele harita üreticisi: kapalı denizler (varsayılan) ya da takımada */
+export type ContinentType = 'closed' | 'archipelago';
 export type MineType = 'gold' | 'oil' | 'iron' | 'steel';
 export const MINE_TYPES: readonly MineType[] = ['gold', 'oil', 'iron', 'steel'];
 export type ResourceKey = 'akce' | MineType;
