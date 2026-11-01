@@ -1,13 +1,40 @@
 import { validateAction, type Action, type GameState } from '../engine';
+import type { PendingResponse } from '../ui/game/responses';
 import { MediumBot } from './medium';
 
 /**
  * Tur süresi dolunca oyuncu adına yapılacak otomatik eylemler. Her çağrı bir sonraki eylemi verir;
  * oyuncunun bekleyen bir kararı kalmayınca null döner. Sıra:
  * topaç çevrilmemişse çevrilir → bekleyen zorunlu seçimler (bakımda dağıtma, fetihte toprak seçimi,
- * kurulum seçimleri, oylama) Orta seviye bot mantığıyla yapılır → eylem aşamasındaysa tur biter.
+ * kurulum seçimleri) Orta seviye bot mantığıyla yapılır, oylamada "hayır" denir → eylem aşamasındaysa tur biter.
  */
 const medium = new MediumBot();
+
+/**
+ * Cevap süresi dolunca verilecek karar. Her çağrı bir sonraki eylemi verir; bu cevap için yapılacak bir şey
+ * kalmayınca null. Toprak seçimi Orta bot mantığıyla; teklif, boğaz izni reddedilir; oylama "hayır".
+ */
+export function responseAction(state: GameState, r: Pick<PendingResponse, 'kind' | 'player' | 'ref'>): Action | null {
+  const ph = state.phase;
+  let a: Action | null = null;
+  switch (r.kind) {
+    case 'counter':
+      if (ph.kind === 'conquest' && ph.counter && ph.taker === r.player) a = medium.chooseAction(state, r.player);
+      break;
+    case 'vote':
+      if (ph.kind === 'vote' && !(r.player in ph.votes)) a = { type: 'CAST_VOTE', player: r.player, accept: false };
+      break;
+    case 'permit':
+      if (ph.kind === 'permit' && ph.requests.some((q) => q.straitId === r.ref && q.controller === r.player && !q.answered)) a = { type: 'RESPOND_PERMIT', player: r.player, straitId: r.ref!, decision: 'deny', toll: 0 };
+      break;
+    case 'offer':
+      if (state.offers.some((o) => o.id === r.ref)) a = { type: 'RESPOND_OFFER', player: r.player, offerId: r.ref!, accept: false };
+      break;
+    default:
+      break;
+  }
+  return a && validateAction(state, a).ok ? a : null;
+}
 
 export function timeoutAction(state: GameState, p: number): Action | null {
   const ph = state.phase;
@@ -18,8 +45,9 @@ export function timeoutAction(state: GameState, p: number): Action | null {
     case 'gameover':
       return null;
     case 'vote':
+      // Cevap gelmezse oylama "hayır" sayılır
       if (p in ph.votes) return null;
-      a = { type: 'CAST_VOTE', player: p, accept: medium.vote() };
+      a = { type: 'CAST_VOTE', player: p, accept: false };
       break;
     case 'permit':
       // Söz sahibi cevaplamadıysa ret; sıra sahibi onaylamadıysa vazgeçer

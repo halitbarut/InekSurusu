@@ -1,4 +1,4 @@
-import { BOT_LEVEL_NAME, getBot, timeoutAction } from '../../bot';
+import { BOT_LEVEL_NAME, getBot, responseAction, timeoutAction } from '../../bot';
 import {
   RESOURCE_KEYS,
   STRAIT_MODES,
@@ -51,7 +51,7 @@ import {
   type StraitMode,
   type UnitKind,
 } from '../../engine';
-import { append, clear, closeAllModals, download, h, openModal, sleep, toast, type Child } from '../dom';
+import { append, clear, closeAllModals, download, h, openModal, sleep, toast, type Child, type ModalHandle } from '../dom';
 import {
   RES_ICON,
   RES_NAME,
@@ -83,7 +83,8 @@ import { cowMark, icon, type IconName } from '../icons';
 import { HATCH_NAME, playerHatch, playerSwatch } from '../playerStyle';
 import { renderSummary } from './summary';
 import { ChatPanel } from './chatPanel';
-import { CLOCK_WARN_MS, TurnClock, clockSegment, clockText, type ClockSegment } from './turnClock';
+import { CLOCK_WARN_MS, DEFAULT_RESPONSE_SECONDS, TurnClock, clockSegment, clockText, type ClockSegment } from './turnClock';
+import { ResponseTracker, WAIT_LABEL, battleWaitsForClick, pendingResponses, type PendingResponse, type WaitInfo } from './responses';
 import { TileMenu, pairText, tileMenuModel, type RoutePreview, type TileAction } from './tileMenu';
 import { takeHint } from './hints';
 import type { GameGuide } from '../../tutorial/guide';
@@ -134,6 +135,19 @@ export interface GameScreenCallbacks {
   newGame(): void;
 }
 
+/** Savaş sonucu penceresi en fazla bu kadar açık kalır */
+const BATTLE_RESULT_MAX_MS = 8000;
+
+/** Cevap gelmezse ne olur */
+const WAIT_DEFAULT: Record<WaitInfo['kind'], string> = {
+  counter: 'topraklar otomatik seçilir',
+  vote: '"hayır" sayılır',
+  permit: 'izin reddedilir',
+  offer: 'teklif reddedilir',
+  loan: 'reddedilir',
+  upkeep: 'otomatik dağıtılır',
+};
+
 const zeroRes = (): Record<ResourceKey, number> => ({ akce: 0, gold: 0, oil: 0, iron: 0, steel: 0 });
 
 /** Kareye bağlı eylem modları (eylem çubuğunda "Hedef seç" altında; 1–6 tuşları) */
@@ -145,6 +159,7 @@ export class GameScreen {
   private map: MapView;
   private mode: Mode = { kind: 'none' };
   private pumping = false;
+  private pumpAgain = false;
   private busy = false;
   private destroyed = false;
   private lastHumanKey = '';
@@ -170,8 +185,17 @@ export class GameScreen {
   private handoff = false;
   /** Hot-seat: cihaz en son kime verildi (izin ve teklif için el değiştirdikten sonra geri vermek için) */
   private deviceAt: number | null = null;
-  /** Hot-seat: teklifine yanıt beklenen oyuncunun kendi süresi */
-  private responseSeg: ClockSegment | null = null;
+  /** Hot-seat: el değişmiş teklif sürüyor (sıra sahibinin saati durur) */
+  private offerHolds = 0;
+  /** Hot-seat: cihazı alıcıya verilmiş teklifler (cevap süresi yalnızca bunlarda işler) */
+  private localOffers = new Set<number>();
+  /** Cevap süreleri: yerel oyunda ve oda sahibinde tutulur; katılan oda sahibinin gönderdiğini gösterir */
+  private responses: ResponseTracker | null = null;
+  /** Bu cihazda açık olan cevap pencereleri */
+  private questions = new Map<string, ModalHandle>();
+  /** Hot-seat: açık cihaz geçiş ekranını kapatır (cevap süresi dolunca) */
+  private passCancel: { player: number; cancel: () => void } | null = null;
+  private elWaitBar = h('div', { class: 'wait-bar hidden', role: 'status', 'aria-live': 'off' });
   /** Oyun tekrarı kaydı: oyunu yürüten tarafta (yerel oyun, oda sahibi) */
   private recorder: ReplayRecorder | null = null;
   /** Kare menüsü (eylem aşamasında mod seçili değilken kareye tıklayınca) */
@@ -216,7 +240,8 @@ export class GameScreen {
     if (net) this.chat = new ChatPanel(net.room, () => this.state);
     const turnSeconds = state.options?.turnSeconds ?? 0;
     if (turnSeconds > 0 && net?.kind !== 'client') this.clock = new TurnClock(turnSeconds * 1000);
-    if (turnSeconds > 0 || net?.kind === 'client') this.clockTimer = setInterval(() => this.tickClock(), 250);
+    if (net?.kind !== 'client' && !guide) this.responses = new ResponseTracker((state.options?.responseSeconds ?? DEFAULT_RESPONSE_SECONDS) * 1000);
+    this.clockTimer = setInterval(() => this.tickClock(), 250);
     this.bindNet();
     this.root = this.buildLayout();
     host.appendChild(this.root);
@@ -317,6 +342,7 @@ export class GameScreen {
           { class: 'map-wrap' },
           this.elMapWrap,
           this.elBanner,
+          this.elWaitBar,
           this.elTip,
           this.tileMenu.el,
           this.chat?.el,
@@ -385,7 +411,12 @@ export class GameScreen {
   }
 
   private async pump() {
-    if (this.pumping || this.destroyed) return;
+    if (this.destroyed) return;
+    // Akış başka bir yerde (ör. cihaz geçiş ekranında) beklerken gelen istek kaybolmasın
+    if (this.pumping) {
+      this.pumpAgain = true;
+      return;
+    }
     if (this.net?.kind === 'client') {
       this.clientFollowUp();
       return;
@@ -449,7 +480,7 @@ export class GameScreen {
         }
         // İnsan sırası
         // Cihaz başka oyuncudaysa (ör. boğaz izni için verildi) sıra sahibine geri ver
-        if (!this.net && this.deviceAt !== null && this.deviceAt !== cur.id && this.humanCount() > 1 && this.lastHumanKey.endsWith(`-${cur.id}-${s.turnCounter}`)) {
+        if (!this.net && this.offerHolds === 0 && this.deviceAt !== null && this.deviceAt !== cur.id && this.humanCount() > 1 && this.lastHumanKey.endsWith(`-${cur.id}-${s.turnCounter}`)) {
           await this.passDevice(cur.id, 'Sıra yine sende.');
         }
         const setup = s.phase.kind === 'setup_capital' || s.phase.kind === 'setup_territory';
@@ -475,6 +506,10 @@ export class GameScreen {
       }
     } finally {
       this.pumping = false;
+      if (this.pumpAgain) {
+        this.pumpAgain = false;
+        void this.pump();
+      }
     }
   }
 
@@ -878,16 +913,17 @@ export class GameScreen {
       if (this.destroyed) return;
       switch (e.type) {
         case 'spin': {
-          const f = animFactor(!isHuman(e.player));
+          const f = document.hidden ? 0 : animFactor(!isHuman(e.player));
           playSpin(1500 * f, !isHuman(e.player));
           if (f > 0) await this.showSpin(e.player, e.value, f);
           break;
         }
         case 'battle': {
           const human = isHuman(e.attacker) || isHuman(e.defender);
-          const f = animFactor(!human);
+          const f = document.hidden ? 0 : animFactor(!human);
           if (f > 0) play('battleStart', !human);
-          if (f > 0) await this.showBattle(e, f, (mine(e.attacker) || mine(e.defender)) && f >= 1);
+          // Sonucu yalnızca saldıran onaylayabilir (o da süreyle); savunanın penceresi kendiliğinden kapanır, oyun onu beklemez
+          if (f > 0) await this.showBattle(e, f, battleWaitsForClick(mine(e.attacker), f >= 1));
           // Kazanma/kaybetme bu cihazdaki oyuncunun gözünden; izlerken saldıranınkinden
           const me = mine(e.defender) && !mine(e.attacker) ? e.defender : e.attacker;
           const attackerWon = e.kind === 'land' ? e.gain > 0 : e.success;
@@ -910,7 +946,7 @@ export class GameScreen {
           if (isHuman(e.player)) play('turn', !mine(e.player));
           break;
         case 'expedition': {
-          const f = animFactor(byBot);
+          const f = document.hidden ? 0 : animFactor(byBot);
           if (f > 0) await this.map.animatePath(e.from, e.path, UNIT_ICON[e.unit], 45 * f);
           break;
         }
@@ -944,18 +980,31 @@ export class GameScreen {
       if (this.mine(offer.to)) void this.promptOffer(offer);
       return;
     }
-    if (from.kind === 'human') {
-      await this.passDevice(to.id, `${from.name} sana bir teklif gönderdi.`);
-      // Yanıt bekleyen oyuncunun kendi süresi işler, teklif edenin süresi durur
-      this.responseSeg = { key: `offer-${offer.id}`, players: [to.id] };
-      this.syncClock();
-      const answer = await this.askOffer(offer, true);
-      this.responseSeg = null;
-      this.syncClock();
-      if (answer !== 'later') await this.commit({ type: 'RESPOND_OFFER', player: to.id, offerId: offer.id, accept: answer === 'accept' });
-      await this.passDevice(from.id, answer === 'later' ? `${to.name} teklifi sonra yanıtlayacak (Diplomasi'de bekliyor). Sıra yine sende.` : 'Teklif yanıtlandı, sıra yine sende.');
-    }
+    if (from.kind === 'human') void this.hotSeatOffer(offer);
     // Bot → insan teklifleri insanın sırasında yanıtlanır
+  }
+
+  /** Hot-seat: cihaz alıcıya geçer, cevabı alınır, geri döner. Akışı (kuyruğu) tutmaz; süre dolunca reddedilir. */
+  private async hotSeatOffer(offer: Offer) {
+    const from = this.state.players[offer.from];
+    const to = this.state.players[offer.to];
+    const alive = () => this.state.offers.some((o) => o.id === offer.id);
+    this.localOffers.add(offer.id);
+    this.offerHolds++;
+    this.syncClock();
+    this.tickResponses();
+    let answer: 'accept' | 'reject' | 'later' = 'later';
+    await this.passDevice(to.id, `${from.name} sana bir teklif gönderdi.`);
+    if (alive()) answer = await this.askOffer(offer, true);
+    if (answer !== 'later' && alive()) await this.enqueue(() => this.commit({ type: 'RESPOND_OFFER', player: to.id, offerId: offer.id, accept: answer === 'accept' }));
+    const pending = alive();
+    this.localOffers.delete(offer.id);
+    this.offerHolds--;
+    this.syncClock();
+    if (this.destroyed) return;
+    this.tickResponses();
+    await this.passDevice(from.id, pending ? `${to.name} teklifi sonra yanıtlayacak (Diplomasi'de bekliyor). Sıra yine sende.` : 'Teklif yanıtlandı, sıra yine sende.');
+    this.render();
   }
 
   /** Çevrimiçi: gelen teklifi sorar; "Sonra" denirse Diplomasi panelinden yanıtlanabilir. */
@@ -1044,6 +1093,7 @@ export class GameScreen {
       room.events.onStatus = (status, reason) => this.showConnection(status, reason);
       room.events.onChat = (m) => this.chat?.onMessage(m);
       room.events.onClock = () => this.drawClock();
+      room.events.onWaits = () => this.drawWaits();
       room.events.onViewers = () => this.renderViewers();
       room.events.onTimeout = (players) => {
         if (room.seat !== null && players.includes(room.seat)) this.timedOutHere();
@@ -1078,6 +1128,9 @@ export class GameScreen {
       }
       return;
     }
+    // Yeniden bağlanınca da bekleyen teklifler sorulur
+    const seat = this.mySeat();
+    if (seat !== null) for (const o of s.offers) if (o.to === seat) void this.promptOffer(o);
     if (s.phase.kind === 'permit') {
       this.clientPermitPrompt(s.phase);
       return;
@@ -1134,7 +1187,7 @@ export class GameScreen {
   private syncClock() {
     const clock = this.clock;
     if (!clock || this.destroyed) return;
-    const seg = this.handoff ? null : (this.responseSeg ?? clockSegment(this.state, (p) => this.state.players[p]?.kind === 'human'));
+    const seg = this.handoff || this.offerHolds > 0 ? null : clockSegment(this.state, (p) => this.state.players[p]?.kind === 'human');
     if (!clock.set(seg)) return;
     if (this.net?.kind === 'host') this.net.room.sendClock(clock.info());
     this.drawClock();
@@ -1145,6 +1198,78 @@ export class GameScreen {
     const expired = this.clock?.poll();
     if (expired) void this.onTimeout(expired);
     this.drawClock();
+    this.tickResponses();
+    this.drawWaits();
+  }
+
+  /** Cevap sürelerini durumla eşitler (yerel oyun, oda sahibi); dolanlar için otomatik karar verir */
+  private tickResponses() {
+    const tr = this.responses;
+    if (!tr || this.destroyed) return;
+    const list = pendingResponses(this.state, { isHuman: (p) => this.state.players[p]?.kind === 'human', hotSeat: !this.net, promptedOffers: this.localOffers });
+    if (tr.sync(list) && this.net?.kind === 'host') this.net.room.sendWaits(tr.info());
+    for (const r of tr.expired()) void this.onResponseExpired(r);
+  }
+
+  /** Cevap gelmedi: Orta bot mantığıyla toprak seçilir, teklif ve izin reddedilir, oylama "hayır" */
+  private async onResponseExpired(r: PendingResponse) {
+    await this.enqueue(async () => {
+      for (let guard = 0; guard < 100; guard++) {
+        const a = responseAction(this.state, r);
+        if (!a || !(await this.commit(a, true))) break;
+      }
+    });
+    if (this.destroyed) return;
+    const text = `Süre doldu (${WAIT_LABEL[r.kind]}): otomatik karar verildi.`;
+    if (this.mine(r.player)) toast(text, 'error', 4000);
+    if (this.net?.kind === 'host') this.net.room.noticeSeat(r.player, text);
+    this.question(r.key)?.close('timeout');
+    if (this.passCancel?.player === r.player) this.passCancel.cancel();
+    this.render();
+    void this.pump();
+  }
+
+  private question(key: string): ModalHandle | undefined {
+    return this.questions.get(key);
+  }
+
+  /** Cevap penceresini kaydeder: artık geçerli olmayınca (süre doldu, görüşme bitti) kendiliğinden kapanır */
+  private trackQuestion(key: string, m: ModalHandle) {
+    this.questions.set(key, m);
+    void m.result.then(() => this.questions.delete(key));
+    return m;
+  }
+
+  private closeStaleQuestions() {
+    if (this.questions.size === 0) return;
+    const live = new Set(pendingResponses(this.state, { isHuman: () => true }).map((r) => r.key));
+    for (const [k, m] of this.questions) if (!live.has(k)) m.close('timeout');
+  }
+
+  /** Bu cihazın görebildiği bekleyen cevaplar */
+  private waitList(): WaitInfo[] {
+    if (this.net?.kind === 'client') {
+      const { list, receivedAt } = this.net.room.lastWaits;
+      const dt = Date.now() - receivedAt;
+      return list.map((w) => ({ ...w, remainingMs: Math.max(0, w.remainingMs - dt) }));
+    }
+    return this.responses?.info() ?? [];
+  }
+
+  /** "Ali'nin cevabı bekleniyor – 45 sn" ve açık pencerelerdeki geri sayımlar */
+  private drawWaits() {
+    if (this.destroyed) return;
+    const s = this.state;
+    const waits = this.waitList();
+    const sec = (w: WaitInfo) => Math.ceil(w.remainingMs / 1000);
+    const others = waits.filter((w) => !this.mine(w.player) || (!this.net && this.humanCount() > 1 && w.blocking));
+    const text = others.map((w) => `${gen(pname(s, w.player))} ${WAIT_LABEL[w.kind]} bekleniyor – ${sec(w)} sn`).join(' · ');
+    if (this.elWaitBar.textContent !== text) this.elWaitBar.textContent = text;
+    this.elWaitBar.classList.toggle('hidden', !text);
+    document.querySelectorAll<HTMLElement>('[data-wait-key], [data-wait-player]').forEach((el) => {
+      const w = el.dataset.waitKey ? waits.find((x) => x.key === el.dataset.waitKey) : waits.find((x) => x.player === Number(el.dataset.waitPlayer));
+      el.textContent = w ? `Kalan süre: ${sec(w)} sn. Cevap gelmezse ${WAIT_DEFAULT[w.kind]}.` : '';
+    });
   }
 
   /** Üst çubuktaki kalan süre */
@@ -1261,6 +1386,24 @@ export class GameScreen {
       status,
       btn,
     );
+    // Bakan oyuncu savaşı başlatmadıysa pencereyi istediği an kapatabilir
+    let skip = () => {};
+    const skipped = new Promise<void>((r) => (skip = r));
+    if (!needClick) {
+      el.classList.add('overlay-skippable');
+      el.addEventListener('click', skip);
+    }
+    await Promise.race([skipped, this.playBattleRounds(e, f, needClick, { sa, sd, score, status, btn, el, drawStreak, A, D })]);
+    el.remove();
+  }
+
+  private async playBattleRounds(
+    e: Extract<GameEvent, { type: 'battle' }>,
+    f: number,
+    needClick: boolean,
+    v: { sa: Spinner; sd: Spinner; score: HTMLElement; status: HTMLElement; btn: HTMLElement; el: HTMLElement; drawStreak(w: number): void; A: { name: string }; D: { name: string } },
+  ) {
+    const { sa, sd, score, status, btn, el, drawStreak, A, D } = v;
     let wins = 0;
     for (let k = 0; k < e.rounds.length; k++) {
       const r = e.rounds[k];
@@ -1289,12 +1432,13 @@ export class GameScreen {
     if (needClick) {
       btn.classList.remove('hidden');
       btn.focus();
+      // Saldıran başından kalktıysa da oyun sonsuza dek beklemesin
       await new Promise<void>((r) => {
         btn.addEventListener('click', () => r(), { once: true });
         el.addEventListener('click', (ev) => ev.target === el && r());
+        setTimeout(r, BATTLE_RESULT_MAX_MS);
       });
     } else await sleep(1000 * f);
-    el.remove();
   }
 
   /** Hot-seat: cihazı başka oyuncuya verme ekranı. isTurn=false ise sıra değişmez (teklif, oylama). */
@@ -1305,7 +1449,14 @@ export class GameScreen {
     this.syncClock();
     return new Promise((resolve) => {
       const btn = h('button', { class: 'btn btn-primary btn-big' }, 'Hazırım');
-      const el = h(
+      const finish = () => {
+        if (this.passCancel?.cancel === finish) this.passCancel = null;
+        el.remove();
+        this.handoff = false;
+        this.syncClock();
+        resolve();
+      };
+      const el: HTMLElement = h(
         'div',
         { class: 'overlay pass-screen' },
         h(
@@ -1315,15 +1466,12 @@ export class GameScreen {
           h('h1', {}, isTurn ? `Sıra: ${pl.name}` : pl.name),
           h('p', {}, `Cihazı ${pl.name} oyuncusuna verin.`),
           h('p', { class: 'muted' }, message),
+          isTurn ? null : h('p', { class: 'wait-left muted small', dataset: { waitPlayer: String(p) } }),
           btn,
         ),
       );
-      btn.addEventListener('click', () => {
-        el.remove();
-        this.handoff = false;
-        this.syncClock();
-        resolve();
-      });
+      btn.addEventListener('click', finish);
+      this.passCancel = { player: p, cancel: finish };
       document.body.appendChild(el);
       btn.focus();
     });
@@ -1334,7 +1482,8 @@ export class GameScreen {
     const s = this.state;
     const ph = s.phase;
     const proposer = ph.kind === 'vote' ? pname(s, ph.proposer) : '?';
-    const m = openModal({
+    const key = `vote-${s.turnCounter}-${ph.kind === 'vote' ? ph.proposer : -1}-${p}`;
+    const m = this.trackQuestion(key, openModal({
       title: `Oylama — ${pname(s, p)}`,
       icon: 'vote',
       body: h(
@@ -1342,13 +1491,14 @@ export class GameScreen {
         {},
         h('p', {}, `${proposer} oyunu ittifakla bitirmeyi önerdi.`),
         h('p', {}, `Kalan devletler: ${s.players.filter((x) => x.alive).map((x) => x.name).join(', ')}. Oybirliği gerekir.`),
+        this.countdownEl(key),
       ),
       buttons: [
         { label: 'Hayır, devam', value: 'no' },
         { label: 'Evet, birlikte kazanalım', value: 'yes', primary: true },
       ],
       closable: false,
-    });
+    }));
     const v = await m.result;
     return v === 'timeout' ? null : v === 'yes';
   }
@@ -1364,7 +1514,8 @@ export class GameScreen {
     const oneToll = h('input', { type: 'number', class: 'num', min: 0, step: 50, value: 0 });
     const keepToll = h('input', { type: 'number', class: 'num', min: 0, step: 50, value: 100 });
     const amount = (el: HTMLInputElement) => Math.max(0, Math.floor(Number(el.value) || 0));
-    const m = openModal({
+    const key = `permit-${s.turnCounter}-${req.straitId}-${p}`;
+    const m = this.trackQuestion(key, openModal({
       title: `Boğaz izni — ${pname(s, p)}`,
       icon: 'strait',
       closable: false,
@@ -1374,7 +1525,7 @@ export class GameScreen {
         { class: 'permit-body' },
         h('p', {}, `${pname(s, ph.player)} ${ph.unit === 'ship' ? 'gemisiyle' : 'uçağıyla'} ${straitLabel(req.straitId)} boğazından geçmek istiyor.`),
         h('p', { class: 'small' }, `Hedef: ${tileLabel(s, ph.target)} · ${owner === null ? 'sahipsiz toprak' : owner === p ? 'senin toprağın' : `${pname(s, owner)} toprağı`}`),
-        this.countdownEl(`permit-${p}-${req.straitId}`),
+        this.countdownEl(key),
         h('div', { class: 'row' }, 'Bu seferlik vergi: ', oneToll, ' akçe (0 = vergisiz)'),
         h('div', { class: 'row' }, 'Kalıcı vergili ayar için: ', keepToll, ' akçe'),
         h('p', { class: 'muted small' }, `Kalıcı ayarlar ${pname(s, ph.player)} için bu boğazda geçerli olur; "Boğazlarım"dan değiştirebilirsin.`),
@@ -1386,7 +1537,7 @@ export class GameScreen {
         { label: 'Kalıcı: Açık', value: 'open' },
         { label: 'Bu seferlik izin ver', value: 'once', primary: true },
       ],
-    });
+    }));
     const v = await m.result;
     if (v === 'timeout' || this.state.phase.kind !== 'permit') return null;
     const decision = v as PermitDecision;
@@ -1419,14 +1570,15 @@ export class GameScreen {
     return { type: 'CONFIRM_PERMIT', player: p, accept: v === 'yes' };
   }
 
-  /** Cevap penceresindeki geri sayım yeri (süre sistemi doldurur) */
-  private countdownEl(_key: string): HTMLElement {
-    return h('p', { class: 'wait-left muted small' });
+  /** Cevap penceresindeki geri sayım yeri (drawWaits doldurur) */
+  private countdownEl(key: string): HTMLElement {
+    return h('p', { class: 'wait-left muted small', dataset: { waitKey: key } });
   }
 
   private async askOffer(offer: Offer, allowLater: boolean): Promise<'accept' | 'reject' | 'later'> {
     const s = this.state;
-    const m = openModal({
+    const key = `offer-${offer.id}`;
+    const m = this.trackQuestion(key, openModal({
       title: `${gen(pname(s, offer.from))} teklifi`,
       icon: 'diplomacy',
       body: h(
@@ -1434,6 +1586,7 @@ export class GameScreen {
         {},
         h('p', {}, `${pname(s, offer.to)}, sana şu teklif yapıldı:`),
         h('ul', { class: 'offer-items' }, offer.items.map((it) => h('li', {}, offerItemText(s, offer, it)))),
+        this.countdownEl(key),
       ),
       buttons: [
         ...(allowLater ? [{ label: 'Sonra yanıtla', value: 'later' }] : []),
@@ -1441,7 +1594,7 @@ export class GameScreen {
         { label: 'Kabul et', value: 'accept', primary: true },
       ],
       closable: false,
-    });
+    }));
     const v = await m.result;
     // Süre dolarsa teklif bekleyen tekliflerde kalır
     return v === 'timeout' ? 'later' : (v as 'accept' | 'reject' | 'later');
@@ -1546,6 +1699,7 @@ export class GameScreen {
     this.map.setViewer(this.net ? this.mySeat() : this.state.players[this.actor()]?.kind === 'human' ? this.actor() : null);
     this.chat?.render();
     this.syncClock();
+    this.closeStaleQuestions();
     this.renderViewers();
     this.checkEliminated();
   }
@@ -2640,6 +2794,7 @@ export class GameScreen {
     });
     const incoming = s.offers.filter((o) => o.to === me);
     const outgoing = s.offers.filter((o) => o.from === me);
+    const offerLeft = (id: number) => h('div', { class: 'wait-left muted small', dataset: { waitKey: `offer-${id}` } });
     const body = h(
       'div',
       { class: 'diplo' },
@@ -2651,6 +2806,7 @@ export class GameScreen {
               'div',
               { class: 'offer-card' },
               h('div', {}, h('b', {}, pname(s, o.from)), ': ', offerText(s, o)),
+              offerLeft(o.id),
               h(
                 'div',
                 { class: 'right' },
@@ -2667,6 +2823,7 @@ export class GameScreen {
               'div',
               { class: 'offer-card' },
               h('div', {}, '→ ', h('b', {}, pname(s, o.to)), ': ', offerText(s, o)),
+              offerLeft(o.id),
               h('div', { class: 'right' }, h('button', { class: 'btn btn-small', onClick: () => after({ type: 'CANCEL_OFFER', player: me, offerId: o.id }) }, 'Geri çek')),
             ),
           )

@@ -53,9 +53,8 @@ describe('süre dolunca otomatik eylemler', () => {
 
   it('karşı saldırıda savunanın süresi dolarsa toprakları o seçer; sıra saldıranda kalır', () => {
     const s: GameState = { ...duel(), phase: { kind: 'conquest', taker: 1, victim: 0, remaining: 1, anchor: null, counter: true } };
-    const seg = clockSegment(s, () => true)!;
-    expect(seg.players).toEqual([1]);
-    expect(seg.key).toMatch(/^counter-/);
+    // Sıra sahibinin süresi durur; savunanın süresini cevap süresi sistemi tutar
+    expect(clockSegment(s, () => true)).toBeNull();
     const r = runTimeout(s, 1);
     expect(r.types).toEqual(['CONQUER_TILE']);
     expect(r.state.phase.kind).toBe('actions');
@@ -90,10 +89,10 @@ describe('süre dolunca otomatik eylemler', () => {
     expect(r.state.currentPlayer).toBe(1);
   });
 
-  it('oylamada Orta bot gibi oy verilir', () => {
+  it('oylamada cevap gelmezse "hayır" sayılır', () => {
     const s: GameState = { ...duel(), phase: { kind: 'vote', proposer: 0, votes: { 0: true } } };
-    expect(clockSegment(s, () => true)!.players).toEqual([1, 2]);
-    expect(timeoutAction(s, 1)).toEqual({ type: 'CAST_VOTE', player: 1, accept: true });
+    expect(clockSegment(s, () => true)).toBeNull();
+    expect(timeoutAction(s, 1)).toEqual({ type: 'CAST_VOTE', player: 1, accept: false });
     expect(timeoutAction(s, 0)).toBeNull();
   });
 

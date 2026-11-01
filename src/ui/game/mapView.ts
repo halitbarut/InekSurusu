@@ -172,7 +172,11 @@ export class MapView {
           icon,
         };
         this.dirty = true;
-        if (tt < 1) requestAnimationFrame(step);
+        // Arka plandaki sekmede kare çizilmez: oyun akışı burada takılmasın
+        if (tt < 1) {
+          if (document.hidden) setTimeout(step, 50);
+          else requestAnimationFrame(step);
+        }
         else {
           this.mover = null;
           this.dirty = true;

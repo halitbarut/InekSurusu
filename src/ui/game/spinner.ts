@@ -94,7 +94,11 @@ export class Spinner {
     void this.rotor.getBoundingClientRect();
     const turns = Math.max(2, Math.round(ms / 380));
     const next = target - 360 * turns - (target > base ? 360 : 0);
-    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+    // Arka plandaki sekmede kare çizilmez: oyun akışı burada takılmasın
+    await new Promise<void>((r) => {
+      requestAnimationFrame(() => r());
+      setTimeout(r, 60);
+    });
     this.setRotation(next, ms);
     await sleep(ms);
     this.el.classList.add('settled');

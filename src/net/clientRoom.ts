@@ -12,6 +12,7 @@ import {
   type Presence,
   type ViewerInfo,
 } from './protocol';
+import type { WaitInfo } from '../ui/game/responses';
 import type { ClientTransport, Conn } from './transport';
 
 export type ClientStatus = 'connecting' | 'online' | 'reconnecting' | 'closed';
@@ -28,6 +29,8 @@ export interface ClientRoomEvents {
   onChat?(msg: ChatMessage | null): void;
   /** Tur saati değişti */
   onClock?(clock: ClockMessage | null): void;
+  /** Bekleyen cevaplar değişti */
+  onWaits?(): void;
   /** Bu oyuncuların süresi doldu */
   onTimeout?(players: number[]): void;
   /** İzleyici listesi değişti */
@@ -60,6 +63,8 @@ export class ClientRoom implements ChatChannel {
   replay: ReplayData | null = null;
   /** Oyunu izleyenler (oda sahibinin son bildirdiği) */
   viewers: ViewerInfo[] = [];
+  /** Oda sahibinden gelen bekleyen cevaplar (alındığı yerel zamanla) */
+  lastWaits: { list: WaitInfo[]; receivedAt: number } = { list: [], receivedAt: 0 };
   /** Oda sahibinden gelen son tur saati (alındığı yerel zamanla) */
   lastClock: (ClockMessage & { receivedAt: number }) | null = null;
   private conn: Conn<HostMessage, ClientMessage> | null = null;
@@ -203,6 +208,10 @@ export class ClientRoom implements ChatChannel {
         return;
       case 'timeout':
         this.events.onTimeout?.(m.players);
+        return;
+      case 'waits':
+        this.lastWaits = { list: m.waits, receivedAt: Date.now() };
+        this.events.onWaits?.();
         return;
       case 'viewers':
         this.viewers = m.viewers;

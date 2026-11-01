@@ -19,6 +19,7 @@ import {
   type ClockMessage,
   type ViewerInfo,
 } from './protocol';
+import type { WaitInfo } from '../ui/game/responses';
 import type { Conn, HostTransport } from './transport';
 
 interface RemoteClient {
@@ -72,7 +73,7 @@ export interface HostRoomEvents {
  * bağlantı durumu ve bot devralma. Oyun durumunu kendisi tutmaz; hamleleri olay olarak
  * dışarı (oyun ekranına) verir, oyun ekranı da sonucu broadcastUpdate ile yayınlar.
  */
-type LobbySettings = Pick<LobbyInfo, 'width' | 'height' | 'seed' | 'rules' | 'mapName' | 'turnSeconds'>;
+type LobbySettings = Pick<LobbyInfo, 'width' | 'height' | 'seed' | 'rules' | 'mapName' | 'turnSeconds' | 'responseSeconds'>;
 
 export class HostRoom implements ChatChannel {
   readonly events: HostRoomEvents = {};
@@ -98,6 +99,8 @@ export class HostRoom implements ChatChannel {
   private replay: ReplayData | null = null;
   /** Tur saati: son yayınlanan (yeni gelenlere de gönderilir) */
   private clock: { players: number[]; deadline: number; limitMs: number } | null = null;
+  /** Son yayınlanan bekleyen cevaplar */
+  private waits: { list: WaitInfo[]; at: number } = { list: [], at: 0 };
 
   constructor(
     readonly code: string,
@@ -229,6 +232,22 @@ export class HostRoom implements ChatChannel {
     return c ? { players: c.players, remainingMs: Math.max(0, c.deadline - Date.now()), limitMs: c.limitMs } : null;
   }
 
+  /** Bekleyen cevapları yayınlar: tarafı olmayan oyuncuya gizli olanlar gitmez */
+  sendWaits(waits: WaitInfo[]) {
+    this.waits = { list: waits, at: Date.now() };
+    for (const c of this.clients.values()) c.conn?.send({ t: 'waits', waits: this.waitsFor(c.seat) });
+  }
+
+  private waitsFor(seat: number | null): WaitInfo[] {
+    const dt = Date.now() - this.waits.at;
+    return this.waits.list.filter((w) => w.parties === null || (seat !== null && w.parties.includes(seat))).map((w) => ({ ...w, remainingMs: Math.max(0, w.remainingMs - dt) }));
+  }
+
+  /** Yalnızca bu koltuğa bilgi notu */
+  noticeSeat(seat: number, text: string) {
+    for (const c of this.clients.values()) if (c.seat === seat) c.conn?.send({ t: 'notice', text });
+  }
+
   /** Oyun bitti: tekrar kaydını herkese gönder (paylaşılan kopya, gizli teklif içerikleri çıkarılmış olmalı) */
   sendReplay(data: ReplayData) {
     this.replay = data;
@@ -318,6 +337,7 @@ export class HostRoom implements ChatChannel {
       const st = this.getState();
       conn.send({ t: 'welcome', seat, lobby: null, state: st ? viewFor(st, seat) : null, presence: this.presence, chat: this.chatSnapshot(seat) });
       conn.send({ t: 'clock', clock: this.clockNow() });
+      conn.send({ t: 'waits', waits: this.waitsFor(seat) });
       conn.send({ t: 'chatcfg', spectatorChat: this.spectatorChat });
       conn.send({ t: 'viewers', viewers: this.viewers() });
       if (this.replay) conn.send({ t: 'replay', data: this.replay });

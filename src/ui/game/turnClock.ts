@@ -3,6 +3,10 @@ import type { GameState } from '../../engine';
 /** Maç ayarlarındaki tur süresi seçenekleri (saniye; 0 = kapalı) */
 export const TURN_TIME_CHOICES: readonly number[] = [0, 60, 120, 180, 300];
 
+/** Başka oyuncudan beklenen cevapların süresi (saniye) */
+export const RESPONSE_TIME_CHOICES: readonly number[] = [30, 60, 90, 120, 180, 300];
+export const DEFAULT_RESPONSE_SECONDS = 60;
+
 /** Son kaç saniyede uyarı verilir */
 export const CLOCK_WARN_MS = 15_000;
 
@@ -20,9 +24,9 @@ export interface ClockInfo {
 }
 
 /**
- * Şu an kimin süresi işliyor? Normal turda sıradaki oyuncu (topaç, bakım, eylemler ve kendi fethi tek bölüm);
- * karşı saldırıda toprak seçen savunanın, oylamada oyunu bekleyenlerin kendi bölümü vardır ve bu sırada
- * sıradaki oyuncunun süresi durur. Yalnızca insanlar için süre tutulur.
+ * Şu an kimin süresi işliyor? Normal turda sıradaki oyuncu (topaç, bakım, eylemler ve kendi fethi tek bölüm).
+ * Başkasının cevabı beklenirken (karşı saldırıda toprak seçimi, oylama, boğaz izni) sıradaki oyuncunun süresi durur;
+ * o cevapların süresini cevap süresi sistemi tutar (responses.ts). Yalnızca insanlar için süre tutulur.
  */
 export function clockSegment(state: GameState, isHuman: (p: number) => boolean): ClockSegment | null {
   const ph = state.phase;
@@ -31,10 +35,14 @@ export function clockSegment(state: GameState, isHuman: (p: number) => boolean):
     case 'gameover':
       return null;
     case 'vote':
-      seg = { key: `vote-${state.turnCounter}-${ph.proposer}`, players: state.players.filter((p) => p.alive && !(p.id in ph.votes)).map((p) => p.id) };
+      return null;
+    case 'permit':
+      if (ph.stage === 'answers') return null;
+      seg = { key: `turn-${state.turnCounter}`, players: [state.currentPlayer] };
       break;
     case 'conquest':
-      seg = ph.counter ? { key: `counter-${state.turnCounter}-${ph.taker}`, players: [ph.taker] } : { key: `turn-${state.turnCounter}`, players: [state.currentPlayer] };
+      if (ph.counter) return null;
+      seg = { key: `turn-${state.turnCounter}`, players: [state.currentPlayer] };
       break;
     case 'setup_capital':
     case 'setup_territory':

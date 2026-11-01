@@ -240,7 +240,7 @@ function renderJoinLobby(host: HTMLElement, cb: OnlineCallbacks, room: ClientRoo
         ),
       );
     });
-    infoEl.textContent = `${lobby.mapName ? `Harita: ${lobby.mapName}` : `Harita ${lobby.width}×${lobby.height} · seed ${lobby.seed}`}${lobby.rules ? ` · Kurallar: ${lobby.rules}` : ''}${lobby.turnSeconds ? ` · Tur süresi: ${lobby.turnSeconds / 60} dk` : ''}`;
+    infoEl.textContent = `${lobby.mapName ? `Harita: ${lobby.mapName}` : `Harita ${lobby.width}×${lobby.height} · seed ${lobby.seed}`}${lobby.rules ? ` · Kurallar: ${lobby.rules}` : ''}${lobby.turnSeconds ? ` · Tur süresi: ${lobby.turnSeconds / 60} dk` : ''}${lobby.responseSeconds ? ` · Cevap süresi: ${lobby.responseSeconds} sn` : ''}`;
     clear(spectEl);
     spectEl.append(
       icon('eye'),

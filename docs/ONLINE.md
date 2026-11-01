@@ -36,7 +36,7 @@ eylemi kendi durumuna göre doğruladığı için hiçbir etkisi olmaz (`tests/n
 
 ## Mesaj protokolü
 
-Sürüm `PROTOCOL_VERSION` (`src/net/protocol.ts`), şu an **7**. Katılan ilk mesajında (`hello`) sürümünü
+Sürüm `PROTOCOL_VERSION` (`src/net/protocol.ts`), şu an **8**. Katılan ilk mesajında (`hello`) sürümünü
 gönderir; farklıysa oda sahibi `refused` ile reddeder ("İki taraf da sayfayı yenilesin").
 
 | Sürüm | Değişiklik |
@@ -48,6 +48,7 @@ gönderir; farklıysa oda sahibi `refused` ile reddeder ("İki taraf da sayfayı
 | 5 | Tur süresi: `clock`, `timeout` mesajları; lobide `turnSeconds` |
 | 6 | İzleyiciler: `viewers` (izleyici listesi), `chatcfg` (izleyici sohbeti açık mı); lobide `spectatorChat` |
 | 7 | Oyun bitince `replay` (paylaşılan tekrar kaydı) |
+| 8 | Boğazda birden çok söz sahibi ve izin aşaması; `waits` (bekleyen cevaplar ve süreleri) |
 
 Katılan → oda sahibi:
 
@@ -79,6 +80,7 @@ Oda sahibi → katılan:
 | `keys {keys}` | Koltukların sohbet açık anahtarları değişti |
 | `clock {clock}` | Tur saati: kimin süresi işliyor, ne kadar kaldı (`null` = kimsenin). Yeni bağlanana da gönderilir |
 | `timeout {players}` | Bu oyuncuların süresi doldu (açık pencerelerini kapatırlar) |
+| `waits {waits}` | Bekleyen cevaplar ve kalan süreleri (herkese açık olanlar + bu oyuncunun tarafı olduğu teklifler). Yeni bağlanana da gönderilir |
 | `viewers {viewers}` | Oyunu izleyenler: oturmamış katılımcılar ve elenmiş oyuncular |
 | `chatcfg {spectatorChat}` | İzleyiciler genel sohbete yazabilir mi |
 | `replay {data}` | Oyun bitti: paylaşılan tekrar kaydı (sonradan bağlanana da gönderilir) |
@@ -95,6 +97,7 @@ mesaj boyutudur (yerel ağda ve WebRTC'de sorun olmadı).
 | RNG durumu (`rngState`) | **Hiç kimseye** (0 gönderilir): sonraki topaç önceden hesaplanamaz |
 | Diplomasi teklifleri (`state.offers`) | Yalnızca teklifin iki tarafına; izleyicilere hiç |
 | Günlükteki ve olaylardaki teklif satırları (`offer_made`, `offer_response`, `offer_cancelled`) | Yalnızca teklifin iki tarafına |
+| Boğaz izni görüşmesinin hedefi, rotası ve günlük satırları (`permit_*`) | Yalnızca sefer sahibi ve o görüşmedeki söz sahipleri. Diğerleri yalnızca kimin kimden izin beklediğini görür |
 | Teklif sonucu (ittifak kuruldu, barış, devredilen toprak ve kaynak) | Herkese: bunlar haritada ve panellerde zaten görünen değişikliklerdir |
 | Lobideki koltuk sahibi kimliği (`claimedBy`) | Oda sahibinde gerçek kimlik; katılanlara yalnızca "dolu" |
 | Geri alma geçmişi | Hiç kimseye (oda sahibinde kalır), katılana yalnızca kaç eylem geri alınabileceği |
@@ -148,6 +151,15 @@ Tur süresi açıksa saat yalnızca oda sahibinde tutulur (`TurnClock`, `src/ui/
 saatine göre geri sayar (iki bilgisayarın saat farkı önemli değildir). Süre dolunca oda sahibi `timeout` gönderir ve
 otomatik eylemleri (topaç, zorunlu seçimler, tur sonu) oyuncu adına kendisi uygular; bunlar normal güncellemeler
 olarak yayınlanır. Katılanın gönderdiği hiçbir şey süreyi değiştiremez.
+
+## Cevap süresi
+
+Karşı saldırıda toprak seçimi, oylama, boğaz izni ve teklifler cevap süresine tabidir. Süreyi yalnızca oda sahibi tutar
+(`ResponseTracker`, `src/ui/game/responses.ts`) ve `waits` mesajıyla kalan süreyi gönderir; katılan kendi saatine göre geri sayar.
+Süre dolunca oda sahibi otomatik kararı (`responseAction`) normal eylem olarak uygular ve yayınlar. Cevabı beklenen oyuncunun
+penceresi, durum artık o soruyu içermediği an kendiliğinden kapanır. Bilgilendirme pencereleri (savaş sonucu vb.) oyunu beklemez:
+oda sahibinde savaş animasyonu sürerken yalnızca kısa bir görsel gecikme olur, sekme arka plandaysa animasyon atlanır.
+Kurallar ve liste: ASSUMPTIONS #153–#160.
 
 ## Sohbet
 

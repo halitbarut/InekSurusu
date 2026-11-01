@@ -105,8 +105,8 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
     Var olan barış uzatılabilir.
 31. İttifak yalnızca kendi turunda bozulabilir. Bozulduğu oyuncu turu boyunca iki taraf birbirine
     saldıramaz; sonraki turlardan itibaren saldırı serbesttir.
-32. Teklif yalnızca kendi turunda yapılır, yanıt her zaman verilebilir. Geçerlilik kabul anında yeniden
-    kontrol edilir; kaynak/toprak artık yoksa teklif düşer. Teklifler süresiz bekler, gönderen geri çekebilir.
+32. Teklif yalnızca kendi turunda yapılır. Geçerlilik kabul anında yeniden kontrol edilir; kaynak/toprak artık yoksa
+    teklif düşer. Teklif cevap süresi kadar bekler, sonra reddedilir (#156); gönderen geri çekebilir.
 33. Toprak devrinde başkent devredilemez; yapı ve birimler toprakla birlikte geçer.
 34. "Boğaz geçiş izni / vergi muafiyeti" kalemi, veren tarafın idaresindeki boğazda alan tarafa
     "geçiş açık + belirtilen vergi (0 = muafiyet)" ayarını uygular.
@@ -325,13 +325,10 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
 97. Süre dolunca sırasıyla: topaç çevrilmemişse çevrilir; bekleyen zorunlu seçimler (bakımda birim dağıtma, kazanılan
     savaşta toprak seçimi, kurulum seçimleri) Orta seviye bot mantığıyla yapılır; eylem aşamasına gelince tur biter.
     Oyuncunun açık pencereleri kapanır ve seçili eylem iptal olur. Otomatik eylemler normal eylemler gibi kayda geçer.
-98. **Başkasının yanıtı beklenirken:** karşı saldırıda toprak seçen savunanın ve ittifakla bitirme oylamasında oyu
-    beklenenlerin **kendi** (tam) süresi işler; bu sırada sıradaki oyuncunun süresi durur ve sonra kaldığı yerden sürer.
-    Süresi dolan savunanın toprakları Orta bot gibi seçilir; oylamada Orta bot gibi oy verilir (Orta bot her zaman
-    "evet" der, yani süresi dolan oyuncu ittifakla bitirmeyi kabul etmiş sayılır).
-99. Hot-seat'te insandan insana teklifte alıcının kendi süresi işler. Teklif yanıtı zorunlu bir seçim olmadığı için süre
-    dolunca teklif reddedilmez, "Sonra yanıtla" gibi bekleyen tekliflerde kalır. Çevrimiçide teklifler oyunu bekletmez
-    (alıcı istediği an yanıtlar), bu yüzden teklif için ayrı süre yoktur.
+98. **Başkasının yanıtı beklenirken** (karşı saldırıda toprak seçimi, oylama, boğaz izni) sıradaki oyuncunun süresi durur ve
+    sonra kaldığı yerden sürer. Bu cevapların süresini tur saati değil cevap süresi sistemi tutar (bkz. #153–#160).
+99. Hot-seat'te insandan insana teklif cevap süresine tabidir; süre dolarsa reddedilir. Çevrimiçide teklifler oyunu bekletmez
+    ama yine cevap süresine tabidir (bkz. #156).
 100. Hot-seat'te "Cihazı X'e verin" ekranı açıkken saat durur; süre "Hazırım"a basınca başlar.
 101. Çevrimiçide saat yalnızca oda sahibinde tutulur; katılanlara kalan süre gönderilir, onlar yalnızca gösterir.
      Süre gerçek zamanda işler: topaç ve savaş animasyonları da süreden yer.
@@ -501,3 +498,40 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
      Kapalı, diğerlerine Vergili (100, barıştakine 50). İlişki değişince kendi turunda ayarı günceller. Sefer sahibi bot, vergi
      akçesinin yarısını aşıyorsa vazgeçer.
 152. Geri alma: izin istemek başka bir oyuncuya ulaşan bir bilgidir, geri alınamaz; geçmişi temizler (#64 gibi).
+
+## Başka bir oyuncu yüzünden kilitlenmeme
+
+153. **Kural:** bilgilendirme pencereleri oyun akışını tutmaz; yalnızca gerçekten cevap gerektiren sorular bekletir, onlar da
+     süreyle. Kilitlenmenin asıl nedeni şuydu: savaş sonucu penceresi savunanda da "Tamam" bekliyordu ve bu bekleme oyunu
+     yürüten kuyruğun içindeydi. Savunan oda sahibiyse saldıranın sonraki eylemleri uygulanmıyordu.
+154. **Taranan akışlar** (sıra sahibi dışındaki birini bekleyen her yer) ve şimdiki davranışları:
+
+     | Akış | Eski davranış | Şimdi |
+     |---|---|---|
+     | Savaş sonucu penceresi (savunan) | "Tamam" bekliyordu, oyun duruyordu | Tıklama beklemez; kendiliğinden ya da tıklayınca kapanır |
+     | Savaş sonucu penceresi (saldıran) | Süresiz "Tamam" bekliyordu | En fazla 8 saniye |
+     | Savaş/topaç/sefer animasyonu arka plandaki sekmede | Kare çizilmediği için sonsuza dek bekleyebiliyordu | Sekme görünmezken animasyon atlanır |
+     | Karşı saldırıda toprak seçimi (`conquest`, counter) | Süresiz | Cevap süresi; dolunca Orta bot mantığı |
+     | Zafer oylaması (`vote`) | Süresiz (tur süresi açıksa "evet") | Cevap süresi; dolunca "hayır" |
+     | Boğaz izni (`permit`, Görev 3) | — | Cevap süresi; dolunca ret |
+     | Diplomasi teklifi, çevrimiçi | Süresiz bekliyordu (oyunu tutmaz) | Cevap süresi; dolunca ret. Oyun yine beklemez |
+     | Diplomasi teklifi, hot-seat insan → insan | Kuyruğun içinde, "Hazırım"ı süresiz bekliyordu | Kuyruk dışında; cevap süresi; dolunca ret |
+     | Diplomasi teklifi, bot → insan (hot-seat) | Süresiz | Alıcının turunda süre işler; dolunca ret |
+     | Cihaz geçiş ekranı (soru için) | Süresiz | Sorunun cevap süresi işler, dolunca kapanır |
+     | Borç teklifi ve isteği (Görev 6) | — | Cevap süresi; dolunca ret |
+     | Elendin penceresi, kenar bildirimleri, kaynak uçan yazıları | Oyunu tutmuyordu | Değişmedi |
+
+155. **Cevap süresi** bir maç ayarıdır (`GameState.options.responseSeconds`; yeni oyun → Maç ayarları: 30, 60, 90, 120, 180, 300 sn;
+     varsayılan 60), tur süresi kapalıyken de işler. Kapatılamaz: kapalı olsaydı kilitlenme geri gelirdi. Eski kayıtlarda 60.
+156. Süre yalnızca oyunu yürüten tarafta tutulur (`ResponseTracker`), her soru kendi süresini ayrı sayar. Otomatik kararlar normal
+     eylem olarak uygulanır ve kayda geçer (`responseAction`). Bekleyen oyunculara "Ali'nin toprak seçimi bekleniyor – 45 sn",
+     soruyu alan oyuncuya penceresinde kalan süre ve süre dolunca ne olacağı gösterilir. Teklif görüşmesi gizli olduğu için bu
+     bilgi yalnızca iki tarafa gider (`waits` mesajı, protokol 8).
+157. **Bot devralma ile uyum:** kopan oyuncunun sorusunun süresi işlemeye devam eder (60 saniyelik devralma ile aynı anda biter).
+     Süre önce dolarsa otomatik karar verilir. Koltuk bota geçerse oyuncu artık insan sayılmadığı için soru bekleyenlerden
+     çıkar, bot hemen cevaplar, iki sistem aynı soruyu iki kez cevaplamaz. Oyuncu dönünce bekleyen teklifleri yeniden sorulur.
+158. **Hot-seat:** soru için cihaz geçiş ekranında süre işler ("Hazırım"a basılmasa da), böylece masadan kalkan oyuncu
+     sıra sahibini bekletmez. Sıra değişim ekranında ("Sıra: X") süre işlemez; o oyuncunun kendi turudur.
+159. Bot → insan teklifi hot-seat'te alıcının turu gelene kadar süre saymaz: alıcı başka oyuncunun sırasında cihazın başında
+     olmayabilir, görmeden reddedilmesin.
+160. Öğreticide cevap süresi yoktur: botlar anında cevaplar, oyuncu tek eyleme yönlendirilir.

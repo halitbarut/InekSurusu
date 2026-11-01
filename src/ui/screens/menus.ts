@@ -32,7 +32,7 @@ import type { LobbyInfo, SeatKind } from '../../net/protocol';
 import { AUTOSAVE_ID, deleteSave, getSave, importSave, listMaps, listSaves } from '../storage';
 import { inviteBox } from './online';
 import { clampInt, createRulesPanel } from './rulesPanel';
-import { TURN_TIME_CHOICES } from '../game/turnClock';
+import { DEFAULT_RESPONSE_SECONDS, RESPONSE_TIME_CHOICES, TURN_TIME_CHOICES } from '../game/turnClock';
 
 /** "5–7 oyuncu" */
 function playersText(m: BuiltinMap): string {
@@ -245,7 +245,7 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
     if (!room) return;
     room.setLobby(
       players.slice(0, count).map((p, i) => ({ name: p.name, color: p.color, kind: seatKinds[i], botLevel: seatKinds[i] === 'bot' ? seatBotLevels[i] : undefined })),
-      { width: clampInt(wIn.value, 20, 120), height: clampInt(hIn.value, 16, 90), seed: seedText, rules: rules.label(), mapName: chosenMap()?.name, turnSeconds: turnSeconds() },
+      { width: clampInt(wIn.value, 20, 120), height: clampInt(hIn.value, 16, 90), seed: seedText, rules: rules.label(), mapName: chosenMap()?.name, turnSeconds: turnSeconds(), responseSeconds: responseSeconds() },
     );
   };
   let seedText = String(Math.floor(Math.random() * 1_000_000));
@@ -256,6 +256,12 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
     TURN_TIME_CHOICES.map((sec) => h('option', { value: sec, selected: sec === 0 }, turnTimeLabel(sec))),
   );
   const turnSeconds = () => Number(timeSel.value) || 0;
+  const responseSel = h(
+    'select',
+    { 'aria-label': 'Cevap süresi', onChange: () => syncLobby() },
+    RESPONSE_TIME_CHOICES.map((sec) => h('option', { value: sec, selected: sec === DEFAULT_RESPONSE_SECONDS }, `${sec} saniye`)),
+  );
+  const responseSeconds = () => Number(responseSel.value) || DEFAULT_RESPONSE_SECONDS;
   const rules = createRulesPanel((what) => {
     if (what === 'size') {
       const size = rules.mapSize(count);
@@ -518,7 +524,7 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
           config,
         });
       }
-      if (turnSeconds() > 0) state.options = { turnSeconds: turnSeconds() };
+      state.options = { turnSeconds: turnSeconds(), responseSeconds: responseSeconds() };
       if (room) cb.startHost(state, room, 0);
       else cb.start(state);
     } catch (e) {
@@ -580,6 +586,13 @@ export function renderNewGame(host: HTMLElement, cb: MenuCallbacks, room?: HostR
             h('label', { title: 'Süre dolunca topaç kendiliğinden çevrilir, bekleyen zorunlu seçimler Orta bot gibi yapılır ve tur biter' }, icon('clock'), ' Tur süresi '),
             timeSel,
             h('span', { class: 'muted small' }, 'Süre dolunca topaç çevrilir, zorunlu seçimler otomatik yapılır, tur biter.'),
+          ),
+          h(
+            'div',
+            { class: 'row' },
+            h('label', { title: 'Başka oyuncudan beklenen cevaplar: karşı saldırıda toprak seçimi, teklif, boğaz izni, oylama' }, icon('hourglass'), ' Cevap süresi '),
+            responseSel,
+            h('span', { class: 'muted small' }, 'Cevap gelmezse teklif ve izin reddedilir, oylama "hayır" sayılır, toprak otomatik seçilir.'),
           ),
           room
             ? h(

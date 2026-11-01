@@ -232,6 +232,8 @@ export interface LogEntry {
 export interface MatchOptions {
   /** Tur süresi (saniye); 0 = kapalı */
   turnSeconds: number;
+  /** Başka oyuncudan beklenen cevapların süresi (saniye); yoksa 60 */
+  responseSeconds?: number;
 }
 
 export interface GameState {

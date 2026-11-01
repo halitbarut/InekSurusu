@@ -1,4 +1,5 @@
 import { permitParties, type Action, type BotLevel, type GameEvent, type GameState, type ReplayData } from '../engine';
+import type { WaitInfo } from '../ui/game/responses';
 import type { ChatMessage, ChatSend } from './chat';
 
 /**
@@ -8,7 +9,7 @@ import type { ChatMessage, ChatSend } from './chat';
  * 5: tur süresi (clock, timeout mesajları).
  * 6: izleyiciler: izleyici listesi (viewers), izleyici sohbeti ayarı (chatcfg).
  * 7: oyun bitince tekrar kaydı (replay; kabul edilmemiş teklif içerikleri çıkarılmış).
- * 8: boğazda birden çok söz sahibi ve izin aşaması (permit: yalnızca taraflara ayrıntı).
+ * 8: boğazda birden çok söz sahibi ve izin aşaması (permit: yalnızca taraflara ayrıntı); bekleyen cevaplar ve süreleri (waits).
  */
 export const PROTOCOL_VERSION = 8;
 
@@ -59,6 +60,8 @@ export interface LobbyInfo {
   mapName?: string;
   /** Tur süresi (saniye; 0 ya da yok = kapalı) */
   turnSeconds?: number;
+  /** Cevap süresi (saniye) */
+  responseSeconds?: number;
   /** İzleyiciler genel sohbete yazabilir mi (yok = evet) */
   spectatorChat?: boolean;
 }
@@ -107,6 +110,8 @@ export type HostMessage =
   | { t: 'keys'; keys: Record<number, string> }
   /** Tur saati değişti (null = kimsenin süresi işlemiyor) */
   | { t: 'clock'; clock: ClockMessage | null }
+  /** Bekleyen cevaplar ve kalan süreleri (herkese açık olanlar + bu oyuncunun tarafı olduğu teklifler) */
+  | { t: 'waits'; waits: WaitInfo[] }
   /** Bu oyuncuların süresi doldu: açık pencerelerini kapatsınlar */
   | { t: 'timeout'; players: number[] }
   /** Oyunu izleyenler (oturmamış katılımcılar ve elenmiş oyuncular) */
