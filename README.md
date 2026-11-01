@@ -15,7 +15,7 @@
   <a href="https://halitbarut.github.io/InekSurusu/"><img src="https://img.shields.io/badge/oyna-GitHub%20Pages-2ea44f?logo=github&logoColor=white" alt="GitHub Pages'te oyna"></a>
   <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white" alt="TypeScript"></a>
   <a href="https://vite.dev/"><img src="https://img.shields.io/badge/Vite-8-646cff?logo=vite&logoColor=white" alt="Vite"></a>
-  <a href="https://vitest.dev/"><img src="https://img.shields.io/badge/test-281%20test-4c9a2a?logo=vitest&logoColor=white" alt="281 test"></a>
+  <a href="https://vitest.dev/"><img src="https://img.shields.io/badge/test-284%20test-4c9a2a?logo=vitest&logoColor=white" alt="284 test"></a>
   <a href="docs/ONLINE.md"><img src="https://img.shields.io/badge/online-PeerJS-1c9c8b" alt="PeerJS"></a>
   <img src="https://img.shields.io/badge/oyuncu-3--8-2b6cb0" alt="3–8 oyuncu">
 </p>
@@ -87,7 +87,7 @@ yaşatma çabası.
 | **Kilitlenmeyen akış** | Bilgilendirme pencereleri kimseyi bekletmez; her soruya cevap süresi ve otomatik karar |
 | **Öğretici** | 11 konulu, adım adım, sabit senaryolu rehber |
 | **Oyun tekrarı** | Her oyun deterministik; zafer ekranından veya dosyadan izlenebilir |
-| **Test edilmiş motor** | 24 test dosyasında 281 Vitest testi; arayüzden bağımsız kural motoru |
+| **Test edilmiş motor** | 24 test dosyasında 284 Vitest testi; arayüzden bağımsız kural motoru |
 | **Erişilebilirlik** | Renk körü dostu palet, klavye kısayolları, dokunmatik ve mobil düzen |
 | **Bağımsız çalışma** | Statik dosya olarak yayınlanır; alt klasörde de çalışır |
 
@@ -258,6 +258,7 @@ gerektirmez.
 - **Maden kareleri** gemi veya uçakla doğrudan alınamaz; önce yanındaki toprak alınmalıdır.
 - **Başkent**, gemi veya uçakla saldırı hedefi olamaz; başkent savaşı yalnızca karadan
   yapılır. Askeri üs kendi engel alanının içinde olduğu için üslere uçakla saldırılamaz.
+- Seferle kazanılan savaşta seçim hedef kare ve komşularıyla başlar; aldığın her karenin komşuları da seçilebilir olur, böylece fark kadar toprak zincirleme alınır.
 - Sefer sonrası gemi tersanesine, uçak fabrikasına döner. Tersane veya fabrika el
   değiştirirse orada konuşlu birimler de yeni sahibine geçer.
 
@@ -266,12 +267,13 @@ gerektirmez.
 Bir boğaz karesinin iki yanında **birbirinin tam karşısındaki iki kara kareye** sahip olan oyuncu
 o boğazda **söz sahibidir**; çapraz duran kareler sayılmaz. Farklı çiftleri tutan birden çok söz sahibi
 olabilir: gemi her birinden ayrı izin alır, her birinin vergisini öder. Söz sahipliği toprak el
-değiştirdikçe anında güncellenir, söz hakkı kaybedilince ayarlar silinir. Her boğazın yanındaki simge söz sahiplerinin
-rengini ve geçişin senin için durumunu gösterir: ✓ açık, ? sorulacak, ¤ vergili, ✕ kapalı.
+değiştirdikçe anında güncellenir, söz hakkı kaybedilince ayarlar silinir. Her boğazın yanındaki **gemili geçiş tabelası** geçişin
+senin için durumunu renk ve işaretle gösterir: yeşil ✓ açık, mavi ? izin sorulur, sarı akçe vergili, kırmızı ✕ ve üstü çizili gemi kapalı.
+Altındaki noktalar söz sahiplerinin rengidir; yakınlaşınca durum yazıyla da görünür.
 
 <p align="center">
-  <img src="docs/screenshots/readme-strait-badges.png" alt="Boğaz simgeleri: açık, sorulacak, vergili ve kapalı" width="860"><br>
-  <sub>Soldan sağa açık, sorulacak, vergili, kapalı. Halkanın rengi söz sahibini gösterir. Tek çift (soldaki) söz sahibi olmaya yeter; ikinci boğazda aynı oyuncu iki çift tutuyor</sub>
+  <img src="docs/screenshots/readme-strait-badges.png" alt="Geçiş tabelaları: açık, izin sorulur, vergili ve kapalı" width="860"><br>
+  <sub>Soldan sağa açık, izin sorulur, vergili, kapalı. Tabelanın altındaki nokta söz sahibini gösterir. Tek çift (soldaki) söz sahibi olmaya yeter; ikinci boğazda aynı oyuncu iki çift tutuyor</sub>
 </p>
 
 **Boğazlarım** panelinden her oyuncu için dört ayar seçilir: **Sor** (varsayılan), **Açık**, **Vergili**
@@ -287,7 +289,7 @@ başka yol yoktur: kapatılan boğazın arkasına gemiyle dolaşılamaz, ancak u
 
 Başka bir oyuncu yüzünden oyun kilitlenmez. Savaş sonucu gibi bilgilendirme pencereleri sıra sahibi dışındakilerde
 kendiliğinden ya da tıklanınca kapanır, oyun onları beklemez. Gerçekten cevap gerektiren sorular varsayılan **60 saniye**
-bekler (Maç ayarlarından değişir, tur süresi kapalıyken de işler); bekleyenler "Ali'nin cevabı bekleniyor – 45 sn" görür.
+bekler (Maç ayarlarından değişir, tur süresi kapalıyken de işler); bekleyenler "Mert'in cevabı bekleniyor – 45 sn" görür.
 
 | Soru | Cevap gelmezse |
 |---|---|
@@ -617,7 +619,7 @@ Tasarımın temel ilkeleri:
 npm test
 ```
 
-24 test dosyasında **281 test** bulunur. Kapsam başlıca şunlardır:
+24 test dosyasında **284 test** bulunur. Kapsam başlıca şunlardır:
 
 - Topaç, gelir, madenler, altın bozdurma ve tur akışı
 - Kara savaşı, başkent savaşı, askeri üs savaşı, karşı saldırı ve eleme
