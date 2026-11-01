@@ -877,7 +877,7 @@ export class GameScreen {
         ? `${pname(s, def)} elenir: bütün toprakları, birimleri ve kaynakları sana geçer.`
         : kind === 'base'
           ? 'Askeri üs ve karesi senin olur.'
-          : `Fark kadar toprak alırsın: 1–${odds.maxGain}, ortalama ${dec(odds.avgGain)}.${a.type === 'ATTACK' ? '' : ' Hedef kare ve yanındakilerden seçersin.'}`;
+          : `Fark kadar toprak alırsın: 1–${odds.maxGain}, ortalama ${dec(odds.avgGain)}.${a.type === 'ATTACK' ? '' : ' Hedef kareden başlarsın; aldığın her karenin komşularını da alabilirsin.'}`;
     const lose =
       kind !== 'land'
         ? 'Toprak kaybın yok; yalnızca masraf gider.'

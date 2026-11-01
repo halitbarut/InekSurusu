@@ -322,7 +322,8 @@ export function conquestCandidates(state: GameState): number[] {
   if (ph.kind !== 'conquest') return [];
   const { taker, victim, anchor } = ph;
   const map = state.map;
-  const pool = anchor === null ? ownedTiles(state, victim) : [anchor, ...neighbors4(map, anchor)];
+  // Seferde hedef kareden başlanır; alınan her kare, komşularını da seçilebilir yapar
+  const pool = anchor === null ? ownedTiles(state, victim) : [...new Set([anchor, ...[anchor, ...(ph.taken ?? [])].flatMap((t) => neighbors4(map, t))])];
   return pool.filter((t) => {
     if (state.owner[t] !== victim) return false;
     const s = state.structure[t];

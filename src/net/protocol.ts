@@ -11,8 +11,9 @@ import type { ChatMessage, ChatSend } from './chat';
  * 7: oyun bitince tekrar kaydı (replay; kabul edilmemiş teklif içerikleri çıkarılmış).
  * 8: boğazda birden çok söz sahibi ve izin aşaması (permit: yalnızca taraflara ayrıntı); bekleyen cevaplar ve süreleri (waits);
  *    borçlar (yalnızca taraflara ayrıntı); karşı teklif; Gerçekçi bot.
+ * 9: seferle fetih zincirleme genişler (eski istemci geçerli kareleri yanlış hesaplardı).
  */
-export const PROTOCOL_VERSION = 8;
+export const PROTOCOL_VERSION = 9;
 
 /** Oyunu izleyen biri: oturmamış katılımcı ya da elenmiş oyuncu */
 export interface ViewerInfo {

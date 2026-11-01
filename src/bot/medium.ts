@@ -586,7 +586,8 @@ export class MediumBot implements BotBrain {
         if (t.kind === 'base') value = seriesWinProbability(cfg.baseStreak) * tileValue(state, t.tile);
         else {
           const around = [t.tile, ...neighbors4(state.map, t.tile)].filter((x) => state.owner[x] === q && isNormal(state, x));
-          const gainPool = poolValues(state, around, around.length);
+          // Seçim alınan karelerin komşularına doğru genişler: rakibin bütün sıradan toprağına kadar
+          const gainPool = poolValues(state, around, normalTiles(state, q).length);
           // Karşı saldırıda yalnızca savunanla sınırı olan topraklar kaybedilebilir
           const lossPool = poolValues(state, myNormal.filter((x) => touchesPlayer(state, q, x)), myNormal.length);
           value = landValue(outcomes, gainPool, lossPool);

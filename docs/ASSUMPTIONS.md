@@ -32,9 +32,10 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
    herhangi bir sıradan toprağını seçebilir; seçim saldırılan kareyle sınırlı değildir. Saldırılan
    kare yalnızca savaş türünü belirler (başkent → başkent savaşı, üs → üs savaşı, diğerleri → kara savaşı).
    Karşı saldırıda da aynı kural savunan için geçerlidir.
-10. **Seferle savaş:** Saldıran kazanırsa seçilebilecek kareler hedef kare ve onun 4 komşusudur
-   (savunana ait, başkent/üs olmayan). Bunlardan maden olanlar ancak saldıranın bir toprağına komşuysa
-   seçilebilir; yani önce hedef kare alınır, sonra yanındaki maden normal sınır kuralıyla alınabilir.
+10. **Seferle savaş:** Saldıran kazanırsa seçim hedef kare ve onun 4 komşusuyla başlar; bu savaşta alınan her
+   karenin komşuları da seçilebilir olur, böylece fark kadar toprak zincirleme içeri doğru alınabilir (savunana ait,
+   başkent/üs olmayan). Saldıranın başka yerdeki sınırları seçimi genişletmez. Maden kareleri ancak saldıranın bir
+   toprağına komşuysa seçilebilir; yani önce yanındaki kare alınır, sonra maden alınabilir.
    Savunan kazanırsa sınır kuralı uygulanır: saldıranın savunana komşu topraklarından seçer (sınır yoksa
    toprak alamaz). Seçim sırasında savunan, kazandığı yeni topraklar üzerinden içeri doğru ilerleyebilir.
 11. **Turda tek savaş (kural):** Kara savaşı, gemi/uçakla sahipli toprağa saldırı, başkent ve üs savaşı

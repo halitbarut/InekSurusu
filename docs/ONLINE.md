@@ -36,7 +36,7 @@ eylemi kendi durumuna göre doğruladığı için hiçbir etkisi olmaz (`tests/n
 
 ## Mesaj protokolü
 
-Sürüm `PROTOCOL_VERSION` (`src/net/protocol.ts`), şu an **8**. Katılan ilk mesajında (`hello`) sürümünü
+Sürüm `PROTOCOL_VERSION` (`src/net/protocol.ts`), şu an **9**. Katılan ilk mesajında (`hello`) sürümünü
 gönderir; farklıysa oda sahibi `refused` ile reddeder ("İki taraf da sayfayı yenilesin").
 
 | Sürüm | Değişiklik |
@@ -49,6 +49,7 @@ gönderir; farklıysa oda sahibi `refused` ile reddeder ("İki taraf da sayfayı
 | 6 | İzleyiciler: `viewers` (izleyici listesi), `chatcfg` (izleyici sohbeti açık mı); lobide `spectatorChat` |
 | 7 | Oyun bitince `replay` (paylaşılan tekrar kaydı) |
 | 8 | Boğazda birden çok söz sahibi ve izin aşaması; `waits` (bekleyen cevaplar ve süreleri); borçlar; karşı teklif; Gerçekçi bot |
+| 9 | Seferle fetih zincirleme genişler (`phase.taken`) |
 
 Katılan → oda sahibi:
 

@@ -534,6 +534,7 @@ export function applyAction(state: GameState, action: Action, rng: Rng): ApplyRe
       if (ph.kind !== 'conquest') break;
       transferTile(s, action.tile, me.id);
       ev.push({ type: 'conquer', player: me.id, from: ph.victim, tile: action.tile });
+      if (ph.anchor !== null) (ph.taken ??= []).push(action.tile);
       ph.remaining--;
       if (ph.remaining <= 0 || conquestCandidates(s).length === 0) s.phase = { kind: 'actions' };
       break;

@@ -183,6 +183,8 @@ export type Phase =
       remaining: number;
       /** Gemi/uçak seferinde saldıranın hedef karesi; aksi halde null (sınır kuralı) */
       anchor: number | null;
+      /** Seferle fetihte bu savaşta alınan kareler: seçim onların komşularına doğru genişler */
+      taken?: number[];
       /** Savunanın karşı saldırısı mı? (seçimi savunan yapar, sıra saldıranda kalır) */
       counter: boolean;
     }

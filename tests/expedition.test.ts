@@ -154,6 +154,57 @@ describe('seferle savaşta karşı saldırı', () => {
   });
 });
 
+describe('seferle fetih', () => {
+  /** Kuzeyde P1'in uzun kara şeridi, güneyinde deniz; P0'ın gemisi denizde */
+  function strip(): GameState {
+    const rows = ['##############', '##############', '..............', '..............', '..............', '##############'];
+    const s = testState(rows, 3);
+    own(s, 1, [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0], [5, 0], [6, 0], [7, 0], [8, 0], [9, 0], [0, 1], [1, 1], [2, 1], [3, 1], [4, 1], [5, 1], [6, 1], [7, 1], [8, 1], [9, 1]]);
+    setCapital(s, 1, 13, 0);
+    setCapital(s, 2, 13, 5);
+    setCapital(s, 0, 0, 5);
+    s.owner[at(s, 2, 5)] = 0;
+    s.structure[at(s, 2, 5)] = 'shipyard';
+    s.units.push({ id: 1, kind: 'ship', owner: 0, tile: at(s, 2, 5), sortiesThisTurn: 0 });
+    s.players[0].resources = { akce: 1000, gold: 0, oil: 5, iron: 0, steel: 0 };
+    return s;
+  }
+  const attack = (s: GameState) => act(s, { type: 'SHIP_EXPEDITION', player: 0, unitId: 1, target: at(s, 5, 1) }, [8, 1]);
+
+  it('fark kadar toprak zincirleme alınır: alınan karenin komşuları da seçilebilir olur', () => {
+    let s = attack(strip());
+    expect(s.phase).toMatchObject({ kind: 'conquest', taker: 0, remaining: 7 });
+    expect(conquestCandidates(s).sort((a, b) => a - b)).toEqual([at(s, 5, 0), at(s, 4, 1), at(s, 5, 1), at(s, 6, 1)].sort((a, b) => a - b));
+    expect(conquestCandidates(s)).not.toContain(at(s, 3, 1));
+    s = act(s, { type: 'CONQUER_TILE', player: 0, tile: at(s, 5, 1) });
+    s = act(s, { type: 'CONQUER_TILE', player: 0, tile: at(s, 4, 1) });
+    expect(conquestCandidates(s)).toContain(at(s, 3, 1));
+    expect(conquestCandidates(s)).toContain(at(s, 4, 0));
+    for (const x of [3, 2, 1, 0]) s = act(s, { type: 'CONQUER_TILE', player: 0, tile: at(s, x, 1) });
+    s = act(s, { type: 'CONQUER_TILE', player: 0, tile: at(s, 0, 0) });
+    expect(s.phase.kind).toBe('actions');
+    expect(s.owner.filter((o) => o === 0).length).toBe(2 + 7);
+  });
+
+  it('komşu olmayan uzak kare ve başkasının toprağı seçilemez; başkent ve üs zinciri geçirmez', () => {
+    let s = strip();
+    s.structure[at(s, 4, 1)] = 'base';
+    s = attack(s);
+    expect(conquestCandidates(s)).not.toContain(at(s, 4, 1));
+    expect(validateAction(s, { type: 'CONQUER_TILE', player: 0, tile: at(s, 9, 1) }).ok).toBe(false);
+  });
+
+  it('maden karesi ancak alınan toprağa komşu olunca seçilebilir', () => {
+    let s = strip();
+    s.map.mines[at(s, 5, 0)] = 'gold';
+    s = attack(s);
+    s = act(s, { type: 'CONQUER_TILE', player: 0, tile: at(s, 6, 1) });
+    expect(conquestCandidates(s)).not.toContain(at(s, 5, 0));
+    s = act(s, { type: 'CONQUER_TILE', player: 0, tile: at(s, 5, 1) });
+    expect(conquestCandidates(s)).toContain(at(s, 5, 0));
+  });
+});
+
 describe('boğaz idaresi', () => {
   it('karşılıklı çiftin sahibi söz sahibi olur; söz hakkı kaybedilince ayarlar silinir', () => {
     let s = seaWorld();

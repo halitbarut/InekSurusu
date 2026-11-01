@@ -9,8 +9,8 @@ import type { Action, ApplyResult, GameEvent, GameState } from './types';
  * (paylaşılan kopyada) içeriği çıkarılmış teklif.
  */
 
-/** 2: kapalı denizler sonrası kurallar (karşılıklı kare boğazları ve yeni eylemler); eski kayıtlar oynatılamaz. */
-export const REPLAY_VERSION = 2;
+/** 2: kapalı denizler sonrası kurallar (karşılıklı kare boğazları ve yeni eylemler). 3: seferle fetih zincirleme genişler. Eski kayıtlar oynatılamaz. */
+export const REPLAY_VERSION = 3;
 
 export type ReplayStep =
   | Action
