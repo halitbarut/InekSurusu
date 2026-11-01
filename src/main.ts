@@ -1,4 +1,5 @@
 import './ui/styles.css';
+import { setBotDebugSink, type BotDecision } from './bot';
 import type { GameState } from './engine';
 import { clear } from './ui/dom';
 import { GameScreen, type NetMode } from './ui/game/gameScreen';
@@ -123,4 +124,11 @@ if (import.meta.env.DEV) {
   const dbg = { get game() { return game; }, engine: null as unknown };
   (window as unknown as { __inek: unknown }).__inek = dbg;
   void import('./engine').then((m) => (dbg.engine = m));
+  // Botların kararları gerekçeleriyle: oyun menüsünde "Bot günlüğü"
+  const log: BotDecision[] = [];
+  (window as unknown as { __botLog: BotDecision[] }).__botLog = log;
+  setBotDebugSink((d) => {
+    log.push(d);
+    if (log.length > 2000) log.shift();
+  });
 }

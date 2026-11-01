@@ -184,7 +184,7 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
 
 ## Bot zorluk seviyeleri
 
-58. Her bot koltuğu için Kolay, Orta ya da Zor seçilir (varsayılan Orta). Çevrimiçide oda sahibi bot koltuklarının
+58. Her bot koltuğu için Kolay, Orta, Zor ya da Gerçekçi seçilir (varsayılan Orta). Çevrimiçide oda sahibi bot koltuklarının
     seviyesini seçer; boş kalan davetli koltuklar ve bağlantısı kopan oyuncunun yerine geçen bot Orta oynar.
     Seviye kayda girer. Kod: `src/bot/easy.ts`, `medium.ts`, `hard.ts`.
 59. **Kolay** bot, orta botun değerlendirmesine rastgelelik katar: toprak seçimine büyük gürültü ekler, fetihte çoğu
@@ -592,3 +592,21 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
 184. Başkalarının topacı ortada küçük pencerede döner, oyunu engellemez (tıklamayı alttaki arayüze geçirir), kendiliğinden kapanır. Hızlı oynat açıkken
      bot topacı gösterilmez. Sekme arka plandaysa hiç gösterilmez.
 185. Öğreticide pencere harita alanının içinde açılır, böylece rehber kutusu ve "Benim yerime yap" görünür kalır.
+
+## Gerçekçi bot
+
+186. **Kişilik** oyun başında koltuk başına belirlenir: saldırgan, temkinli, tüccar, fırsatçı, sadık müttefik. `GameState.botSeed` tohumundan türetilir; bu, oyunun RNG'sinden ayrı bir
+     değerdir, oyun RNG'sine dokunmaz. Tohum katılanlara gitmez, böylece başka oyuncunun kişiliği hesaplanamaz. Kişilik arayüzde gösterilmez; oyuncu davranışından anlar.
+     Kişilik sabittir, özellikleri gidişata göre kayar: ihanete uğrayan sertleşir, çok öne geçen cesaretlenir, küçülen temkinlenir.
+187. **Hafıza** bot nesnesinde değil, oyun durumunda (`GameState.ledger`): saldırı, alınan toprak, ihanet, izin reddi, ödenmeyen borç, yardım, son düşmanlık ve son ret turu. Olaylardan türetildiği için
+     kayıtla taşınır, geri almayla geri gelir, replay'de aynı çıkar. Oyuncu yalnızca tarafı olduğu kayıtları görür. Kin zamanla söner, yardım azaltır.
+188. **Hile yok:** bütün kararlar `viewFor` görünümüyle verilir (`tests/realistic.test.ts`): RNG durumu, başkalarının teklifleri, borçları ve hafızası değişse de bot aynı kararı verir. Özel sohbet mesajlarını hiç okumaz.
+189. **Bot rastgeleliği** tohum, koltuk ve tur numarasından türetilir; aynı oyunda aynı kararları verir, simülasyon tekrarlanabilir kalır. "İnsan hatası": tur planının ara sıra aksaması (%2–5), hedef seçiminde sezgi payı.
+190. **Karşı teklif** (`COUNTER_OFFER`) yeni bir eylemdir ve insanlar da kullanır: eski teklif reddedilir, yenisi gider, kendi sırası olmasa da yapılır. Zincir en fazla 2 karşı teklif sürer. Bot bir kez pazarlık eder. Diğer botlar karşı teklif yapmaz, gelen karşı teklifi normal teklif gibi değerlendirir.
+     Haritadan toprak seçme yalnızca kendi turunda olduğu için karşı teklif penceresinde o düğme yoktur; toprak kalemleri gelen tekliften gelir. Karşı teklif rakibe ulaşan bilgidir, geri alınmaz.
+191. **Sözler** (`BOT_SAY`) hazır şablonlardır (`src/bot/phrases.ts`), en fazla 4 turda bir ve olay başına belirli olasılıkla. Günlüğe girer; hot-seat ve bot oyununda kenar bildirimi, çevrimiçinde genel sohbet olur.
+     Eylem olduğu için replay'de görünür; insan koltuğu kullanamaz.
+192. **Düşünme süresi:** topaç 0,3–0,7 sn, toprak 0,25–0,7 sn, inşa 0,5–1,1 sn, sefer ve teklif 0,9–2,2 sn, saldırı 1,2–2,8 sn, ittifak bozma 1,8–3,5 sn. Hızlı oynat açıkken yok. Beklerken durum değişirse karar yeniden verilir.
+     Cevap süresi ve izin görüşmesindeki bot cevapları bundan etkilenmez, kısa bir gecikmeyle gelir.
+193. **Hata ayıklama günlüğü** yalnızca geliştirme modunda: oyun menüsünde "Bot günlüğü", konsolda `window.__botLog`. Üretim derlemesinde dinleyici bağlanmaz.
+194. Kopan oyuncunun yerine geçen bot Gerçekçi değil, koltuğun seviyesiyle (Orta) oynar: kişilik değişimi oyuncunun ittifaklarını bozmasın.

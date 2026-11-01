@@ -48,7 +48,7 @@ gönderir; farklıysa oda sahibi `refused` ile reddeder ("İki taraf da sayfayı
 | 5 | Tur süresi: `clock`, `timeout` mesajları; lobide `turnSeconds` |
 | 6 | İzleyiciler: `viewers` (izleyici listesi), `chatcfg` (izleyici sohbeti açık mı); lobide `spectatorChat` |
 | 7 | Oyun bitince `replay` (paylaşılan tekrar kaydı) |
-| 8 | Boğazda birden çok söz sahibi ve izin aşaması; `waits` (bekleyen cevaplar ve süreleri) |
+| 8 | Boğazda birden çok söz sahibi ve izin aşaması; `waits` (bekleyen cevaplar ve süreleri); borçlar; karşı teklif; Gerçekçi bot |
 
 Katılan → oda sahibi:
 
@@ -99,6 +99,8 @@ mesaj boyutudur (yerel ağda ve WebRTC'de sorun olmadı).
 | Günlükteki ve olaylardaki teklif satırları (`offer_made`, `offer_response`, `offer_cancelled`) | Yalnızca teklifin iki tarafına |
 | Boğaz izni görüşmesinin hedefi, rotası ve günlük satırları (`permit_*`) | Yalnızca sefer sahibi ve o görüşmedeki söz sahipleri. Diğerleri yalnızca kimin kimden izin beklediğini görür |
 | Borçlar ve borç görüşmeleri (`state.loans`, `state.loanRequests`, `loan_*` satırları) | Yalnızca iki tarafa. Diğerleri yalnızca vadesi geçenin "borçlu" işaretini (`Player.inDebt`) görür |
+| Bot tohumu (`botSeed`) | **Hiç kimseye**: kişilikler hesaplanamaz |
+| Oyuncuların birbirine yaptıkları kaydı (`ledger`) | Yalnızca kaydın iki tarafına |
 | Teklif sonucu (ittifak kuruldu, barış, devredilen toprak ve kaynak) | Herkese: bunlar haritada ve panellerde zaten görünen değişikliklerdir |
 | Lobideki koltuk sahibi kimliği (`claimedBy`) | Oda sahibinde gerçek kimlik; katılanlara yalnızca "dolu" |
 | Geri alma geçmişi | Hiç kimseye (oda sahibinde kalır), katılana yalnızca kaç eylem geri alınabileceği |

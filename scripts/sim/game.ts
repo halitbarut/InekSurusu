@@ -1,9 +1,24 @@
-import { EasyBot, HardBot, MediumBot, MEDIUM_TUNING, RusherBot, nextBotAction, type BotBrain, type BotTuning } from '../../src/bot';
+import { EasyBot, HardBot, MediumBot, MEDIUM_TUNING, RealisticBot, RusherBot, nextBotAction, personalityOf, setBotDebugSink, type BotBrain, type BotDecision, type BotTuning, type Personality } from '../../src/bot';
 import { battleCost, createGame, defaultMapSize, dispatch, neighbors4, phaseActor, structureCost, type BotLevel, type GameConfig, type GameState } from '../../src/engine';
 
 export const SNAPSHOT_ROUNDS = [10, 25, 50, 100] as const;
 
 export type SpendKey = 'claim' | 'build' | 'produce' | 'battle' | 'upkeep' | 'toll';
+
+export interface SeatBehavior {
+  personality: Personality;
+  /** Oyuncunun oynadığı tur sayısı */
+  turns: number;
+  battles: number;
+  alliances: number;
+  broken: number;
+  offers: number;
+  counters: number;
+  loansTaken: number;
+  loansGiven: number;
+  messages: number;
+  permitsDenied: number;
+}
 
 export interface GameMetrics {
   seed: number;
@@ -29,6 +44,10 @@ export interface GameMetrics {
   loans: { made: number; amount: number; interest: number; asked: number; refused: number; overdue: number };
   /** Oyun sonundaki yapı sayıları (tersane, fabrika, üs) ve toplam yapılan/yıkılan */
   structures: { shipyard: number; factory: number; base: number; built: number; demolished: number };
+  /** Koltuk başına davranış sayıları (kişilik karşılaştırması) */
+  seats: SeatBehavior[];
+  /** Bot kararlarının gerekçeleri (yalnızca spec.debug) */
+  decisions?: BotDecision[];
   /** Elenme sırası */
   eliminations: { player: number; by: number; round: number }[];
   /** Darboğaz ölçümleri: ilk kez olduğu tur (olmadıysa null) */
@@ -58,6 +77,8 @@ export interface GameSpec {
   size?: { width: number; height: number };
   /** Zorluk testi: focusSeat koltuğunda focus, diğerlerinde others seviyesi oynar */
   levels?: { focus: BotLevel; others: BotLevel; focusSeat: number };
+  /** Bot kararlarının gerekçelerini topla */
+  debug?: boolean;
 }
 
 /** Arayüz olmadan, yalnızca kural motoru ve botlarla bir oyun oynatır. */
@@ -73,7 +94,9 @@ export function playGame(spec: GameSpec): GameMetrics {
   const medium = new MediumBot({ ...MEDIUM_TUNING, ...spec.tuning });
   // Acele eden bot, koşu dışındaki ayarları (bakım politikası vb.) diğer botlarla paylaşır
   const rusher = new RusherBot(spec.tuning);
-  const byLevel: Record<BotLevel, BotBrain> = { easy: new EasyBot(spec.tuning), medium, hard: new HardBot(spec.tuning) };
+  const byLevel: Record<BotLevel, BotBrain> = { easy: new EasyBot(spec.tuning), medium, hard: new HardBot(spec.tuning), realistic: new RealisticBot() };
+  const decisions: BotDecision[] = [];
+  setBotDebugSink(spec.debug ? (d) => decisions.push(d) : null);
   const lv = spec.levels;
   const brain = (p: number): BotBrain => (lv ? byLevel[p === lv.focusSeat ? lv.focus : lv.others] : p === spec.rusherSeat ? rusher : medium);
   const m: GameMetrics = {
@@ -91,6 +114,7 @@ export function playGame(spec: GameSpec): GameMetrics {
     battles: { land: 0, base: 0, capital: 0, capitalWon: 0, baseWon: 0 },
     loans: { made: 0, amount: 0, interest: 0, asked: 0, refused: 0, overdue: 0 },
     structures: { shipyard: 0, factory: 0, base: 0, built: 0, demolished: 0 },
+    seats: s.players.map((pl) => ({ personality: personalityOf(s, pl.id), turns: 0, battles: 0, alliances: 0, broken: 0, offers: 0, counters: 0, loansTaken: 0, loansGiven: 0, messages: 0, permitsDenied: 0 })),
     rusherSeat: spec.rusherSeat,
     focusSeat: lv?.focusSeat ?? null,
     eliminations: [],
@@ -114,9 +138,27 @@ export function playGame(spec: GameSpec): GameMetrics {
     const r = dispatch(s, action);
     s = r.state;
     if (++guard > 2_000_000) throw new Error('Simülasyon çok uzun sürdü');
+    if (action.type === 'COUNTER_OFFER') m.seats[action.player].counters++;
     for (const e of r.events) {
       switch (e.type) {
+        case 'alliance_formed':
+          m.seats[e.a].alliances++;
+          m.seats[e.b].alliances++;
+          break;
+        case 'alliance_broken':
+          m.seats[e.player].broken++;
+          break;
+        case 'offer_made':
+          m.seats[e.offer.from].offers++;
+          break;
+        case 'bot_message':
+          m.seats[e.player].messages++;
+          break;
+        case 'permit_answered':
+          if (!e.allowed) m.seats[e.controller].permitsDenied++;
+          break;
         case 'turn_start': {
+          m.seats[e.player].turns++;
           const pl = s.players[e.player];
           const ms = m.milestones;
           const adj = s.players.some((q) => q.alive && q.id !== pl.id && q.capital !== null && neighbors4(s.map, q.capital).some((t) => s.owner[t] === pl.id));
@@ -161,6 +203,8 @@ export function playGame(spec: GameSpec): GameMetrics {
           if (!e.accepted) m.loans.refused++;
           break;
         case 'loan_made':
+          m.seats[e.borrower].loansTaken++;
+          m.seats[e.lender].loansGiven++;
           m.loans.made++;
           m.loans.amount += e.amount;
           m.loans.interest += e.total - e.amount;
@@ -183,6 +227,7 @@ export function playGame(spec: GameSpec): GameMetrics {
         case 'battle':
           m.spend.battle += e.cost.akce;
           m.battles[e.kind]++;
+          m.seats[e.attacker].battles++;
           if (e.kind === 'capital' && e.success) m.battles.capitalWon++;
           if (e.kind === 'capital' && m.milestones.firstCapitalBattle === null) m.milestones.firstCapitalBattle = s.round;
           if (e.kind === 'base' && e.success) m.battles.baseWon++;
@@ -191,11 +236,6 @@ export function playGame(spec: GameSpec): GameMetrics {
           if (m.firstCapitalFall === null) m.firstCapitalFall = s.round;
           m.eliminations.push({ player: e.player, by: e.by, round: s.round });
           break;
-        case 'offer_made': {
-          const accept = brain(e.offer.to).evaluateOffer(s, e.offer.to, e.offer);
-          s = dispatch(s, { type: 'RESPOND_OFFER', player: e.offer.to, offerId: e.offer.id, accept }).state;
-          break;
-        }
       }
     }
   }
@@ -203,6 +243,8 @@ export function playGame(spec: GameSpec): GameMetrics {
     const st = s.structure[i];
     if (st && st !== 'capital') m.structures[st]++;
   }
+  if (spec.debug) m.decisions = decisions;
+  setBotDebugSink(null);
   m.endRound = Math.min(s.round, spec.maxRounds);
   if (s.phase.kind === 'gameover') {
     m.winners = s.winners ?? [];

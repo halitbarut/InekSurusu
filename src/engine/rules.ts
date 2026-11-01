@@ -1,5 +1,6 @@
 import { resolveLandBattle, resolveSeriesBattle, spinTop } from './combat';
 import { MAX_LOAN_RATE, MAX_LOAN_TERM } from './config';
+import { recordLedger, recordOfferHelp } from './ledger';
 import { loanRemaining, loanTotal, settleDueLoans, transferLoans, updateDebtors } from './loans';
 import { executeOffer, offerProblem } from './diplomacy';
 import { isCoastal, neighbors4 } from './grid';
@@ -40,6 +41,8 @@ import {
 } from './types';
 
 export const MAX_LOG = 600;
+/** Bir teklif zincirinde en fazla karşı teklif sayısı */
+export const MAX_COUNTER_DEPTH = 2;
 const OK: ValidationResult = { ok: true };
 const fail = (reason: string): ValidationResult => ({ ok: false, reason });
 
@@ -270,6 +273,20 @@ export function validateAction(state: GameState, action: Action): ValidationResu
       if (offer.to !== action.player) return fail('Bu teklif size yapılmadı');
       return OK;
     }
+    case 'COUNTER_OFFER': {
+      const offer = state.offers.find((o) => o.id === action.offerId);
+      if (!offer) return fail('Teklif bulunamadı');
+      if (offer.to !== action.player) return fail('Bu teklif size yapılmadı');
+      if ((offer.depth ?? 0) >= MAX_COUNTER_DEPTH) return fail('Bu teklife artık karşı teklif yapılamaz');
+      const prob = offerProblem(state, action.player, offer.from, action.items);
+      return prob ? fail(prob) : OK;
+    }
+    case 'BOT_SAY':
+      if (p.kind !== 'bot') return fail('Bu söz botlara özel');
+      if (ph.kind !== 'actions' || !myTurn) return fail('Sıra sizde değil');
+      if (!Number.isInteger(action.phrase) || action.phrase < 0) return fail('Geçersiz söz');
+      if (action.about !== -1 && !state.players[action.about]) return fail('Geçersiz oyuncu');
+      return OK;
     case 'CANCEL_OFFER': {
       const offer = state.offers.find((o) => o.id === action.offerId);
       if (!offer) return fail('Teklif bulunamadı');
@@ -601,8 +618,21 @@ export function applyAction(state: GameState, action: Action, rng: Rng): ApplyRe
       }
       ev.push({ type: 'offer_response', offerId: offer.id, from: offer.from, to: offer.to, accepted: true });
       executeOffer(s, offer, ev);
+      recordOfferHelp(s, offer.from, offer.to, offer.items.some((i) => (i.kind === 'resource' || i.kind === 'tile') && i.giver === 'from'), offer.items.some((i) => (i.kind === 'resource' || i.kind === 'tile') && i.giver === 'to'));
       break;
     }
+    case 'COUNTER_OFFER': {
+      const old = s.offers.find((o) => o.id === action.offerId)!;
+      s.offers = s.offers.filter((o) => o.id !== old.id);
+      ev.push({ type: 'offer_response', offerId: old.id, from: old.from, to: old.to, accepted: false });
+      const offer = { id: s.nextOfferId++, from: me.id, to: old.from, items: structuredClone(action.items), createdTurn: s.turnCounter, depth: (old.depth ?? 0) + 1 };
+      s.offers.push(offer);
+      ev.push({ type: 'offer_made', offer: structuredClone(offer) });
+      break;
+    }
+    case 'BOT_SAY':
+      ev.push({ type: 'bot_message', player: me.id, phrase: action.phrase, about: action.about });
+      break;
     case 'CANCEL_OFFER': {
       const offer = s.offers.find((o) => o.id === action.offerId)!;
       s.offers = s.offers.filter((o) => o.id !== offer.id);
@@ -637,6 +667,7 @@ export function applyAction(state: GameState, action: Action, rng: Rng): ApplyRe
 
   refreshStraits(s, ev);
   recordStats(s, ev);
+  recordLedger(s, ev);
   for (const e of ev) s.log.push({ turn: s.turnCounter, round: s.round, event: e });
   if (s.log.length > MAX_LOG) s.log.splice(0, s.log.length - MAX_LOG);
   return { state: s, events: ev };

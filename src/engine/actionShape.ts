@@ -99,6 +99,18 @@ export function parseAction(raw: unknown): Action | null {
     }
     case 'RESPOND_OFFER':
       return ints('offerId') && isBool(a.accept) ? { type: a.type, player, offerId: a.offerId as number, accept: a.accept } : null;
+    case 'COUNTER_OFFER': {
+      if (!ints('offerId') || !Array.isArray(a.items) || a.items.length > MAX_OFFER_ITEMS_WIRE) return null;
+      const items: OfferItem[] = [];
+      for (const r of a.items) {
+        const it = parseItem(r);
+        if (!it) return null;
+        items.push(it);
+      }
+      return { type: a.type, player, offerId: a.offerId as number, items };
+    }
+    case 'BOT_SAY':
+      return ints('phrase', 'about') ? { type: a.type, player, phrase: a.phrase as number, about: a.about as number } : null;
     case 'CANCEL_OFFER':
       return ints('offerId') ? { type: a.type, player, offerId: a.offerId as number } : null;
     case 'BREAK_ALLIANCE':

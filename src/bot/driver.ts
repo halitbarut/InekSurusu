@@ -11,7 +11,11 @@ export function nextBotAction(state: GameState, brain: (p: number) => BotBrain):
     const r = state.loanRequests[0];
     if (r) return brain(loanResponder(r)).answerLoan(state, loanResponder(r), r);
     const o = state.offers[0];
-    if (o) return { type: 'RESPOND_OFFER', player: o.to, offerId: o.id, accept: brain(o.to).evaluateOffer(state, o.to, o) };
+    if (o) {
+      const items = brain(o.to).counterOffer?.(state, o.to, o);
+      if (items) return { type: 'COUNTER_OFFER', player: o.to, offerId: o.id, items };
+      return { type: 'RESPOND_OFFER', player: o.to, offerId: o.id, accept: brain(o.to).evaluateOffer(state, o.to, o) };
+    }
   }
   const p = phaseActor(state);
   return brain(p).chooseAction(state, p);

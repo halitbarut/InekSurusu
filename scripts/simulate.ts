@@ -7,6 +7,7 @@
  *   npm run simulate -- --round 3         # 3. tur: B3, RB3 ve karşılaştırma için B, RB, B2, RB2 (100'er oyun)
  *   npm run simulate -- --round onayar    # yeni oyun ekranındaki hazır kural takımları (60'ar oyun)
  *   npm run simulate -- --round zorluk    # bot seviyeleri: Zor 1 + Orta 4, Orta 1 + Kolay 4 (100'er oyun)
+ *   npm run simulate -- --round gercekci  # Gerçekçi 1 + Orta 4, Zor 1 + Orta 4, 5 Gerçekçi (kişilik farkları) (100'er oyun)
  *   npm run simulate -- --round ekonomi   # yeni yapı fiyatları ve borç sistemi, Dengeli (100'er oyun)
  *   npm run simulate -- --games 20        # hızlı deneme
  *   npm run simulate -- --scenarios B,C   # yalnızca seçilen senaryolar
@@ -19,9 +20,9 @@ import { availableParallelism } from 'node:os';
 import { resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Worker, isMainThread, parentPort } from 'node:worker_threads';
-import { BOT_LEVEL_NAME, type BotTuning } from '../src/bot';
+import { BOT_LEVEL_NAME, PERSONALITIES, PERSONALITY_NAME, type BotTuning } from '../src/bot';
 import { BUILTIN_PRESETS, DEFAULT_CONFIG, presetMapSize, type BotLevel, type GameConfig } from '../src/engine';
-import { playGame, SNAPSHOT_ROUNDS, type GameMetrics, type GameSpec, type SpendKey } from './sim/game';
+import { playGame, SNAPSHOT_ROUNDS, type GameMetrics, type GameSpec, type SeatBehavior, type SpendKey } from './sim/game';
 
 interface Scenario {
   id: string;
@@ -92,6 +93,10 @@ const SCENARIOS: Scenario[] = [
   { id: 'E-yeni', title: 'Dengeli: kapalı denizler, yeni yapı fiyatları (400/600/800), borç', config: {}, rusher: false },
   { id: 'E-eskifiyat', title: 'Kapalı denizler, eski yapı fiyatları (200/300/400), borç', config: { shipyardCost: 200, factoryCost: 300, baseCost: 400 }, rusher: false },
   { id: 'E-takimada', title: 'Takımada (eski harita üreticisi), yeni yapı fiyatları, borç', config: { continentType: 'archipelago' }, rusher: false },
+  // Gerçekçi bot
+  { id: 'G-orta', title: 'Gerçekçi 1 + Orta 4', config: {}, rusher: false, levels: { focus: 'realistic', others: 'medium' } },
+  { id: 'G-zor', title: 'Zor 1 + Orta 4 (kıyas)', config: {}, rusher: false, levels: { focus: 'hard', others: 'medium' } },
+  { id: 'G-hepsi', title: '5 Gerçekçi (kişilik farkları)', config: {}, rusher: false, levels: { focus: 'realistic', others: 'realistic' } },
   // Hazır kural takımları (5 oyuncu)
   { id: 'Z-hard', title: 'Zor 1 + Orta 4 (varsayılan kurallar)', config: {}, rusher: false, levels: { focus: 'hard', others: 'medium' } },
   { id: 'Z-medium', title: 'Orta 1 + Kolay 4 (varsayılan kurallar)', config: {}, rusher: false, levels: { focus: 'medium', others: 'easy' } },
@@ -103,6 +108,7 @@ const ROUNDS: Record<string, { scenarios: string[]; games: number }> = {
   '2': { scenarios: ['B', 'RB', 'B2', 'RB2'], games: 100 },
   '3': { scenarios: ['B', 'RB', 'B2', 'RB2', 'B3', 'RB3'], games: 100 },
   zorluk: { scenarios: ['Z-hard', 'Z-medium'], games: 100 },
+  gercekci: { scenarios: ['G-orta', 'G-zor', 'G-hepsi'], games: 100 },
   ekonomi: { scenarios: ['E-yeni', 'E-eskifiyat', 'E-takimada'], games: 100 },
   onayar: { scenarios: BUILTIN_PRESETS.map((p) => `P-${p.id}`), games: 60 },
 };
@@ -148,7 +154,7 @@ async function main() {
     for (let g = 0; g < games; g++) {
       // Aynı seed'ler tüm senaryolarda kullanılır: haritalar aynı, yalnızca kurallar farklı
       const seed = 10_000 + g;
-      jobs.push({ scenario: sc.id, spec: { seed, players, maxRounds, config: sc.config, tuning: sc.tuning, size: sc.size, rusherSeat: sc.rusher ? g % players : null, levels: sc.levels ? { ...sc.levels, focusSeat: g % players } : undefined } });
+      jobs.push({ scenario: sc.id, spec: { seed, players, maxRounds, config: sc.config, tuning: sc.tuning, size: sc.size, rusherSeat: sc.rusher ? g % players : null, levels: sc.levels ? { ...sc.levels, focusSeat: g % players } : undefined, debug: sc.id === 'G-hepsi' && g < 3 } });
     }
   }
   const results = new Map<string, GameMetrics[]>(scenarios.map((s) => [s.id, []]));
@@ -196,6 +202,7 @@ async function main() {
   else if (round === '2') writeSection(out, 'tur2', buildRound2(shown, results, opt));
   else if (round === '3') writeSection(out, 'tur3', buildRound3(shown, results, opt));
   else if (round === 'zorluk') writeSection(out, 'zorluk', buildLevels(shown, results, opt), 'Bot zorluk seviyeleri');
+  else if (round === 'gercekci') writeSection(out, 'gercekci', buildRealistic(shown, results, opt), 'Gerçekçi bot');
   else if (round === 'ekonomi') writeSection(out, 'ekonomi', buildEconomy(shown, results, opt), 'Ekonomi güncellemesi');
   else writeSection(out, 'onayar', buildPresets(shown, results, opt), 'Hazır kural takımları');
   console.log(`Rapor yazıldı: ${out}`);
@@ -624,6 +631,67 @@ function buildRound3(scenarios: Scenario[], results: Map<string, GameMetrics[]>,
 // ------------------------------------------------------------------
 // Bot zorluk seviyeleri
 // ------------------------------------------------------------------
+
+function buildRealistic(scenarios: Scenario[], results: Map<string, GameMetrics[]>, opt: Opt): string {
+  const L: string[] = [];
+  L.push('## Gerçekçi bot');
+  L.push('');
+  L.push(`\`npm run simulate -- --round gercekci\` ile üretilir (son çalıştırma: ${new Date().toISOString().slice(0, 10)}). Her düzen için ${opt.games} oyun, ${opt.players} oyuncu, Dengeli kurallar, ${opt.maxRounds} tur sınırı, seed'ler 10000–${10_000 + opt.games - 1}. Tek botun koltuğu oyundan oyuna döner. Adil pay: ${pct(1 / opt.players, 0)}.`);
+  L.push('');
+  L.push('| Düzen | Kazanma payı (ittifak zaferi paylaştırılır) | %95 güven aralığı | Tek başına kazandığı | Tur sınırına takılan | Biten oyun medyanı |');
+  L.push('|---|---|---|---|---|---|');
+  for (const s of scenarios.filter((x) => x.id !== 'G-hepsi')) {
+    const ms = results.get(s.id)!;
+    let share = 0;
+    let solo = 0;
+    for (const m of ms) {
+      if (m.focusSeat === null || !m.winners.includes(m.focusSeat)) continue;
+      share += 1 / m.winners.length;
+      if (m.winners.length === 1) solo++;
+    }
+    const [lo, hi] = wilson(share, ms.length);
+    L.push(`| ${s.title} | ${pct(share / ms.length)} | ${pct(lo)}–${pct(hi)} | ${solo}/${ms.length} | ${pct(ms.filter((m) => m.hitLimit).length / ms.length, 0)} | ${f(median(ms.filter((m) => !m.hitLimit).map((m) => m.endRound)))} |`);
+  }
+  L.push('');
+  const all = results.get('G-hepsi');
+  if (all) {
+    L.push('### Kişilikler arasındaki davranış farkları');
+    L.push('');
+    L.push(`5 Gerçekçi botlu ${all.length} oyun. Sayılar kişiliğin oynadığı **100 tur başına** ortalamadır (tur = o oyuncunun kendi turu).`);
+    L.push('');
+    L.push('| Kişilik | Koltuk | Savaş | İttifak | İttifak bozma | Teklif | Karşı teklif | Borç aldı | Borç verdi | İzin reddi | Mesaj | Kazanma payı |');
+    L.push('|---|---|---|---|---|---|---|---|---|---|---|---|');
+    for (const pers of PERSONALITIES) {
+      const seats: SeatBehavior[] = [];
+      let wins = 0;
+      for (const m of all) {
+        m.seats.forEach((st, i) => {
+          if (st.personality !== pers) return;
+          seats.push(st);
+          if (m.winners.includes(i)) wins += 1 / m.winners.length;
+        });
+      }
+      const turns = seats.reduce((a, st) => a + st.turns, 0) || 1;
+      const per = (k: keyof SeatBehavior) => f((seats.reduce((a, st) => a + (st[k] as number), 0) / turns) * 100, 1);
+      L.push(`| ${PERSONALITY_NAME[pers]} | ${seats.length} | ${per('battles')} | ${per('alliances')} | ${per('broken')} | ${per('offers')} | ${per('counters')} | ${per('loansTaken')} | ${per('loansGiven')} | ${per('permitsDenied')} | ${per('messages')} | ${pct(wins / (seats.length || 1))} |`);
+    }
+    L.push('');
+    L.push('### Örnek oyunların öne çıkan anları');
+    L.push('');
+    L.push('Geliştirme günlüğünden (`botDebug`), ilk üç oyun. Rutin saldırılar çıkarıldı.');
+    L.push('');
+    for (const m of all.filter((x) => x.decisions).slice(0, 3)) {
+      L.push(`**Seed ${m.seed}** (${m.hitLimit ? 'tur sınırı' : `${m.endRound}. tur`}, kazanan: ${m.winners.map((w) => `B${w}`).join(', ') || 'yok'}):`);
+      L.push('');
+      // Her türden en fazla ikisi, oyun sırasıyla
+      const kinds = ['ittifakı bozdu', 'ittifak önerdi', 'karşı teklif', 'barış önerdi', 'takas', 'borç verdi', 'borç vermedi', 'turu erken', 'oylama: hayır', 'yapı yıktı'];
+      const key = kinds.flatMap((k) => (m.decisions ?? []).filter((d) => d.what.includes(k)).slice(0, 2)).sort((a, b) => a.round - b.round);
+      for (const d of key) L.push(`- ${d.round}. tur, B${d.player} (${d.personality}): ${d.what}. _${d.why}_`);
+      L.push('');
+    }
+  }
+  return L.join('\n');
+}
 
 function buildEconomy(scenarios: Scenario[], results: Map<string, GameMetrics[]>, opt: Opt): string {
   const L: string[] = [];

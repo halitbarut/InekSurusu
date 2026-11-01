@@ -31,9 +31,9 @@ function playRounds(levels: (typeof BOT_LEVELS)[number][], rounds: number, seed:
 }
 
 describe('bot seviyeleri', () => {
-  it('üç seviye de var ve Türkçe adları tanımlı', () => {
-    expect(BOT_LEVELS).toEqual(['easy', 'medium', 'hard']);
-    expect(BOT_LEVELS.map((l) => BOT_LEVEL_NAME[l])).toEqual(['Kolay', 'Orta', 'Zor']);
+  it('dört seviye de var ve Türkçe adları tanımlı', () => {
+    expect(BOT_LEVELS).toEqual(['easy', 'medium', 'hard', 'realistic']);
+    expect(BOT_LEVELS.map((l) => BOT_LEVEL_NAME[l])).toEqual(['Kolay', 'Orta', 'Zor', 'Gerçekçi']);
   });
 
   it('karışık seviyeli botlar yalnızca geçerli eylem seçer ve oyunun RNG durumuna dokunmaz', () => {

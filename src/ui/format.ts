@@ -1,3 +1,4 @@
+import { phraseText } from '../bot/phrases';
 import type { IconName } from './icons';
 import type { Action, BuildableStructure, GameEvent, GameState, Offer, OfferItem, ResourceKey, StraitMode, StructureType, UnitKind } from '../engine';
 
@@ -181,6 +182,10 @@ export function formatEvent(state: GameState, e: GameEvent): string | null {
       return `${N(e.borrower)}, ${dat(N(e.lender))} ${fmtNum(e.amount)} akçe borç ödedi${e.remaining ? ` (kalan ${fmtNum(e.remaining)})` : ' (borç bitti)'}`;
     case 'loan_transferred':
       return `${gen(N(e.from))} borç ve alacakları ${dat(N(e.to))} geçti`;
+    case 'loan_overdue':
+      return `${N(e.borrower)}, ${dat(N(e.lender))} borcunu vadesinde ödeyemedi`;
+    case 'bot_message':
+      return `${N(e.player)}: "${phraseText(e.phrase, e.about >= 0 ? N(e.about) : '')}"`;
     case 'debtor_status':
       return e.inDebt ? `${N(e.player)} borcunu vadesinde ödeyemedi: borçlu` : `${N(e.player)} artık borçlu değil`;
     case 'offer_made':
@@ -294,8 +299,11 @@ export function eventIcon(e: GameEvent): IconName | null {
     case 'loan_declined':
     case 'loan_payment':
     case 'loan_transferred':
+    case 'loan_overdue':
     case 'debtor_status':
       return 'akce';
+    case 'bot_message':
+      return 'chat';
     case 'alliance_formed':
       return 'alliance';
     case 'peace_made':

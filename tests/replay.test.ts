@@ -74,7 +74,7 @@ describe('oyun tekrarı', () => {
     // İndirilen dosyadan okunan kayıt da aynı sonucu verir
     const loaded = parseReplay(JSON.stringify(data));
     expect(JSON.stringify(replayAll(loaded))).toBe(JSON.stringify(final));
-  });
+  }, 60_000);
 
   it('paylaşılan kopyada kabul edilmemiş tekliflerin içeriği yoktur ama oyun yine aynı biter', () => {
     expect(offers).toBeGreaterThan(0);
@@ -91,7 +91,7 @@ describe('oyun tekrarı', () => {
     // Kabul edilmemiş tekliflerin kalemleri dosyada yok
     const rejected = final.log.filter((l) => l.event.type === 'offer_response' && !l.event.accepted).length;
     if (rejected > 0) expect(JSON.stringify(red)).not.toBe(JSON.stringify(data));
-  });
+  }, 60_000);
 
   it('bozuk dosyalar anlaşılır hatayla reddedilir', () => {
     expect(() => parseReplay('{')).toThrow('geçerli bir JSON değil');

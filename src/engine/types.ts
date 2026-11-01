@@ -13,8 +13,8 @@ export type Resources = Record<ResourceKey, number>;
 export type StructureType = 'capital' | 'shipyard' | 'factory' | 'base';
 export type BuildableStructure = Exclude<StructureType, 'capital'>;
 export type UnitKind = 'ship' | 'plane';
-export type BotLevel = 'easy' | 'medium' | 'hard';
-export const BOT_LEVELS: readonly BotLevel[] = ['easy', 'medium', 'hard'];
+export type BotLevel = 'easy' | 'medium' | 'hard' | 'realistic';
+export const BOT_LEVELS: readonly BotLevel[] = ['easy', 'medium', 'hard', 'realistic'];
 
 export interface Strait {
   id: number;
@@ -108,6 +108,22 @@ export interface Offer {
   to: number;
   items: OfferItem[];
   createdTurn: number;
+  /** Kaçıncı karşı teklif (yok = ilk teklif) */
+  depth?: number;
+}
+
+/** Bir oyuncunun diğerine yaptıkları (botların hafızası) */
+export interface LedgerEntry {
+  attacks: number;
+  tilesTaken: number;
+  betrayals: number;
+  permitsDenied: number;
+  debtsDefaulted: number;
+  helped: number;
+  /** En son düşmanca davranışın turu */
+  lastHostile: number | null;
+  /** Karşı tarafın teklifini en son reddettiği tur */
+  lastRefused: number | null;
 }
 
 /** Söz sahibine sorulan tek bir geçiş izni */
@@ -241,9 +257,13 @@ export type GameEvent =
   | { type: 'loan_declined'; requestId: number; borrower: number; lender: number; failedReason?: string; parties: number[] }
   | { type: 'loan_payment'; loanId: number; borrower: number; lender: number; amount: number; remaining: number; early: boolean; parties: number[] }
   /** Başkent düşünce borç/alacak fatihe geçti */
+  /** Borç vadesinde ödenemedi (yalnızca iki taraf görür) */
+  | { type: 'loan_overdue'; loanId: number; borrower: number; lender: number; parties: number[] }
   | { type: 'loan_transferred'; loanId: number; from: number; to: number; parties: number[] }
   /** Oyuncu borçlu durumuna girdi ya da çıktı (herkese açık) */
   | { type: 'debtor_status'; player: number; inDebt: boolean }
+  /** Botun hazır sözlerinden biri (about: sözün ilgili olduğu oyuncu, yoksa -1) */
+  | { type: 'bot_message'; player: number; phrase: number; about: number }
   | { type: 'offer_made'; offer: Offer }
   | { type: 'offer_response'; offerId: number; from: number; to: number; accepted: boolean; failedReason?: string }
   | { type: 'offer_cancelled'; offerId: number; from: number; to: number }
@@ -305,6 +325,10 @@ export interface GameState {
   rngState: number;
   log: LogEntry[];
   winners: number[] | null;
+  /** Bot RNG tohumu: oyunun RNG'sinden bağımsız; kişilikler buradan gelir (katılanlara gitmez) */
+  botSeed?: number;
+  /** Oyuncuların birbirine yaptıkları ("a>b" anahtarıyla) */
+  ledger?: Record<string, LedgerEntry>;
   /** Tur sonu istatistikleri ve toplam harcamalar (eski kayıtlarda yok) */
   stats?: GameStats;
   /** Maç ayarları (eski kayıtlarda yok = hepsi kapalı) */
@@ -344,6 +368,10 @@ export type Action =
   | { type: 'CONFIRM_PERMIT'; player: number; accept: boolean }
   | { type: 'PROPOSE_OFFER'; player: number; to: number; items: OfferItem[] }
   | { type: 'RESPOND_OFFER'; player: number; offerId: number; accept: boolean }
+  /** Teklifi reddedip karşı teklif yapmak: kendi sırası olmasa da */
+  | { type: 'COUNTER_OFFER'; player: number; offerId: number; items: OfferItem[] }
+  /** Bot sözü (insan koltuğu kullanamaz) */
+  | { type: 'BOT_SAY'; player: number; phrase: number; about: number }
   | { type: 'CANCEL_OFFER'; player: number; offerId: number }
   | { type: 'BREAK_ALLIANCE'; player: number; target: number }
   | { type: 'PROPOSE_VICTORY'; player: number }

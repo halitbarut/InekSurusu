@@ -12,6 +12,8 @@ export function migrateState(raw: GameState): GameState {
   s.loans ??= [];
   s.loanRequests ??= [];
   s.nextLoanId ??= 1;
+  s.botSeed ??= s.map.seed;
+  s.ledger ??= {};
   // Eski boğaz durumu: tek idareci ve doğrudan oyuncu → {allow, toll} ayarları
   for (const st of s.straits as unknown as { controller?: number | null; controllers?: number[]; policies: Record<number, unknown> }[]) {
     if (st.controllers) continue;

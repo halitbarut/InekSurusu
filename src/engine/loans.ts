@@ -59,7 +59,10 @@ export function settleDueLoans(s: GameState, p: number, ev: GameEvent[]) {
       l.paid += pay;
       ev.push({ type: 'loan_payment', loanId: l.id, borrower: l.borrower, lender: l.lender, amount: pay, remaining: loanRemaining(l), early: false, parties: [l.borrower, l.lender] });
     }
-    if (loanRemaining(l) > 0) l.overdue = true;
+    if (loanRemaining(l) > 0 && !l.overdue) {
+      l.overdue = true;
+      ev.push({ type: 'loan_overdue', loanId: l.id, borrower: l.borrower, lender: l.lender, parties: [l.borrower, l.lender] });
+    }
   }
   s.loans = s.loans.filter((l) => loanRemaining(l) > 0);
   updateDebtors(s, ev);

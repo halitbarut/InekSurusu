@@ -1,4 +1,4 @@
-import { BOT_LEVEL_NAME, autoUpkeepAction, getBot, responseAction, timeoutAction } from '../../bot';
+import { BOT_LEVEL_NAME, autoUpkeepAction, getBot, phraseText, responseAction, timeoutAction } from '../../bot';
 import {
   RESOURCE_KEYS,
   STRAIT_MODES,
@@ -40,6 +40,7 @@ import {
   neighbors4,
   debtDueThisTurn,
   seriesWinProbability,
+  MAX_COUNTER_DEPTH,
   MAX_LOAN_RATE,
   MAX_LOAN_TERM,
   creditsOf,
@@ -99,6 +100,7 @@ import { ResponseTracker, WAIT_LABEL, battleWaitsForClick, pendingResponses, typ
 import { TileMenu, pairText, tileMenuModel, type RoutePreview, type TileAction } from './tileMenu';
 import { takeHint } from './hints';
 import type { GameGuide } from '../../tutorial/guide';
+import type { BotDecision } from '../../bot';
 import { actionCost, clearNotices, dec, explainProblem, floatText, landOdds, notify, pct, shortfall } from './feedback';
 import { play, playSpin, setMuted, soundControls } from '../sound';
 import { guidanceControls } from '../settings';
@@ -123,6 +125,10 @@ interface OfferDraft {
   takeTiles: Set<number>;
   giveStraits: Map<number, number>;
   takeStraits: Map<number, number>;
+  /** Teklifi hazırlayan (yoksa sıra sahibi); karşı teklifte cevap veren */
+  from?: number;
+  /** Karşı teklifse hangi teklife */
+  counterOf?: number;
 }
 
 interface ActionInfo {
@@ -479,11 +485,15 @@ export class GameScreen {
         const cur = s.players[this.actor()];
         if (cur.kind === 'bot') {
           this.render();
-          await sleep(this.botDelay());
+          const brain = this.brain(cur.id);
+          const before = this.state;
+          let action = brain.chooseAction(before, cur.id);
+          // Kolay kararlar hızlı, zor kararlar yavaş (Hızlı oynat açıkken gecikme yok)
+          await sleep(getPrefs().fastBots ? this.botDelay() : (brain.thinkMs?.(before, cur.id, action) ?? this.botDelay()));
           if (this.destroyed) return;
           if (this.state.players[cur.id].kind !== 'bot') continue; // bu arada oyuncu geri döndü
+          if (this.state !== before) action = brain.chooseAction(this.state, cur.id); // beklerken durum değişti
           if (this.botActions.turn !== this.state.turnCounter) this.botActions = { turn: this.state.turnCounter, count: 0 };
-          let action = this.brain(cur.id).chooseAction(this.state, cur.id);
           // Güvenlik: bot aynı turda çok uzun oynarsa turu bitir
           if (++this.botActions.count > 300 && this.state.phase.kind === 'actions') action = { type: 'END_TURN', player: cur.id };
           const ok = await this.enqueue(() => this.commit(action, true));
@@ -660,7 +670,11 @@ export class GameScreen {
     // Botlar geri almayı kullanmaz; diğer eylemler geri alınabilir mi kendisi karar verir
     if (byBot) this.history.clear();
     else this.history.record(this.state, action, r.state);
-    if (this.net?.kind === 'host') this.net.room.broadcastUpdate(r.state, r.events, origin, this.undoCount(r.state));
+    if (this.net?.kind === 'host') {
+      this.net.room.broadcastUpdate(r.state, r.events, origin, this.undoCount(r.state));
+      const room = this.net.room;
+      for (const e of r.events) if (e.type === 'bot_message') room.botChat(e.player, phraseText(e.phrase, e.about >= 0 ? pname(r.state, e.about) : ''));
+    }
     // Animasyonlar (topaç, savaş, sefer) eski durum üzerinde oynar, sonuç sonra görünür
     await this.animate(r.events, byBot, r.state);
     const prev = this.state;
@@ -750,6 +764,10 @@ export class GameScreen {
         notify({ icon: e.kind === 'land' ? 'attack' : STRUCT_ICON[e.kind], title, text, kind: named ? 'info' : won ? 'good' : lost ? 'bad' : 'info', onClick: () => this.map.centerOn(e.target) });
         return;
       }
+      case 'bot_message':
+        // Çevrimiçinde genel sohbete düşer
+        if (!this.net) notify({ icon: 'chat', title: N(e.player), text: phraseText(e.phrase, e.about >= 0 ? N(e.about) : ''), kind: 'info', ms: 5000 });
+        return;
       case 'loan_answered':
         if (mine(e.borrower) && !mine(e.lender) && !e.accepted) notify({ icon: 'akce', title: `${N(e.lender)} borç isteğini reddetti`, kind: 'bad' });
         return;
@@ -1044,6 +1062,11 @@ export class GameScreen {
     if (!s.offers.some((o) => o.id === offer.id)) return;
     if (to.kind === 'bot') {
       await sleep(Math.min(300, this.botDelay()));
+      const counter = this.brain(to.id).counterOffer?.(s, to.id, offer);
+      if (counter) {
+        await this.commit({ type: 'COUNTER_OFFER', player: to.id, offerId: offer.id, items: counter }, true);
+        return;
+      }
       const accept = this.brain(to.id).evaluateOffer(s, to.id, offer);
       await this.commit({ type: 'RESPOND_OFFER', player: to.id, offerId: offer.id, accept }, true);
       return;
@@ -1066,10 +1089,11 @@ export class GameScreen {
     this.offerHolds++;
     this.syncClock();
     this.tickResponses();
-    let answer: 'accept' | 'reject' | 'later' = 'later';
+    let answer: 'accept' | 'reject' | 'later' | 'counter' = 'later';
     await this.passDevice(to.id, `${from.name} sana bir teklif gönderdi.`);
     if (alive()) answer = await this.askOffer(offer, true);
-    if (answer !== 'later' && alive()) await this.enqueue(() => this.commit({ type: 'RESPOND_OFFER', player: to.id, offerId: offer.id, accept: answer === 'accept' }));
+    if (answer === 'counter') await this.composeCounter(offer);
+    else if (answer !== 'later' && alive()) await this.enqueue(() => this.commit({ type: 'RESPOND_OFFER', player: to.id, offerId: offer.id, accept: answer === 'accept' }));
     const pending = alive();
     this.localOffers.delete(offer.id);
     this.offerHolds--;
@@ -1087,6 +1111,7 @@ export class GameScreen {
     const answer = await this.askOffer(offer, true);
     if (answer === 'later' || this.destroyed) return;
     if (!this.state.offers.some((o) => o.id === offer.id)) return;
+    if (answer === 'counter') return this.composeCounter(offer);
     await this.act({ type: 'RESPOND_OFFER', player: offer.to, offerId: offer.id, accept: answer === 'accept' });
   }
 
@@ -1697,7 +1722,26 @@ export class GameScreen {
     return h('p', { class: 'wait-left muted small', dataset: { waitKey: key } });
   }
 
-  private async askOffer(offer: Offer, allowLater: boolean): Promise<'accept' | 'reject' | 'later'> {
+  /** Gelen teklife karşı teklif: kalemler ters çevrilmiş olarak dolu gelir, oyuncu düzenleyip gönderir */
+  private composeCounter(offer: Offer): Promise<void> {
+    const d = this.newDraft(offer.from);
+    d.from = offer.to;
+    d.counterOf = offer.id;
+    for (const it of offer.items) {
+      // Teklif eden için "verdiği", benim için "aldığım"dır
+      const iGive = it.kind !== 'alliance' && it.kind !== 'peace' && it.giver === 'to';
+      if (it.kind === 'alliance') d.alliance = true;
+      else if (it.kind === 'peace') {
+        d.peace = true;
+        d.peaceRounds = it.rounds;
+      } else if (it.kind === 'resource') (iGive ? d.give : d.take)[it.resource] = it.amount;
+      else if (it.kind === 'tile') (iGive ? d.giveTiles : d.takeTiles).add(it.tile);
+      else (iGive ? d.giveStraits : d.takeStraits).set(it.straitId, it.toll);
+    }
+    return new Promise((resolve) => this.openComposer(d, resolve));
+  }
+
+  private async askOffer(offer: Offer, allowLater: boolean): Promise<'accept' | 'reject' | 'later' | 'counter'> {
     const s = this.state;
     const key = `offer-${offer.id}`;
     const m = this.trackQuestion(key, openModal({
@@ -1712,6 +1756,7 @@ export class GameScreen {
       ),
       buttons: [
         ...(allowLater ? [{ label: 'Sonra yanıtla', value: 'later' }] : []),
+        ...((offer.depth ?? 0) < MAX_COUNTER_DEPTH ? [{ label: 'Karşı teklif', value: 'counter' }] : []),
         { label: 'Reddet', value: 'reject', danger: true },
         { label: 'Kabul et', value: 'accept', primary: true },
       ],
@@ -1719,7 +1764,7 @@ export class GameScreen {
     }));
     const v = await m.result;
     // Süre dolarsa teklif bekleyen tekliflerde kalır
-    return v === 'timeout' ? 'later' : (v as 'accept' | 'reject' | 'later');
+    return v === 'timeout' ? 'later' : (v as 'accept' | 'reject' | 'later' | 'counter');
   }
 
   private victoryShown = false;
@@ -3210,6 +3255,7 @@ export class GameScreen {
               h(
                 'div',
                 { class: 'right' },
+                (o.depth ?? 0) < MAX_COUNTER_DEPTH ? h('button', { class: 'btn btn-small', onClick: () => (modal?.close(), void this.composeCounter(o)) }, 'Karşı teklif') : null,
                 h('button', { class: 'btn btn-small btn-danger', onClick: () => after({ type: 'RESPOND_OFFER', player: me, offerId: o.id, accept: false }) }, 'Reddet'),
                 h('button', { class: 'btn btn-small btn-primary', onClick: () => after({ type: 'RESPOND_OFFER', player: me, offerId: o.id, accept: true }) }, 'Kabul et'),
               ),
@@ -3282,11 +3328,11 @@ export class GameScreen {
     return items;
   }
 
-  private openComposer(d: OfferDraft) {
+  private openComposer(d: OfferDraft, done?: () => void) {
     this.mode = { kind: 'none' };
     this.render();
     const s = this.state;
-    const me = s.currentPlayer;
+    const me = d.from ?? s.currentPlayer;
     const them = s.players[d.to];
     const mine = s.players[me];
     const allied = isAllied(s, me, d.to);
@@ -3352,16 +3398,17 @@ export class GameScreen {
         { class: 'row' },
         icon('tiles'),
         `Vereceğin topraklar: ${d.giveTiles.size} `,
-        h('button', { class: 'btn btn-small', onClick: () => pickTiles('give') }, 'Haritadan seç'),
+        // Karşı teklif sıra dışında da yazılır: haritadan seçim yalnızca kendi turunda
+        d.counterOf === undefined ? h('button', { class: 'btn btn-small', onClick: () => pickTiles('give') }, 'Haritadan seç') : null,
         `  ·  İstediğin topraklar: ${d.takeTiles.size} `,
-        h('button', { class: 'btn btn-small', onClick: () => pickTiles('take') }, 'Haritadan seç'),
+        d.counterOf === undefined ? h('button', { class: 'btn btn-small', onClick: () => pickTiles('take') }, 'Haritadan seç') : null,
       ),
       myStraits.length ? h('div', {}, h('b', {}, 'Söz sahibi olduğun boğazlar'), straitRows(myStraits, d.giveStraits, 'ver')) : null,
       theirStraits.length ? h('div', {}, h('b', {}, `${gen(them.name)} söz sahibi olduğu boğazlar`), straitRows(theirStraits, d.takeStraits, 'iste')) : null,
       h('p', { class: 'muted' }, 'Vergi 0 = vergi muafiyeti. Teklif kabul edildiği anda geçerli olur; kaynaklar o an yetmezse teklif düşer.'),
     );
     modal = openModal({
-      title: `Teklif → ${them.name}`,
+      title: `${d.counterOf === undefined ? 'Teklif' : 'Karşı teklif'} → ${them.name}`,
       icon: 'diplomacy',
       body,
       wide: true,
@@ -3371,15 +3418,19 @@ export class GameScreen {
       ],
     });
     void modal.result.then(async (v) => {
-      if (v !== 'send') return;
+      if (v !== 'send') {
+        if (v !== 'pick') done?.();
+        return;
+      }
       const items = this.draftItems(d);
       if (items.length === 0) {
         toast('Teklif boş', 'error');
-        this.openComposer(d);
+        this.openComposer(d, done);
         return;
       }
-      const ok = await this.act({ type: 'PROPOSE_OFFER', player: me, to: d.to, items });
-      if (!ok) this.openComposer(d);
+      const ok = await this.act(d.counterOf === undefined ? { type: 'PROPOSE_OFFER', player: me, to: d.to, items } : { type: 'COUNTER_OFFER', player: me, offerId: d.counterOf, items });
+      if (!ok && d.counterOf === undefined) this.openComposer(d, done);
+      else done?.();
     });
   }
 
@@ -3504,6 +3555,7 @@ export class GameScreen {
         h('button', { class: 'choice', onClick: () => (m.close(), this.exportJson()) }, icon('download', { cls: 'choice-icon' }), 'JSON olarak dışa aktar'),
         h('button', { class: 'choice', onClick: () => (m.close(), this.openRules()) }, icon('book', { cls: 'choice-icon' }), 'Kurallar (özet)'),
         h('button', { class: 'choice', onClick: () => (m.close(), this.openSettings()) }, icon('settings', { cls: 'choice-icon' }), 'Görünüm, hız ve ses'),
+        import.meta.env.DEV ? h('button', { class: 'choice', onClick: () => (m.close(), this.openBotLog()) }, icon('bot', { cls: 'choice-icon' }), 'Bot günlüğü (geliştirme)') : null,
         h(
           'button',
           {
@@ -3517,6 +3569,23 @@ export class GameScreen {
           icon('home', { cls: 'choice-icon' }),
           'Ana menüye dön (otomatik kaydedilir)',
         ),
+      ),
+    });
+  }
+
+  /** Yalnızca geliştirme modunda: botların kararları ve gerekçeleri */
+  private openBotLog() {
+    const log = (window as unknown as { __botLog?: BotDecision[] }).__botLog ?? [];
+    openModal({
+      title: 'Bot günlüğü',
+      icon: 'bot',
+      wide: true,
+      body: h(
+        'div',
+        { class: 'log' },
+        log.length
+          ? [...log].reverse().slice(0, 300).map((d) => h('div', { class: 'log-line' }, h('span', {}, `${d.round}. tur · ${pname(this.state, d.player)} (${d.personality}): ${d.what}. `, h('span', { class: 'muted' }, d.why))))
+          : 'Henüz kayıt yok: Gerçekçi botlarla oyna.',
       ),
     });
   }
@@ -3588,6 +3657,7 @@ export class GameScreen {
           h('li', {}, 'Boğaz ayarı oyuncu başına Sor (varsayılan), Açık, Vergili ya da Kapalıdır. Rotası "Sor" durumundaki boğazdan geçen sefer önce söz sahibine sorulur; biri bile reddederse sefer yapılmaz, ödeme alınmaz, yakıt harcanmaz.'),
           h('li', {}, 'Müttefiklere ve barış yapılanlara saldırılamaz. İttifak kendi turunda bozulabilir; o tur eski müttefike saldırılamaz.'),
           h('li', {}, 'Borç: devletler birbirine akçe borç verebilir. İsteyen miktar ve vadeyi söyler; veren reddeder ya da faizini (0 = faizsiz) belirleyip kabul eder; borçlu son koşulları onaylar. Geri ödenecek toplam = miktar × (1 + oran). Vade gelince borçlunun turunda topaçtan sonra kesilir, yetmezse kalan her tur kesilir ve "borçlu" görünür. Erken ödenebilir. Başkent düşerse borç ve alacaklar fatihe geçer. Ayrıntıları yalnızca iki taraf görür.'),
+          h('li', {}, 'Gelen teklife karşı teklif yapabilirsin: eski teklif reddedilir, yenisi karşı tarafa gider (zincirde en fazla 2 kez).'),
           h('li', {}, 'Kazanma: tek devlet kalırsa ya da kalan herkes müttefikse ve oybirliğiyle bitirmeye karar verirse.'),
         ),
       ),

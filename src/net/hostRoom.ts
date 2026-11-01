@@ -243,6 +243,12 @@ export class HostRoom implements ChatChannel {
     return this.waits.list.filter((w) => w.parties === null || (seat !== null && w.parties.includes(seat))).map((w) => ({ ...w, remainingMs: Math.max(0, w.remainingMs - dt) }));
   }
 
+  /** Botun hazır sözü genel kanala düşer */
+  botChat(seat: number, text: string) {
+    const st = this.getState();
+    if (st?.players[seat]) this.postChat(seat, st.players[seat].name, st.players[seat].color, { to: null, text });
+  }
+
   /** Yalnızca bu koltuğa bilgi notu */
   noticeSeat(seat: number, text: string) {
     for (const c of this.clients.values()) if (c.seat === seat) c.conn?.send({ t: 'notice', text });

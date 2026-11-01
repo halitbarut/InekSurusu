@@ -94,12 +94,22 @@ export class MediumBot implements BotBrain {
     return fallbackAction(state, p);
   }
 
-  vote(): boolean {
+  vote(_state: GameState, _p: number): boolean {
     return true;
   }
 
   evaluateOffer(state: GameState, p: number, offer: Offer): boolean {
     if (offerProblem(state, offer.from, offer.to, offer.items)) return false;
+    return this.offerValue(state, p, offer) >= 0;
+  }
+
+  /** Hedef oyuncuya kişisel tercih (Orta botta yok; Gerçekçi botta kin, fırsat, sezgi) */
+  protected targetBias(_state: GameState, _p: number, _q: number): number {
+    return 0;
+  }
+
+  /** Teklifin bu bot için akçe cinsinden kabaca değeri */
+  protected offerValue(state: GameState, p: number, offer: Offer): number {
     const myTiles = tileCount(state, p);
     const fromTiles = tileCount(state, offer.from);
     const strongest = strongestOther(state, p);
@@ -134,7 +144,7 @@ export class MediumBot implements BotBrain {
           break;
       }
     }
-    return value >= 0;
+    return value;
   }
 
   // ------------------------------------------------------------------
@@ -590,6 +600,7 @@ export class MediumBot implements BotBrain {
       if (!validateAction(state, o.action).ok) continue; // masraf yetmiyor vb.
       const target = o.action.type === 'ATTACK' || o.action.type === 'SHIP_EXPEDITION' || o.action.type === 'PLANE_EXPEDITION' ? o.action.target : -1;
       o.value -= this.costValue(state, p, battleCost(state, targetBattleKind(state, target)));
+      o.value += this.targetBias(state, p, state.owner[target]!);
       if (!bestOpt || o.value > bestOpt.value) bestOpt = o;
     }
     return bestOpt && bestOpt.value > this.tuning.minBattleValue ? bestOpt.action : null;

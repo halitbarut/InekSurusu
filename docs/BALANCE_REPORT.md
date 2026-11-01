@@ -564,8 +564,90 @@ oynatılan RB/RB2 değerleri 2. tur raporundaki değerlerle birebir aynı (%14,4
 - **Yapı yıkma botlarda fiilen hiç kullanılmadı** (oyun başına 0,0). Dengeli'de üs bakımı 0 olduğu için botun yıkma koşulu pek oluşmuyor. Bu, testlerdeki davranışın oyunda nadir
   olduğu anlamına gelir; Gerçekçi bot da aynı koşulları devralır.
 - **Borç az kullanılıyor:** oyun başına 7,5 borç, 1.048 akçe, 76 akçe faiz; harcamalara göre küçük. Borçlu duruma düşme oyun başına 0,3. Oyunu bozmuyor; botların temkinli kurallarını yansıtıyor.
-- **Bakım payı** %56 → %50: hedefe (%50 altı) ulaşıldı sayılmaz ama sınırda. Pay, toplam harcama pastası büyüdüğü için de düşüyor.
-- **Boğaz vergisi çok düşük** (oyun başına 68 akçe): botlar sorulan izinlerde çoğunlukla vergi ya da kapalı ayarı veriyor, gemi seferleri seyrek. Boğazların insan oyunlarındaki etkisi bu sayılardan okunamaz.
+- **Bakım payı** %56 → %50: %50 altı hedefinin tam sınırında.
+- **Boğaz vergisi çok düşük** (oyun başına 68 akçe). Nedenini bu ölçüm ayırmıyor; boğazların insan oyunlarındaki etkisi bu sayıdan okunamaz.
 - **Karşılaştırmanın sınırı:** 3. tur B3 eski kod ve eski haritayla ölçüldü, seed'ler aynı olsa da haritalar farklı. E- senaryoları birbiriyle doğrudan karşılaştırılabilir; B3 yalnızca yön gösterir.
 
 **Öneriler (uygulanmadı, senin kararın):** İlk başkent fethi üst sınıra yaklaştığı için başkent savaşı masrafını biraz düşürmek (600 → 500 akçe) denenebilir. Tur sınırına takılan oyunlar için ayrı bir çalışma gerekir: bu güncelleme onu çözmedi. Yapı fiyatları için değişiklik önermiyorum, gerçek oyunlardan geri bildirim daha değerli olur.
+
+<!-- bölüm:gercekci — bu işaretle kapanış işareti arası simülasyon tarafından yazılır -->
+
+## Gerçekçi bot
+
+`npm run simulate -- --round gercekci` ile üretilir (son çalıştırma: 2026-11-01). Her düzen için 100 oyun, 5 oyuncu, Dengeli kurallar, 300 tur sınırı, seed'ler 10000–10099. Tek botun koltuğu oyundan oyuna döner. Adil pay: %20.
+
+| Düzen | Kazanma payı (ittifak zaferi paylaştırılır) | %95 güven aralığı | Tek başına kazandığı | Tur sınırına takılan | Biten oyun medyanı |
+|---|---|---|---|---|---|
+| Gerçekçi 1 + Orta 4 | %24,1 | %16,8–%33,4 | 11/100 | %15 | 93 |
+| Zor 1 + Orta 4 (kıyas) | %30,7 | %22,6–%40,4 | 11/100 | %10 | 85 |
+
+### Kişilikler arasındaki davranış farkları
+
+5 Gerçekçi botlu 100 oyun. Sayılar kişiliğin oynadığı **100 tur başına** ortalamadır (tur = o oyuncunun kendi turu).
+
+| Kişilik | Koltuk | Savaş | İttifak | İttifak bozma | Teklif | Karşı teklif | Borç aldı | Borç verdi | İzin reddi | Mesaj | Kazanma payı |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Saldırgan | 111 | 55,5 | 2,6 | 0,3 | 3,5 | 3,1 | 3,2 | 0,9 | 0,4 | 3,8 | %14,1 |
+| Temkinli | 104 | 39,8 | 3,0 | 0,0 | 6,2 | 0,2 | 1,0 | 1,1 | 0,1 | 1,5 | %16,2 |
+| Tüccar | 116 | 35,7 | 2,8 | 0,2 | 33,0 | 2,5 | 0,7 | 1,5 | 0,0 | 2,0 | %17,1 |
+| Fırsatçı | 78 | 53,7 | 1,9 | 0,2 | 19,8 | 5,8 | 1,2 | 0,9 | 0,2 | 3,4 | %22,5 |
+| Sadık müttefik | 91 | 21,7 | 4,3 | 0,0 | 6,6 | 0,2 | 1,1 | 2,7 | 0,0 | 2,0 | %23,1 |
+
+### Örnek oyunların öne çıkan anları
+
+Geliştirme günlüğünden (`botDebug`), ilk üç oyun. Rutin saldırılar çıkarıldı.
+
+**Seed 10000** (89. tur, kazanan: B0, B1):
+
+- 1. tur, B1 (Tüccar): turu erken bitirdi. _sezgisel: bu tur fazla risk almak istemedi_
+- 2. tur, B3 (Fırsatçı): turu erken bitirdi. _sezgisel: bu tur fazla risk almak istemedi_
+- 6. tur, B1 (Tüccar): B0 teklifine karşı teklif yaptı. _teklifin değeri -177: pazarlık_
+- 9. tur, B0 (Sadık müttefik): B4 ile ittifak önerdi. _öndeki B1: 51 toprak, bende 40_
+- 9. tur, B4 (Temkinli): B0 teklifine karşı teklif yaptı. _teklifin değeri -26: pazarlık_
+- 9. tur, B1 (Tüccar): B0 ile takas önerdi. _elinde fazla petrol var_
+- 12. tur, B0 (Sadık müttefik): B2 ile ittifak önerdi. _öndeki B1: 75 toprak, bende 53_
+- 17. tur, B1 (Tüccar): B4 ile takas önerdi. _elinde fazla petrol var_
+- 17. tur, B4 (Temkinli): borç vermedi. _güven 2, istenen 100, kalacak 300_
+- 22. tur, B2 (Fırsatçı): borç verdi %26. _güven 0, istenen 100, kalacak 700_
+- 30. tur, B4 (Temkinli): borç vermedi. _güven 0, istenen 100, kalacak 500_
+- 37. tur, B3 (Fırsatçı): B1 ile barış önerdi. _önde olanla bu tur kapışmak istemedi_
+- 40. tur, B4 (Temkinli): B1 ile barış önerdi. _önde olanla bu tur kapışmak istemedi_
+
+**Seed 10001** (68. tur, kazanan: B0, B1, B2, B4):
+
+- 2. tur, B4 (Sadık müttefik): B3 ile ittifak önerdi. _öndeki B1: 18 toprak, bende 12_
+- 2. tur, B3 (Tüccar): B4 teklifine karşı teklif yaptı. _teklifin değeri -27: pazarlık_
+- 3. tur, B4 (Sadık müttefik): turu erken bitirdi. _sezgisel: bu tur fazla risk almak istemedi_
+- 4. tur, B4 (Sadık müttefik): borç vermedi. _güven 2, istenen 100, kalacak 300_
+- 5. tur, B3 (Tüccar): B0 ile takas önerdi. _elinde fazla petrol var_
+- 6. tur, B2 (Temkinli): borç vermedi. _güven 0, istenen 100, kalacak 500_
+- 6. tur, B2 (Temkinli): turu erken bitirdi. _sezgisel: bu tur fazla risk almak istemedi_
+- 7. tur, B3 (Tüccar): B1 ile takas önerdi. _elinde fazla petrol var_
+- 7. tur, B1 (Tüccar): borç verdi %39. _güven 0, istenen 100, kalacak 700_
+- 8. tur, B1 (Tüccar): B4 teklifine karşı teklif yaptı. _teklifin değeri -177: pazarlık_
+- 18. tur, B2 (Temkinli): B1 ile ittifak önerdi. _öndeki B0: 95 toprak, bende 74_
+- 26. tur, B2 (Temkinli): B0 ile barış önerdi. _önde olanla bu tur kapışmak istemedi_
+- 48. tur, B0 (Temkinli): B3 ile barış önerdi. _önde olanla bu tur kapışmak istemedi_
+
+**Seed 10002** (51. tur, kazanan: B0, B1, B3, B4):
+
+- 2. tur, B1 (Sadık müttefik): B2 ile ittifak önerdi. _öndeki B0: 19 toprak, bende 15_
+- 2. tur, B4 (Tüccar): B0 ile ittifak önerdi. _öndeki B2: 23 toprak, bende 15_
+- 2. tur, B0 (Fırsatçı): B4 teklifine karşı teklif yaptı. _teklifin değeri -122: pazarlık_
+- 5. tur, B0 (Fırsatçı): B1 teklifine karşı teklif yaptı. _teklifin değeri -122: pazarlık_
+- 6. tur, B4 (Tüccar): B2 ile takas önerdi. _elinde fazla petrol var_
+- 6. tur, B1 (Sadık müttefik): turu erken bitirdi. _sezgisel: bu tur fazla risk almak istemedi_
+- 7. tur, B3 (Tüccar): B2 ile takas önerdi. _elinde fazla petrol var_
+- 7. tur, B2 (Temkinli): turu erken bitirdi. _sezgisel: bu tur fazla risk almak istemedi_
+
+<!-- /bölüm:gercekci -->
+
+### Değerlendirme ve öneriler (Gerçekçi bot)
+
+- **Güç:** Gerçekçi %24,1, Zor %30,7, adil pay (Orta) %20: nokta tahmini hedefteki gibi Orta ile Zor arasında. Ama 100 oyunla güven aralıkları örtüşüyor
+  (%16,8–%33,4 ve %22,6–%40,4): "adil paydan ve Zor'dan istatistiksel olarak ayrı" denemez. Kesin sonuç için oyun sayısı artırılmalı.
+- **Belirgin farklar:** savaş (Sadık 21,7 – Saldırgan 55,5), teklif (Saldırgan 3,5 – Tüccar 33), karşı teklif (Sadık 0,2 – Fırsatçı 5,8), borç (Saldırgan en çok alan, Sadık en çok veren).
+- **Zayıf farklar:** kurulan ittifak 1,9–4,3 arasında. İttifak bozma nadir (Temkinli ve Sadık 0, diğerleri 0,2–0,3): yön doğru, oyun başına çok az olay olduğu için fark küçük görünüyor. Sayıları artırmak için
+  ihanet olasılığı yükseltilebilir, ama insan oyuncuyu sıkça arkadan vurmak da gerçekçi hissettirmeyebilir: oynayarak karar verilmeli.
+- **Kişilik başarısı dengeli değil:** 5 Gerçekçi arasında Sadık %23,1 ve Fırsatçı %22,5, Saldırgan %14,1. İttifak zaferi paylaşıldığı için bağlı oyuncular kazanıyor. Hedef güç değil çeşitlilik olduğundan olduğu gibi bırakıldı.
+- Bu ölçümler bot–bot oyunudur; "insan gibi" hissi simülasyonla ölçülemez, gerçek oyunda denenmelidir.

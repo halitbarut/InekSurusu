@@ -77,6 +77,8 @@ export function createGameFromMap(map: GameMap, players: PlayerSetup[], config: 
     round: 0,
     phase: { kind: 'setup_capital' },
     rngState: mixSeed(rngSeed, 0x5eed),
+    botSeed: mixSeed(rngSeed, 0xb075),
+    ledger: {},
     log: [],
     winners: null,
     stats: emptyStats(players.length),

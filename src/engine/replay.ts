@@ -17,7 +17,9 @@ export type ReplayStep =
   /** Çevrimiçide kopan oyuncunun yerine bot geçti ya da oyuncu döndü */
   | { type: 'SET_PLAYER_KIND'; player: number; kind: 'human' | 'bot' }
   /** Kabul edilmemiş, içeriği gizlenmiş teklif (yalnızca paylaşılan kopyada) */
-  | { type: 'HIDDEN_OFFER'; player: number; to: number };
+  | { type: 'HIDDEN_OFFER'; player: number; to: number }
+  /** İçeriği gizlenmiş karşı teklif: eski teklifi reddeder, içeriksiz yenisini açar */
+  | { type: 'HIDDEN_COUNTER'; player: number; offerId: number };
 
 export interface ReplayData {
   app: 'inek-surusu-replay';
@@ -98,6 +100,20 @@ export function applyReplayStep(state: GameState, step: ReplayStep): ApplyResult
       if (s.log.length > MAX_LOG) s.log.splice(0, s.log.length - MAX_LOG);
       return { state: s, events };
     }
+    case 'HIDDEN_COUNTER': {
+      const s = structuredClone(state);
+      const old = s.offers.find((o) => o.id === step.offerId)!;
+      s.offers = s.offers.filter((o) => o.id !== step.offerId);
+      const offer = { id: s.nextOfferId++, from: step.player, to: old.from, items: [], createdTurn: s.turnCounter, depth: (old.depth ?? 0) + 1 };
+      s.offers.push(offer);
+      const events: GameEvent[] = [
+        { type: 'offer_response', offerId: old.id, from: old.from, to: old.to, accepted: false },
+        { type: 'offer_made', offer: structuredClone(offer) },
+      ];
+      for (const e of events) s.log.push({ turn: s.turnCounter, round: s.round, event: e });
+      if (s.log.length > MAX_LOG) s.log.splice(0, s.log.length - MAX_LOG);
+      return { state: s, events };
+    }
     default:
       return dispatch(state, step);
   }
@@ -131,6 +147,7 @@ export function redactReplay(data: ReplayData): ReplayData {
   const steps = data.steps.map((step, i): ReplayStep => {
     const id = created[i];
     if (step.type === 'PROPOSE_OFFER' && id !== null && !accepted.has(id)) return { type: 'HIDDEN_OFFER', player: step.player, to: step.to };
+    if (step.type === 'COUNTER_OFFER' && id !== null && !accepted.has(id)) return { type: 'HIDDEN_COUNTER', player: step.player, offerId: step.offerId };
     return step;
   });
   // Yarım kayıtta başlangıçta bekleyen teklifler ve günlükteki teklif satırları da aynı kurala uyar
@@ -158,11 +175,13 @@ export function parseReplay(text: string): ReplayData {
   if (!Array.isArray(d.steps)) throw new Error('Tekrar dosyası bozuk: adımlar okunamadı');
   const steps: ReplayStep[] = [];
   for (const raw of d.steps as unknown[]) {
-    const o = raw as { type?: unknown; player?: unknown; to?: unknown; kind?: unknown };
+    const o = raw as { type?: unknown; player?: unknown; to?: unknown; kind?: unknown; offerId?: unknown };
     if (o && o.type === 'SET_PLAYER_KIND' && Number.isInteger(o.player) && (o.kind === 'human' || o.kind === 'bot')) {
       steps.push({ type: 'SET_PLAYER_KIND', player: o.player as number, kind: o.kind });
     } else if (o && o.type === 'HIDDEN_OFFER' && Number.isInteger(o.player) && Number.isInteger(o.to)) {
       steps.push({ type: 'HIDDEN_OFFER', player: o.player as number, to: o.to as number });
+    } else if (o && o.type === 'HIDDEN_COUNTER' && Number.isInteger(o.player) && Number.isInteger(o.offerId)) {
+      steps.push({ type: 'HIDDEN_COUNTER', player: o.player as number, offerId: o.offerId as number });
     } else {
       const a = parseAction(raw);
       if (!a) throw new Error(`Tekrar dosyası bozuk: ${steps.length + 1}. adım okunamadı`);

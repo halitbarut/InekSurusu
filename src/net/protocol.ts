@@ -10,7 +10,7 @@ import type { ChatMessage, ChatSend } from './chat';
  * 6: izleyiciler: izleyici listesi (viewers), izleyici sohbeti ayarı (chatcfg).
  * 7: oyun bitince tekrar kaydı (replay; kabul edilmemiş teklif içerikleri çıkarılmış).
  * 8: boğazda birden çok söz sahibi ve izin aşaması (permit: yalnızca taraflara ayrıntı); bekleyen cevaplar ve süreleri (waits);
- *    borçlar (yalnızca taraflara ayrıntı).
+ *    borçlar (yalnızca taraflara ayrıntı); karşı teklif; Gerçekçi bot.
  */
 export const PROTOCOL_VERSION = 8;
 
@@ -143,6 +143,7 @@ function privateTo(e: GameEvent): number[] | null {
     case 'loan_declined':
     case 'loan_payment':
     case 'loan_transferred':
+    case 'loan_overdue':
       return e.parties;
     default:
       return null;
@@ -171,6 +172,9 @@ export function viewFor(state: GameState, viewer: number | null): GameState {
   return {
     ...state,
     rngState: 0,
+    // Kişilikler ve hafıza: tohum kimseye gitmez, kayıtlardan yalnızca tarafı olunanlar gider
+    botSeed: 0,
+    ledger: Object.fromEntries(Object.entries(state.ledger ?? {}).filter(([k]) => viewer !== null && k.split('>').map(Number).includes(viewer))),
     phase: hidePermit ? { ...ph, target: -1, path: [], unitId: -1 } : ph,
     offers: viewer === null ? [] : state.offers.filter((o) => o.from === viewer || o.to === viewer),
     // Borç ayrıntıları yalnızca iki tarafta; diğerleri yalnızca "borçlu" işaretini (Player.inDebt) görür
