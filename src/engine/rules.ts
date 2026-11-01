@@ -22,6 +22,7 @@ import { createRng, type Rng } from './rng';
 import { recordStats, snapshotRound } from './stats';
 import {
   MINE_TYPES,
+  STRAIT_MODES,
   type Action,
   type ApplyResult,
   type AttackVia,
@@ -177,8 +178,9 @@ export function validateAction(state: GameState, action: Action): ValidationResu
     case 'SET_STRAIT_POLICY': {
       const st = state.straits[action.straitId];
       if (!st) return fail('Geçersiz boğaz');
-      if (st.controller !== action.player) return fail('Bu boğazı idare etmiyorsunuz');
+      if (!st.controllers.includes(action.player)) return fail('Bu boğazda söz sahibi değilsiniz');
       if (!state.players[action.target] || action.target === action.player) return fail('Geçersiz oyuncu');
+      if (!STRAIT_MODES.includes(action.mode)) return fail('Geçersiz boğaz ayarı');
       if (!Number.isInteger(action.toll) || action.toll < 0 || action.toll > 1_000_000) return fail('Vergi 0 veya pozitif tam sayı olmalı');
       return OK;
     }
@@ -416,8 +418,8 @@ export function applyAction(state: GameState, action: Action, rng: Rng): ApplyRe
       break;
     case 'SET_STRAIT_POLICY': {
       const st = s.straits[action.straitId];
-      st.policies[action.target] = { allow: action.allow, toll: action.toll };
-      ev.push({ type: 'strait_policy', player: me.id, straitId: action.straitId, target: action.target, allow: action.allow, toll: action.toll });
+      (st.policies[me.id] ??= {})[action.target] = { mode: action.mode, toll: action.toll };
+      ev.push({ type: 'strait_policy', player: me.id, straitId: action.straitId, target: action.target, mode: action.mode, toll: action.toll });
       break;
     }
     case 'PROPOSE_OFFER': {
@@ -546,7 +548,10 @@ function eliminate(s: GameState, loser: number, winner: number, ev: GameEvent[])
     const [a, b] = k.split('-').map(Number);
     if (a === loser || b === loser) delete s.relations[k];
   }
-  for (const st of s.straits) delete st.policies[loser];
+  for (const st of s.straits) {
+    delete st.policies[loser];
+    for (const byTarget of Object.values(st.policies)) delete byTarget[loser];
+  }
   ev.push({ type: 'eliminated', player: loser, by: winner });
   const alive = s.players.filter((pl) => pl.alive);
   if (alive.length === 1) endGame(s, [alive[0].id], ev);

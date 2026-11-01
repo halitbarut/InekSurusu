@@ -1,5 +1,5 @@
 import type { IconName } from './icons';
-import type { Action, BuildableStructure, GameEvent, GameState, Offer, OfferItem, ResourceKey, StructureType, UnitKind } from '../engine';
+import type { Action, BuildableStructure, GameEvent, GameState, Offer, OfferItem, ResourceKey, StraitMode, StructureType, UnitKind } from '../engine';
 
 export const RES_NAME: Record<ResourceKey, string> = { akce: 'Akçe', gold: 'Altın', oil: 'Petrol', iron: 'Demir', steel: 'Çelik' };
 export const RES_ICON: Record<ResourceKey, IconName> = { akce: 'akce', gold: 'gold', oil: 'oil', iron: 'iron', steel: 'steel' };
@@ -9,6 +9,7 @@ export const STRUCT_NAME: Record<StructureType, string> = { capital: 'Başkent',
 export const STRUCT_ICON: Record<StructureType, IconName> = { capital: 'capital', shipyard: 'shipyard', factory: 'factory', base: 'base' };
 export const UNIT_NAME: Record<UnitKind, string> = { ship: 'gemi', plane: 'uçak' };
 export const UNIT_ICON: Record<UnitKind, IconName> = { ship: 'ship', plane: 'plane' };
+export const STRAIT_MODE_NAME: Record<StraitMode, string> = { ask: 'Sor', open: 'Açık', toll: 'Vergili', closed: 'Kapalı' };
 
 // ---------- Türkçe ek uyumu ----------
 
@@ -156,11 +157,9 @@ export function formatEvent(state: GameState, e: GameEvent): string | null {
     case 'eliminated':
       return `${N(e.player)} elendi! Her şeyi ${dat(N(e.by))} geçti.`;
     case 'strait_control':
-      return e.controller === null
-        ? `${straitLabel(e.straitId)} boğazı artık kimsenin idaresinde değil`
-        : `${N(e.controller)} ${straitLabel(e.straitId)} boğazının idaresini aldı`;
+      return e.gained ? `${N(e.player)} ${straitLabel(e.straitId)} boğazında söz sahibi oldu` : `${N(e.player)} ${straitLabel(e.straitId)} boğazında söz hakkını kaybetti`;
     case 'strait_policy':
-      return `${N(e.player)}, ${straitLabel(e.straitId)} boğazında ${N(e.target)} için: ${e.allow ? 'geçiş açık' : 'geçiş kapalı'}${e.allow ? `, vergi ${e.toll}` : ''}`;
+      return `${N(e.player)}, ${straitLabel(e.straitId)} boğazında ${N(e.target)} için: ${STRAIT_MODE_NAME[e.mode].toLocaleLowerCase('tr')}${e.mode === 'toll' ? ` (${fmtNum(e.toll)} akçe)` : ''}`;
     case 'offer_made':
       // Tekrar dosyasında kabul edilmemiş tekliflerin içeriği çıkarılır
       return `${N(e.offer.from)}, ${dat(N(e.offer.to))} teklif gönderdi: ${e.offer.items.length ? offerText(state, e.offer) : '(içeriği gizli)'}`;

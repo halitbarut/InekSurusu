@@ -306,10 +306,10 @@ describe('diplomasi', () => {
     setCapital(s, 1, 5, 0);
     s = act(s, { type: 'END_TURN', player: 0 }); // idare hesaplanır, sıra P1'de
     s = act(s, { type: 'SPIN', player: 1 }, [1]);
-    s = act(s, { type: 'SET_STRAIT_POLICY', player: 1, straitId: 0, target: 0, allow: false, toll: 0 });
+    s = act(s, { type: 'SET_STRAIT_POLICY', player: 1, straitId: 0, target: 0, mode: 'closed', toll: 0 });
     s = act(s, { type: 'PROPOSE_OFFER', player: 1, to: 0, items: [{ kind: 'strait', giver: 'from', straitId: 0, toll: 0 }] });
     s = act(s, { type: 'RESPOND_OFFER', player: 0, offerId: s.offers[0].id, accept: true });
-    expect(s.straits[0].policies[0]).toEqual({ allow: true, toll: 0 });
+    expect(s.straits[0].policies[1][0]).toEqual({ mode: 'open', toll: 0 });
   });
 });
 

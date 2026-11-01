@@ -1,6 +1,6 @@
 import { BATTLES_PER_TURN } from './config';
 import { chebyshev, neighbors4 } from './grid';
-import type { BattleCost, BattleKind, GameEvent, GameState, Relation, StraitPolicy, Unit } from './types';
+import type { BattleCost, BattleKind, GameEvent, GameMap, GameState, Relation, Strait, StraitPolicy, Unit } from './types';
 
 export function relKey(a: number, b: number): string {
   return a < b ? `${a}-${b}` : `${b}-${a}`;
@@ -136,32 +136,80 @@ export function transferTile(state: GameState, tile: number, to: number) {
   for (const u of state.units) if (u.tile === tile) u.owner = to;
 }
 
-export function straitController(state: GameState, straitId: number): number | null {
-  const s = state.map.straits[straitId];
-  const first = state.owner[s.banks[0]];
-  if (first === null) return null;
-  return s.banks.every((b) => state.owner[b] === first) ? first : null;
+/** Boğazın her karesinin iki yanında birbirinin tam karşısında duran kara kareleri */
+export function straitPairs(map: GameMap, s: Strait): [number, number][] {
+  const step = s.orientation === 'h' ? map.width : 1;
+  return s.tiles.map((t) => [t - step, t + step]);
 }
 
-const OPEN_POLICY: StraitPolicy = { allow: true, toll: 0 };
-
-/** Oyuncu p için boğaz geçiş koşulu. İdare eden yoksa ya da p idare ediyorsa serbest. */
-export function straitPolicyFor(state: GameState, straitId: number, p: number): StraitPolicy {
-  const st = state.straits[straitId];
-  if (st.controller === null || st.controller === p) return OPEN_POLICY;
-  return st.policies[p] ?? OPEN_POLICY;
+/** p'nin bu boğazda iki karesine de sahip olduğu karşılıklı çiftler */
+export function straitPairsOf(state: GameState, straitId: number, p: number): [number, number][] {
+  return straitPairs(state.map, state.map.straits[straitId]).filter(([a, b]) => state.owner[a] === p && state.owner[b] === p);
 }
 
-/** Boğazların idaresini yeniden hesaplar; idare değişirse ayarlar sıfırlanır. */
+/** Boğazın söz sahipleri: karşılıklı bir kare çiftine sahip oyuncular */
+export function straitControllers(state: GameState, straitId: number): number[] {
+  const out = new Set<number>();
+  for (const [a, b] of straitPairs(state.map, state.map.straits[straitId])) {
+    const o = state.owner[a];
+    if (o !== null && o === state.owner[b]) out.add(o);
+  }
+  return [...out].sort((x, y) => x - y);
+}
+
+/** Yeni söz sahibi olunan boğazda herkes için başlangıç ayarı */
+export const DEFAULT_STRAIT_POLICY: StraitPolicy = { mode: 'open', toll: 0 };
+
+/** Söz sahibi c'nin p oyuncusu için ayarı */
+export function straitPolicyOf(state: GameState, straitId: number, c: number, p: number): StraitPolicy {
+  return state.straits[straitId].policies[c]?.[p] ?? DEFAULT_STRAIT_POLICY;
+}
+
+/** p oyuncusunun bu boğazdan geçişi: her söz sahibinden ayrı izin ve ayrı vergi */
+export interface StraitPassage {
+  /** Geçişi kapatan söz sahipleri */
+  closedBy: number[];
+  /** İzin sorulacak söz sahipleri */
+  asks: number[];
+  /** Vergi isteyen söz sahipleri */
+  tolls: { controller: number; amount: number }[];
+  /** Toplam vergi */
+  toll: number;
+}
+
+export function straitPassage(state: GameState, straitId: number, p: number): StraitPassage {
+  const r: StraitPassage = { closedBy: [], asks: [], tolls: [], toll: 0 };
+  for (const c of state.straits[straitId].controllers) {
+    if (c === p) continue;
+    const pol = straitPolicyOf(state, straitId, c, p);
+    if (pol.mode === 'closed') r.closedBy.push(c);
+    else if (pol.mode === 'ask') r.asks.push(c);
+    else if (pol.mode === 'toll' && pol.toll > 0) {
+      r.tolls.push({ controller: c, amount: pol.toll });
+      r.toll += pol.toll;
+    }
+  }
+  return r;
+}
+
+/** Geçişin p için durumu: en kısıtlayıcı söz sahibi belirler */
+export function straitStatusFor(state: GameState, straitId: number, p: number): 'open' | 'ask' | 'toll' | 'closed' {
+  const pass = straitPassage(state, straitId, p);
+  return pass.closedBy.length ? 'closed' : pass.asks.length ? 'ask' : pass.toll > 0 ? 'toll' : 'open';
+}
+
+/** Boğazların söz sahiplerini yeniden hesaplar: söz hakkını kaybedenin ayarları silinir. */
 export function refreshStraits(state: GameState, events: GameEvent[]) {
   for (const s of state.map.straits) {
-    const c = straitController(state, s.id);
     const st = state.straits[s.id];
-    if (st.controller !== c) {
-      st.controller = c;
-      st.policies = {};
-      events.push({ type: 'strait_control', straitId: s.id, controller: c });
+    const now = straitControllers(state, s.id);
+    for (const c of st.controllers) {
+      if (now.includes(c)) continue;
+      delete st.policies[c];
+      events.push({ type: 'strait_control', straitId: s.id, player: c, gained: false });
     }
+    for (const c of now) if (!st.controllers.includes(c)) events.push({ type: 'strait_control', straitId: s.id, player: c, gained: true });
+    st.controllers = now;
   }
 }
 

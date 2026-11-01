@@ -66,7 +66,7 @@ export function createGameFromMap(map: GameMap, players: PlayerSetup[], config: 
     units: [],
     nextUnitId: 1,
     relations: {},
-    straits: map.straits.map(() => ({ controller: null, policies: {} })),
+    straits: map.straits.map(() => ({ controllers: [], policies: {} })),
     offers: [],
     nextOfferId: 1,
     currentPlayer: 0,

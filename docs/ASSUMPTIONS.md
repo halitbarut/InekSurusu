@@ -79,11 +79,11 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
     iç denizdir.
 23. **Boğaz:** 1 kare genişliğinde, en fazla 4 kare uzunluğunda, iki yanında kara bulunan deniz geçidi.
     Geçit kapatılınca iki ucu arasında 30 adımdan kısa bir su yolu kalmamalı ve her iki uç da en az
-    10 karelik bir su kütlesine açılmalıdır. **Yakalar**, geçidin iki yanındaki kara karelerinin hepsidir;
-    hepsine sahip olan oyuncu boğazı idare eder.
+    10 karelik bir su kütlesine açılmalıdır. **Yakalar**, geçidin iki yanındaki kara kareleridir;
+    söz sahipliği için bkz. #138.
 24. Vergi, rota boğaza her girdiğinde bir kez alınır. Birden çok rota varsa önce en ucuzu, sonra en kısası
-    seçilir. Vergi idare eden oyuncuya ödenir.
-25. Boğaz ayarlarını idare eden oyuncu her an değiştirebilir (motor buna izin verir; arayüzde kendi
+    seçilir. Vergi söz sahibine ödenir.
+25. Boğaz ayarlarını söz sahibi her an değiştirebilir (motor buna izin verir; arayüzde kendi
     turunda "Boğazlarım" panelinden).
 26. Her maden türünden oyuncu sayısı kadar maden vardır (oyuncu başına her türden 1, `minesPerTypePerPlayer`;
     yeni oyun ekranından değiştirilebilir). Madenler birbirine bitişik olmaz. Yapılar maden karelerine de kurulabilir.
@@ -458,3 +458,21 @@ Görev metninde açık olmayan noktalarda verilen kararlar. Sayısal olanların 
      bütün komşu deniz karelerinden başlar; bir boğaz karesine doğrudan kıyı olan tersane de o boğazdan çıkabilir ve
      boğazın kurallarına uyar (`tests/closedMaps.test.ts`).
 137. Eski bir kaydın ya da önayarın `continentType` değeri yoksa varsayılan (Kapalı denizler) kullanılır.
+
+## Boğaz söz sahipliği
+
+138. **Karşılıklı çift:** boğazın bir karesinin iki yanındaki iki kara kare (yatay boğazda kuzey–güney, dikey boğazda
+     batı–doğu). İkisine de sahip olan o boğazda söz sahibidir (`straitPairs`, `straitControllers`). Çapraz duran kareler
+     çift sayılmaz; aynı oyuncunun birden çok çifti olabilir. Durum her eylemden sonra yeniden hesaplanır.
+139. **Birden çok söz sahibi:** farklı çiftler tutan oyuncuların her birinin ayarı ayrıdır. Geçiş her birinden ayrı izin alır,
+     her vergi kendi sahibine ödenir; biri kapalıysa boğaz kapalıdır. Gemi sahibi kendisi de söz sahibiyse yalnızca
+     kendi izninden muaftır, öbürlerine tabidir.
+140. Bir çiftini kaybeden ama başka çifti kalan oyuncu söz sahibi kalır ve ayarları durur. Hiç çifti kalmayınca ayarları silinir;
+     aynı boğazda yeniden söz sahibi olursa baştan başlar.
+141. Haritadaki simge kanalın yanındaki yakanın üstüne çizilir: halka söz sahiplerinin renkleri (birden çoksa dilimler, kimse
+     yoksa gri), içi bakan oyuncu için durum: ✓ açık, ? sorulacak, ¤ vergili, ✕ kapalı (en kısıtlayıcı söz sahibi belirler).
+     Kendi söz sahibi olduğu tek boğazda ✓ görünür. İzleyici yalnızca söz sahiplerini görür. Hot-seat'te bakan oyuncu sıradaki
+     insandır, çevrimiçinde kendi koltuğu.
+142. **Eski kayıtlar** `migrateState` ile açılır: eski idareci söz sahibi olur, `{allow, toll}` ayarları karşılığına çevrilir,
+     söz sahipleri yeni kurala göre yeniden hesaplanır. Eski kayıtların tekrar verisi yeni kurallarla aynı sonucu
+     vermeyeceği için bırakılır; `REPLAY_VERSION` 2'ye çıktı, eski tekrar dosyaları "sürümü desteklenmiyor" der.

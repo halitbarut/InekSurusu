@@ -1,5 +1,5 @@
 import { neighbors4, neighbors8 } from './grid';
-import { planeBlockedTiles, straitPolicyFor } from './helpers';
+import { planeBlockedTiles, straitPassage } from './helpers';
 import type { GameState } from './types';
 
 /** Vergi her zaman mesafeden önce gelir: önce en ucuz, sonra en kısa rota */
@@ -77,9 +77,9 @@ export function shipRoutes(state: GameState, player: number, from: number): Rout
   const enterCost = (fromTile: number, to: number): number => {
     const sid = map.straitOf[to];
     if (sid < 0 || (fromTile >= 0 && map.straitOf[fromTile] === sid)) return 1;
-    const pol = straitPolicyFor(state, sid, player);
-    if (!pol.allow) return Infinity;
-    return 1 + pol.toll * TOLL_WEIGHT;
+    const pass = straitPassage(state, sid, player);
+    if (pass.closedBy.length) return Infinity;
+    return 1 + pass.toll * TOLL_WEIGHT;
   };
 
   for (const s of neighbors4(map, from)) {
@@ -129,9 +129,7 @@ export function shipRoutes(state: GameState, player: number, from: number): Rout
       for (const t of sea) {
         const sid = map.straitOf[t];
         if (sid >= 0 && (last < 0 || map.straitOf[last] !== sid)) {
-          const pol = straitPolicyFor(state, sid, player);
-          const controller = state.straits[sid].controller;
-          if (pol.toll > 0 && controller !== null) tolls.push({ straitId: sid, controller, amount: pol.toll });
+          for (const t of straitPassage(state, sid, player).tolls) tolls.push({ straitId: sid, controller: t.controller, amount: t.amount });
         }
         last = t;
       }

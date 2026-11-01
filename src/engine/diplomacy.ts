@@ -32,7 +32,7 @@ export function offerItemProblem(state: GameState, from: number, to: number, ite
       const giver = sideToPlayer(from, to, item.giver);
       const st = state.straits[item.straitId];
       if (!st) return 'Geçersiz boğaz';
-      if (st.controller !== giver) return 'Boğaz verenin idaresinde değil';
+      if (!st.controllers.includes(giver)) return 'Veren bu boğazda söz sahibi değil';
       if (!Number.isInteger(item.toll) || item.toll < 0) return 'Vergi negatif olamaz';
       return null;
     }
@@ -96,7 +96,7 @@ export function executeOffer(state: GameState, offer: Offer, events: GameEvent[]
       const g = sideToPlayer(from, to, it.giver);
       const grantee = g === from ? to : from;
       const st = state.straits[it.straitId];
-      if (st.controller === g) st.policies[grantee] = { allow: true, toll: it.toll };
+      if (st.controllers.includes(g)) (st.policies[g] ??= {})[grantee] = { mode: it.toll > 0 ? 'toll' : 'open', toll: it.toll };
     }
   }
 }

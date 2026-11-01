@@ -1,6 +1,7 @@
 import { BOT_LEVEL_NAME, getBot, timeoutAction } from '../../bot';
 import {
   RESOURCE_KEYS,
+  STRAIT_MODES,
   BATTLE_USED,
   allAliveAllied,
   battleCost,
@@ -25,7 +26,10 @@ import {
   producibleTiles,
   readyUnits,
   startPickCandidates,
-  straitPolicyFor,
+  straitPairsOf,
+  straitPassage,
+  straitPolicyOf,
+  straitStatusFor,
   structureCost,
   unitsAt,
   validateAction,
@@ -43,6 +47,7 @@ import {
   type Offer,
   type OfferItem,
   type ResourceKey,
+  type StraitMode,
   type UnitKind,
 } from '../../engine';
 import { append, clear, closeAllModals, download, h, openModal, sleep, toast, type Child } from '../dom';
@@ -50,6 +55,7 @@ import {
   RES_ICON,
   RES_NAME,
   STRUCT_ICON,
+  STRAIT_MODE_NAME,
   STRUCT_NAME,
   UNIT_ICON,
   actionLabel,
@@ -77,7 +83,7 @@ import { HATCH_NAME, playerHatch, playerSwatch } from '../playerStyle';
 import { renderSummary } from './summary';
 import { ChatPanel } from './chatPanel';
 import { CLOCK_WARN_MS, TurnClock, clockSegment, clockText, type ClockSegment } from './turnClock';
-import { TileMenu, tileMenuModel, type RoutePreview, type TileAction } from './tileMenu';
+import { TileMenu, pairText, tileMenuModel, type RoutePreview, type TileAction } from './tileMenu';
 import { takeHint } from './hints';
 import type { GameGuide } from '../../tutorial/guide';
 import { actionCost, clearNotices, dec, explainProblem, floatText, landOdds, notify, pct, shortfall } from './feedback';
@@ -672,7 +678,16 @@ export class GameScreen {
         notify({ icon: 'eliminated', title: `${N(e.player)} elendi`, text: `Her şeyi ${dat(N(e.by))} geçti`, kind: mine(e.player) ? 'bad' : mine(e.by) ? 'good' : 'info', ms: 8000 });
         return;
       case 'strait_control':
-        if (e.controller !== null && mine(e.controller)) notify({ icon: 'strait', title: `${straitLabel(e.straitId)} boğazı ${named ? N(e.controller) : 'senin'} idarende`, text: 'Boğazlar panelinden geçiş izni ve vergi belirleyebilirsin', kind: 'good', onClick: () => this.map.centerOn(s.map.straits[e.straitId].tiles[0]) });
+        if (mine(e.player)) {
+          const who = named ? `${N(e.player)}: ` : '';
+          notify({
+            icon: 'strait',
+            title: e.gained ? `${who}${straitLabel(e.straitId)} boğazında söz sahibisin` : `${who}${straitLabel(e.straitId)} boğazında söz hakkını kaybettin`,
+            text: e.gained ? `Kare çiftin: ${straitPairsOf(s, e.straitId, e.player).map((p) => pairText(s, p)).join(', ')}. "Boğazlarım"dan geçiş ayarını belirle.` : undefined,
+            kind: e.gained ? 'good' : 'bad',
+            onClick: () => this.map.centerOn(s.map.straits[e.straitId].tiles[0]),
+          });
+        }
         return;
       case 'alliance_formed':
       case 'peace_made':
@@ -1394,6 +1409,7 @@ export class GameScreen {
     this.renderActions();
     this.renderTargets();
     this.map.setState(this.state);
+    this.map.setViewer(this.net ? this.mySeat() : this.state.players[this.actor()]?.kind === 'human' ? this.actor() : null);
     this.chat?.render();
     this.syncClock();
     this.renderViewers();
@@ -2264,12 +2280,9 @@ export class GameScreen {
     }
     const sid = m.straitOf[t];
     if (sid >= 0) {
-      const ctl = s.straits[sid].controller;
-      lines.push(h('div', { class: 'tip-line' }, icon('strait'), `${straitLabel(sid)} · idare: ${ctl === null ? 'yok' : pname(s, ctl)}`));
-      if (ctl !== null && this.isHumanTurn() && ctl !== s.currentPlayer) {
-        const pol = straitPolicyFor(s, sid, s.currentPlayer);
-        lines.push(h('div', {}, pol.allow ? `Sana açık · vergi ${pol.toll}` : 'Sana kapalı'));
-      }
+      const ctls = s.straits[sid].controllers;
+      lines.push(h('div', { class: 'tip-line' }, icon('strait'), `${straitLabel(sid)} · söz sahibi: ${ctls.length ? ctls.map((c) => pname(s, c)).join(', ') : 'yok'}`));
+      if (ctls.length && this.isHumanTurn()) lines.push(h('div', {}, this.passageText(sid, s.currentPlayer)));
     }
     // Yerleşimde neden seçilemediği
     if (this.isHumanTurn() && (s.phase.kind === 'setup_capital' || s.phase.kind === 'setup_territory') && m.terrain[t] === 'land') {
@@ -2577,8 +2590,8 @@ export class GameScreen {
       });
     const check = (val: boolean, set: (v: boolean) => void, disabled = false) =>
       h('input', { type: 'checkbox', checked: val, disabled, onChange: (e: Event) => set((e.target as HTMLInputElement).checked) });
-    const myStraits = s.straits.map((st, id) => ({ st, id })).filter((x) => x.st.controller === me);
-    const theirStraits = s.straits.map((st, id) => ({ st, id })).filter((x) => x.st.controller === d.to);
+    const myStraits = s.straits.map((st, id) => ({ st, id })).filter((x) => x.st.controllers.includes(me));
+    const theirStraits = s.straits.map((st, id) => ({ st, id })).filter((x) => x.st.controllers.includes(d.to));
     const straitRows = (list: { id: number }[], map: Map<number, number>, verb: string) =>
       list.map(({ id }) =>
         h(
@@ -2632,8 +2645,8 @@ export class GameScreen {
         `  ·  İstediğin topraklar: ${d.takeTiles.size} `,
         h('button', { class: 'btn btn-small', onClick: () => pickTiles('take') }, 'Haritadan seç'),
       ),
-      myStraits.length ? h('div', {}, h('b', {}, 'İdarendeki boğazlar'), straitRows(myStraits, d.giveStraits, 'ver')) : null,
-      theirStraits.length ? h('div', {}, h('b', {}, `${gen(them.name)} boğazları`), straitRows(theirStraits, d.takeStraits, 'iste')) : null,
+      myStraits.length ? h('div', {}, h('b', {}, 'Söz sahibi olduğun boğazlar'), straitRows(myStraits, d.giveStraits, 'ver')) : null,
+      theirStraits.length ? h('div', {}, h('b', {}, `${gen(them.name)} söz sahibi olduğu boğazlar`), straitRows(theirStraits, d.takeStraits, 'iste')) : null,
       h('p', { class: 'muted' }, 'Vergi 0 = vergi muafiyeti. Teklif kabul edildiği anda geçerli olur; kaynaklar o an yetmezse teklif düşer.'),
     );
     modal = openModal({
@@ -2659,11 +2672,21 @@ export class GameScreen {
     });
   }
 
+  /** Geçişin p oyuncusu için durumu: "Sana açık", "Vergili: 150 akçe"… */
+  private passageText(sid: number, p: number): string {
+    const s = this.state;
+    const pass = straitPassage(s, sid, p);
+    const status = straitStatusFor(s, sid, p);
+    if (status === 'closed') return `Sana kapalı (${pass.closedBy.map((c) => pname(s, c)).join(', ')})`;
+    if (status === 'ask') return `İzin sorulacak: ${pass.asks.map((c) => pname(s, c)).join(', ')}${pass.toll ? ` · vergi ${fmtNum(pass.toll)} akçe` : ''}`;
+    return status === 'toll' ? `Sana vergili: ${fmtNum(pass.toll)} akçe` : 'Sana açık';
+  }
+
   private openStraits() {
     const s = this.state;
-    const me = s.currentPlayer;
+    const me = this.isHumanTurn() ? this.actor() : (this.mySeat() ?? s.currentPlayer);
     const others = s.players.filter((p) => p.alive && p.id !== me);
-    const mine = s.map.straits.filter((st) => s.straits[st.id].controller === me);
+    const mine = s.map.straits.filter((st) => s.straits[st.id].controllers.includes(me));
     let modal: ReturnType<typeof openModal> | null = null;
     const show = (tile: number) => {
       modal?.close();
@@ -2672,37 +2695,43 @@ export class GameScreen {
     };
     const cards = mine.map((st) => {
       const rows = others.map((p) => {
-        const pol = straitPolicyFor(s, st.id, p.id);
-        const allow = h('input', { type: 'checkbox', checked: pol.allow });
-        const toll = h('input', { type: 'number', class: 'num', min: 0, value: pol.toll });
-        const apply = () =>
-          void this.act({ type: 'SET_STRAIT_POLICY', player: me, straitId: st.id, target: p.id, allow: allow.checked, toll: Math.max(0, Math.floor(Number(toll.value) || 0)) });
-        allow.addEventListener('change', apply);
+        const pol = straitPolicyOf(s, st.id, me, p.id);
+        const mode = h('select', {}, STRAIT_MODES.map((k) => h('option', { value: k, selected: pol.mode === k }, STRAIT_MODE_NAME[k])));
+        const toll = h('input', { type: 'number', class: 'num', min: 0, step: 50, value: pol.toll || 100, disabled: pol.mode !== 'toll' });
+        const apply = () => {
+          const m = mode.value as StraitMode;
+          toll.disabled = m !== 'toll';
+          void this.act({ type: 'SET_STRAIT_POLICY', player: me, straitId: st.id, target: p.id, mode: m, toll: m === 'toll' ? Math.max(0, Math.floor(Number(toll.value) || 0)) : 0 });
+        };
+        mode.addEventListener('change', apply);
         toll.addEventListener('change', apply);
-        return h(
-          'tr',
-          {},
-          h('td', {}, h('span', { class: 'dot', style: { background: p.color } }), ' ', p.name),
-          h('td', {}, h('label', {}, allow, ' Geçiş izni')),
-          h('td', {}, 'Vergi: ', toll, ' akçe'),
-        );
+        return h('tr', {}, h('td', {}, h('span', { class: 'dot', style: { background: p.color } }), ' ', p.name), h('td', {}, mode), h('td', {}, 'Vergi: ', toll, ' akçe'));
       });
+      const co = s.straits[st.id].controllers.filter((c) => c !== me);
       return h(
         'div',
         { class: 'strait-card' },
         h('div', { class: 'row' }, icon('strait'), h('b', {}, straitLabel(st.id)), ` ${tileLabel(s, st.tiles[0])}`, h('button', { class: 'btn btn-small', onClick: () => show(st.tiles[0]) }, 'Haritada göster')),
+        h('p', { class: 'small' }, `Kare çiftlerin: ${straitPairsOf(s, st.id, me).map((x) => pairText(s, x)).join(', ')}`),
+        co.length ? h('p', { class: 'small muted' }, `Diğer söz sahipleri: ${co.map((c) => `${pname(s, c)} (${straitPairsOf(s, st.id, c).map((x) => pairText(s, x)).join(', ')})`).join(' · ')}. Gemiler her birinden ayrı izin alır.`) : null,
         h('table', { class: 'table' }, h('tbody', {}, rows)),
       );
     });
     const all = s.map.straits.map((st) => {
-      const c = s.straits[st.id].controller;
+      const ctls = s.straits[st.id].controllers;
       return h(
         'tr',
         {},
         h('td', {}, icon('strait'), ` ${straitLabel(st.id)}`),
-        h('td', {}, tileLabel(s, st.tiles[0])),
-        h('td', {}, c === null ? 'İdare yok' : h('span', {}, h('span', { class: 'dot small', style: { background: s.players[c].color } }), ` ${pname(s, c)}`)),
-        h('td', {}, c !== null && c !== me ? (straitPolicyFor(s, st.id, me).allow ? `Sana açık · vergi ${straitPolicyFor(s, st.id, me).toll}` : 'Sana kapalı') : ''),
+        h('td', {}, tileLabel(s, st.tiles[0]), h('span', { class: 'muted small' }, ` · ${st.tiles.length} kare`)),
+        h(
+          'td',
+          {},
+          ctls.length === 0
+            ? 'Söz sahibi yok'
+            : ctls.map((c) => h('div', {}, h('span', { class: 'dot small', style: { background: s.players[c].color } }), ` ${pname(s, c)}: `, h('span', { class: 'small' }, straitPairsOf(s, st.id, c).map((x) => pairText(s, x)).join(', ')))),
+        ),
+        h('td', {}, ctls.some((c) => c !== me) ? this.passageText(st.id, me) : ''),
         h('td', { class: 'right' }, h('button', { class: 'btn btn-small', onClick: () => show(st.tiles[0]) }, 'Göster')),
       );
     });
@@ -2713,10 +2742,8 @@ export class GameScreen {
       body: h(
         'div',
         {},
-        mine.length
-          ? cards
-          : h('p', {}, 'Hiçbir boğazı idare etmiyorsun. Bir boğazın iki yakasındaki tüm kara karelerine sahip olursan boğazı idare edersin.'),
-        h('p', { class: 'muted' }, 'Ayarlar her oyuncu için ayrıdır ve hemen geçerli olur. Boğazın idaresi kaybedilirse ayarlar sıfırlanır.'),
+        mine.length ? cards : h('p', {}, 'Hiçbir boğazda söz sahibi değilsin. Bir boğaz karesinin iki yanında birbirinin tam karşısındaki iki kara kareye sahip olursan söz sahibi olursun.'),
+        h('p', { class: 'muted' }, 'Ayarlar her oyuncu için ayrıdır ve hemen geçerli olur. Söz hakkını kaybedersen ayarların silinir.'),
         h('h3', {}, 'Tüm boğazlar'),
         h('table', { class: 'table' }, h('tbody', {}, all)),
       ),
@@ -2845,7 +2872,7 @@ export class GameScreen {
           h('li', {}, 'Tersane karesi hangi deniz havzalarına kıyıysa, gemi o havzaların hepsine çıkabilir. Havzalar arasında geçişin tek yolu boğazlardır.'),
           h('li', {}, `Gemi seferi: ${c.shipOilCost} petrol, deniz yoluyla kıyı topraklarına. Uçak seferi: ${c.planeOilCost} petrol, her yere — düşman üslerinin ${c.baseBlockRadius} kare çevresi hariç.`),
           h('li', {}, `Sefer hedefi sahipsizse ${c.expeditionClaimCost} akçeyle alınır, sahipliyse savaş olur. Maden kareleri seferle doğrudan alınamaz; başkente gemi ya da uçakla saldırılamaz (yalnızca karadan).`),
-          h('li', {}, 'Boğazın iki yakası da senin ise boğazı idare edersin: her oyuncu için geçiş izni ve vergi belirleyebilirsin.'),
+          h('li', {}, 'Boğaz karesinin iki yanında birbirinin tam karşısındaki iki kara kareye sahipsen o boğazda söz sahibisin: her oyuncu için geçiş ayarını ve vergiyi belirlersin. Birden çok söz sahibi varsa gemi her birinden ayrı izin alır ve her birinin vergisini öder.'),
           h('li', {}, 'Müttefiklere ve barış yapılanlara saldırılamaz. İttifak kendi turunda bozulabilir; o tur eski müttefike saldırılamaz.'),
           h('li', {}, 'Kazanma: tek devlet kalırsa ya da kalan herkes müttefikse ve oybirliğiyle bitirmeye karar verirse.'),
         ),
@@ -2867,9 +2894,9 @@ function routeStraits(s: GameState, me: number, path: number[], tolls: { straitI
     if (id >= 0 && !seen.includes(id)) seen.push(id);
   }
   return seen.map((id) => {
-    const ctl = s.straits[id].controller;
+    const ctls = s.straits[id].controllers;
     const toll = tolls.filter((t) => t.straitId === id).reduce((a, t) => a + t.amount, 0);
-    const who = ctl === null ? '' : ctl === me ? ' (senin)' : ` (${pname(s, ctl)})`;
+    const who = ctls.length === 0 ? '' : ` (${ctls.map((c) => (c === me ? 'senin' : pname(s, c))).join(', ')})`;
     return `${straitLabel(id)}${who}: ${toll ? `${toll} akçe vergi` : 'vergisiz'}`;
   });
 }

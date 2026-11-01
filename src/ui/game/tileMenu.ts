@@ -2,6 +2,9 @@ import {
   battleCost,
   battleCostText,
   expeditionCheck,
+  straitPairs,
+  straitPairsOf,
+  straitStatusFor,
   isCoastal,
   readyUnits,
   structureCost,
@@ -46,7 +49,39 @@ export interface TileAction {
 export interface TileMenuModel {
   title: string;
   sub: Child;
+  /** Başlığın altında bilgi satırları (ör. boğazdaki kare çiftleri) */
+  notes?: Child[];
   actions: TileAction[];
+}
+
+/** Geçişin durumu kısa metin olarak */
+export const STRAIT_STATUS_TEXT = { open: 'Açık', ask: 'İzin sorulacak', toll: 'Vergili', closed: 'Kapalı' } as const;
+
+/** "(3, 4)–(3, 6)" biçiminde karşılıklı kare çifti */
+export function pairText(state: GameState, [a, b]: [number, number]): string {
+  return `${tileLabel(state, a)}–${tileLabel(state, b)}`;
+}
+
+/** Boğazda kimin hangi çiftle söz sahibi olduğu */
+function straitNotes(state: GameState, me: number, sid: number): Child[] {
+  const out: Child[] = state.straits[sid].controllers.map((c) => h('div', { class: 'tm-note' }, h('span', { class: 'dot small', style: { background: state.players[c].color } }), ` ${pname(state, c)}: ${straitPairsOf(state, sid, c).map((p) => pairText(state, p)).join(', ')}`));
+  if (state.straits[sid].controllers.length === 0) out.push(h('div', { class: 'tm-note muted' }, `Karşılıklı çiftler: ${straitPairs(state.map, state.map.straits[sid]).map((p) => pairText(state, p)).join(', ')}`));
+  else if (!state.straits[sid].controllers.includes(me) || state.straits[sid].controllers.length > 1) out.push(h('div', { class: 'tm-note' }, `Sana göre: ${STRAIT_STATUS_TEXT[straitStatusFor(state, sid, me)]}`));
+  return out;
+}
+
+/** Yakası olduğu boğazlar: bu karenin karşısındaki kare ve çiftin durumu */
+function bankNotes(state: GameState, tile: number): Child[] {
+  const out: Child[] = [];
+  for (const st of state.map.straits) {
+    for (const [a, b] of straitPairs(state.map, st)) {
+      if (a !== tile && b !== tile) continue;
+      const other = a === tile ? b : a;
+      const holds = state.owner[tile] !== null && state.owner[tile] === state.owner[other];
+      out.push(h('div', { class: 'tm-note' }, icon('strait'), ` ${straitLabel(st.id)} yakası · karşısı ${tileLabel(state, other)}${holds ? ` · ${pname(state, state.owner[tile]!)} bu çiftle söz sahibi` : ''}`));
+    }
+  }
+  return out;
 }
 
 const check = (state: GameState, a: Action) => {
@@ -98,9 +133,9 @@ export function tileMenuModel(state: GameState, me: number, tile: number, opts: 
   if (terrain !== 'land') {
     const sid = m.straitOf[tile];
     if (sid < 0) return null;
-    const ctl = state.straits[sid].controller;
-    if (ctl === me) actions.push({ id: 'straits', icon: 'strait', label: 'Geçiş izni ve vergi', reason: null, pick: { kind: 'straits' } });
-    return { title: `${straitLabel(sid)} boğazı`, sub: ctl === null ? 'İdare eden yok: iki yakadaki tüm kara kareleri alan idare eder' : `İdare: ${pname(state, ctl)}`, actions };
+    const ctls = state.straits[sid].controllers;
+    if (ctls.includes(me)) actions.push({ id: 'straits', icon: 'strait', label: 'Geçiş ayarları', reason: null, pick: { kind: 'straits' } });
+    return { title: `${straitLabel(sid)} boğazı`, sub: ctls.length === 0 ? 'Söz sahibi yok: karşılıklı iki kareyi alan söz sahibi olur' : `Söz sahibi: ${ctls.map((c) => pname(state, c)).join(', ')}`, notes: straitNotes(state, me, sid), actions };
   }
   const mine = m.mines[tile];
   const st = state.structure[tile];
@@ -110,7 +145,7 @@ export function tileMenuModel(state: GameState, me: number, tile: number, opts: 
       const a = expeditionAction(state, me, tile, k, true);
       if (a) actions.push(a);
     }
-    return { title: tileLabel(state, tile), sub: `Sahipsiz kara${mine ? ' · maden' : ''}`, actions };
+    return { title: tileLabel(state, tile), sub: `Sahipsiz kara${mine ? ' · maden' : ''}`, notes: bankNotes(state, tile), actions };
   }
   if (o === me) {
     if (st === null) {
@@ -142,7 +177,7 @@ export function tileMenuModel(state: GameState, me: number, tile: number, opts: 
       actions.push({ id: 'demolish', icon: 'trash', label: 'Üssü yık', cost: c.upkeepEnabled && c.baseUpkeep > 0 ? `bakımdan ${c.baseUpkeep} akçe kurtarır` : 'toprak sende kalır', reason: null, pick: { kind: 'act', action: { type: 'DEMOLISH_BASE', player: me, tile } } });
     }
     const sub = [st ? STRUCT_NAME[st] : 'Senin toprağın', mine ? ' · maden' : '', isCoastal(m, tile) ? ' · kıyı' : ''].join('');
-    return { title: tileLabel(state, tile), sub, actions };
+    return { title: tileLabel(state, tile), sub, notes: bankNotes(state, tile), actions };
   }
   // Başka oyuncunun toprağı
   const kind = targetBattleKind(state, tile);
@@ -156,7 +191,7 @@ export function tileMenuModel(state: GameState, me: number, tile: number, opts: 
   }
   actions.push({ id: 'offer', icon: 'diplomacy', label: `Teklif: ${pname(state, o)}`, reason: null, pick: { kind: 'composer', to: o } });
   if (opts.chat(o)) actions.push({ id: 'chat', icon: 'chat', label: `Özel mesaj: ${pname(state, o)}`, reason: null, pick: { kind: 'chat', to: o } });
-  return { title: tileLabel(state, tile), sub: h('span', {}, h('span', { class: 'dot small', style: { background: state.players[o].color } }), ` ${pname(state, o)}${st ? ` · ${STRUCT_NAME[st]}` : ''}${mine ? ' · maden' : ''}`), actions };
+  return { title: tileLabel(state, tile), sub: h('span', {}, h('span', { class: 'dot small', style: { background: state.players[o].color } }), ` ${pname(state, o)}${st ? ` · ${STRUCT_NAME[st]}` : ''}${mine ? ' · maden' : ''}`), notes: bankNotes(state, tile), actions };
 }
 
 /** Haritanın üstünde açılan küçük bağlam menüsü */
@@ -187,6 +222,7 @@ export class TileMenu {
     clear(this.el);
     append(this.el, [
       h('div', { class: 'tile-menu-head' }, h('b', {}, model.title), h('span', { class: 'muted small' }, model.sub), h('button', { class: 'icon-btn', 'aria-label': 'Kapat', onClick: () => this.close() }, icon('close'))),
+      model.notes?.length ? h('div', { class: 'tile-menu-notes' }, model.notes) : null,
       model.actions.length ? null : h('div', { class: 'muted small tile-menu-empty' }, 'Bu karede yapılabilecek bir eylem yok.'),
     ]);
     for (const a of model.actions) {

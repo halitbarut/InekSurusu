@@ -1,4 +1,4 @@
-import { unitsAt, type GameMap, type GameState } from '../../engine';
+import { straitStatusFor, unitsAt, type GameMap, type GameState } from '../../engine';
 import { MINE_COLOR, RES_ICON, STRUCT_ICON, straitLabel } from '../format';
 import { iconImage, type IconName } from '../icons';
 import { hatchShapes, playerHatch } from '../playerStyle';
@@ -49,6 +49,8 @@ export class MapView {
   private state: GameState | null = null;
   private map: GameMap | null = null;
   private hl: Highlight = {};
+  /** Boğaz simgelerinde geçiş durumu kimin gözünden gösterilir (null = yalnızca söz sahipleri) */
+  private viewer: number | null = null;
   private scale = 20;
   private offX = 0;
   private offY = 0;
@@ -103,6 +105,12 @@ export class MapView {
     }
     this.state = state;
     if (!this.fitted) this.fit();
+    this.dirty = true;
+  }
+
+  setViewer(p: number | null) {
+    if (p === this.viewer) return;
+    this.viewer = p;
     this.dirty = true;
   }
 
@@ -319,6 +327,47 @@ export class MapView {
     });
   }
 
+  /**
+   * Boğazın yanındaki küçük simge: halka söz sahiplerinin renkleri (birden çoksa dilimler), içi geçişin
+   * bakan oyuncu için durumu: ✓ açık, ? sorulacak, ¤ vergili, ✕ kapalı.
+   */
+  private drawStraitBadge(id: number, tile: number, orientation: 'h' | 'v', ctls: number[], px: number) {
+    const s = this.state!;
+    const m = s.map;
+    const ctx = this.ctx;
+    // Kanalın üstüne binmesin: yakanın üstüne, dış tarafa
+    const cx = (tile % m.width) + 0.5 + (orientation === 'v' ? 0.95 : 0);
+    const cy = Math.floor(tile / m.width) + 0.5 - (orientation === 'h' ? 0.95 : 0);
+    const r = Math.max(0.36, 7 * px);
+    ctx.fillStyle = '#fbf8ef';
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineWidth = r * 0.34;
+    if (ctls.length === 0) {
+      ctx.strokeStyle = '#a79c86';
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.stroke();
+    } else {
+      const step = (Math.PI * 2) / ctls.length;
+      ctls.forEach((c, i) => {
+        ctx.strokeStyle = s.players[c].color;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, -Math.PI / 2 + i * step, -Math.PI / 2 + (i + 1) * step);
+        ctx.stroke();
+      });
+    }
+    const status = this.viewer === null || !s.players[this.viewer]?.alive ? null : ctls.length === 0 ? 'open' : straitStatusFor(s, id, this.viewer);
+    if (!status) return;
+    const glyph = { open: '✓', ask: '?', toll: '¤', closed: '✕' }[status];
+    ctx.fillStyle = { open: '#1f7a35', ask: '#2b47c9', toll: '#a06a00', closed: '#b3261e' }[status];
+    ctx.font = `bold ${r * 1.45}px "Patrick Hand", sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(glyph, cx, cy + r * 0.05);
+  }
+
   private loop = () => {
     this.raf = requestAnimationFrame(this.loop);
     if (this.flashes.length) this.dirty = true;
@@ -456,8 +505,8 @@ export class MapView {
 
     // Boğazlar: kanalın ortasından yakadan yakaya kesikli çizgi
     for (const st of m.straits) {
-      const ctl = s.straits[st.id]?.controller ?? null;
-      ctx.strokeStyle = ctl === null ? '#7a6f5a' : s.players[ctl].color;
+      const ctls = s.straits[st.id]?.controllers ?? [];
+      ctx.strokeStyle = ctls.length === 0 ? '#7a6f5a' : s.players[ctls[0]].color;
       ctx.lineWidth = Math.max(2.5 * px, 0.12);
       ctx.setLineDash([0.18, 0.12]);
       ctx.beginPath();
@@ -482,6 +531,7 @@ export class MapView {
         ctx.textBaseline = 'middle';
         ctx.fillText(straitLabel(st.id), (t % m.width) + 0.5, Math.floor(t / m.width) + 0.5);
       }
+      this.drawStraitBadge(st.id, st.tiles[Math.floor(st.tiles.length / 2)], st.orientation, ctls, px);
     }
 
     // Tehlike (uçak engel alanı)

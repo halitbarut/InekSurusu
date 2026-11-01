@@ -29,7 +29,7 @@ function play(rows: string[], name: string, players: number, seed: number, maxRo
     for (const e of r.events) {
       if (e.type === 'battle') seen.battles++;
       if (e.type === 'expedition') seen.expeditions++;
-      if (e.type === 'strait_control' && e.controller !== null) seen.straitControl++;
+      if (e.type === 'strait_control' && e.gained) seen.straitControl++;
       if (e.type === 'offer_made') s = dispatch(s, { type: 'RESPOND_OFFER', player: e.offer.to, offerId: e.offer.id, accept: bot.evaluateOffer(s, e.offer.to, e.offer) }).state;
     }
     if (++actions > 40000) throw new Error(`${name}: botlar takıldı`);

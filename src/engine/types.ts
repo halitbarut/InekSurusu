@@ -70,15 +70,21 @@ export interface Relation {
   allianceBrokenAtTurn: number | null;
 }
 
+/** Söz sahibinin bir oyuncu için boğaz ayarı */
+export type StraitMode = 'ask' | 'open' | 'toll' | 'closed';
+export const STRAIT_MODES: readonly StraitMode[] = ['ask', 'open', 'toll', 'closed'];
+
 export interface StraitPolicy {
-  allow: boolean;
+  mode: StraitMode;
+  /** Yalnızca 'toll' durumunda anlamlı */
   toll: number;
 }
 
 export interface StraitState {
-  controller: number | null;
-  /** Oyuncu kimliğine göre ayarlar; olmayan oyuncu için varsayılan: açık, vergi 0 */
-  policies: Record<number, StraitPolicy>;
+  /** Söz sahipleri: boğazın iki yanında karşılıklı bir kare çiftine sahip oyuncular (kimlik sırasıyla) */
+  controllers: number[];
+  /** Söz sahibi → oyuncu → ayar; olmayan oyuncu için varsayılan ayar geçerlidir */
+  policies: Record<number, Record<number, StraitPolicy>>;
 }
 
 /** 'from' = teklifi yapan, 'to' = teklifi alan */
@@ -89,7 +95,7 @@ export type OfferItem =
   | { kind: 'peace'; rounds: number }
   | { kind: 'resource'; giver: OfferSide; resource: ResourceKey; amount: number }
   | { kind: 'tile'; giver: OfferSide; tile: number }
-  /** giver, kontrol ettiği boğazdan diğer tarafa geçiş izni verir (toll = uygulanacak vergi, 0 = muafiyet) */
+  /** giver, söz sahibi olduğu boğazdan diğer tarafa geçiş izni verir (toll = uygulanacak vergi, 0 = muafiyet) */
   | { kind: 'strait'; giver: OfferSide; straitId: number; toll: number };
 
 export interface Offer {
@@ -171,8 +177,8 @@ export type GameEvent =
   | { type: 'conquer'; player: number; from: number; tile: number }
   | { type: 'base_captured'; player: number; from: number; tile: number }
   | { type: 'eliminated'; player: number; by: number }
-  | { type: 'strait_control'; straitId: number; controller: number | null }
-  | { type: 'strait_policy'; player: number; straitId: number; target: number; allow: boolean; toll: number }
+  | { type: 'strait_control'; straitId: number; player: number; gained: boolean }
+  | { type: 'strait_policy'; player: number; straitId: number; target: number; mode: StraitMode; toll: number }
   | { type: 'offer_made'; offer: Offer }
   | { type: 'offer_response'; offerId: number; from: number; to: number; accepted: boolean; failedReason?: string }
   | { type: 'offer_cancelled'; offerId: number; from: number; to: number }
@@ -247,7 +253,7 @@ export type Action =
   | { type: 'PLANE_EXPEDITION'; player: number; unitId: number; target: number }
   | { type: 'CONQUER_TILE'; player: number; tile: number }
   | { type: 'END_CONQUEST'; player: number }
-  | { type: 'SET_STRAIT_POLICY'; player: number; straitId: number; target: number; allow: boolean; toll: number }
+  | { type: 'SET_STRAIT_POLICY'; player: number; straitId: number; target: number; mode: StraitMode; toll: number }
   | { type: 'PROPOSE_OFFER'; player: number; to: number; items: OfferItem[] }
   | { type: 'RESPOND_OFFER'; player: number; offerId: number; accept: boolean }
   | { type: 'CANCEL_OFFER'; player: number; offerId: number }

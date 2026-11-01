@@ -165,7 +165,7 @@ describe('eylem biçim denetimi', () => {
     const a = parseAction({ type: 'PROPOSE_OFFER', player: 0, to: 1, items: [{ kind: 'tile', giver: 'to', tile: 4, x: 1 }, { kind: 'peace', rounds: 3 }], __proto__: { evil: 1 } });
     expect(a).toEqual({ type: 'PROPOSE_OFFER', player: 0, to: 1, items: [{ kind: 'tile', giver: 'to', tile: 4 }, { kind: 'peace', rounds: 3 }] });
     expect(parseAction({ type: 'PROPOSE_OFFER', player: 0, to: 1, items: [{ kind: 'resource', giver: 'from', resource: 'elmas', amount: 1 }] })).toBeNull();
-    expect(parseAction({ type: 'SET_STRAIT_POLICY', player: 0, straitId: 0, target: 1, allow: 1, toll: 0 })).toBeNull();
+    expect(parseAction({ type: 'SET_STRAIT_POLICY', player: 0, straitId: 0, target: 1, mode: 'kapı', toll: 0 })).toBeNull();
     expect(parseAction({ type: 'BUILD', player: 0, tile: 1, structure: 'capital' })).toBeNull();
     expect(parseAction([])).toBeNull();
   });

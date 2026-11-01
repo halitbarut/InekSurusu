@@ -23,7 +23,7 @@ describe('öğretici', () => {
     expect(win.gain).toBeGreaterThanOrEqual(2);
     expect(cap.kind).toBe('capital');
     expect(cap.success).toBe(true);
-    expect(r.events.some((e) => e.type === 'strait_control' && e.controller === ME)).toBe(true);
+    expect(r.events.some((e) => e.type === 'strait_control' && e.player === ME && e.gained)).toBe(true);
     expect(r.events.some((e) => e.type === 'upkeep' && e.player === ME)).toBe(true);
     expect(r.state.phase.kind).toBe('gameover');
     expect(r.state.winners).toEqual([ME, ZEYNEP]);

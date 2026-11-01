@@ -35,7 +35,7 @@ for (const m of BUILTIN_MAPS) {
             if (!st.firstFall) st.firstFall = s.round;
           }
           if (e.type === 'expedition') e.unit === 'ship' ? st.shipExp++ : st.planeExp++;
-          if (e.type === 'strait_control' && e.controller !== null) st.straitHeld.add(e.straitId);
+          if (e.type === 'strait_control' && e.gained) st.straitHeld.add(e.straitId);
           if (e.type === 'offer_made') {
             const to = s.players[e.offer.to];
             s = dispatch(s, { type: 'RESPOND_OFFER', player: to.id, offerId: e.offer.id, accept: getBot(to.botLevel).evaluateOffer(s, to.id, e.offer) }).state;

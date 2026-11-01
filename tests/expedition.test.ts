@@ -28,7 +28,7 @@ function seaWorld(): GameState {
 
 function giveBanksTo(s: GameState, p: number) {
   for (const b of s.map.straits[0].banks) s.owner[b] = p;
-  s.straits[0].controller = p;
+  s.straits[0].controllers = [p];
 }
 
 const ship = (s: GameState, x: number, y: number) => ({ type: 'SHIP_EXPEDITION' as const, player: 0, unitId: 1, target: at(s, x, y) });
@@ -75,7 +75,7 @@ describe('gemi seferi', () => {
     let s = seaWorld();
     giveBanksTo(s, 1);
     s.currentPlayer = 1;
-    s = act(s, { type: 'SET_STRAIT_POLICY', player: 1, straitId: 0, target: 0, allow: false, toll: 0 });
+    s = act(s, { type: 'SET_STRAIT_POLICY', player: 1, straitId: 0, target: 0, mode: 'closed', toll: 0 });
     s.currentPlayer = 0;
     expect(validateAction(s, ship(s, 10, 1)).ok).toBe(false);
     // Kendi havzasında hâlâ gidebilir
@@ -85,7 +85,7 @@ describe('gemi seferi', () => {
   it('geçiş vergisi sefer başında otomatik ödenir', () => {
     let s = seaWorld();
     giveBanksTo(s, 1);
-    s = act(s, { type: 'SET_STRAIT_POLICY', player: 1, straitId: 0, target: 0, allow: true, toll: 100 });
+    s = act(s, { type: 'SET_STRAIT_POLICY', player: 1, straitId: 0, target: 0, mode: 'toll', toll: 100 });
     s = act(s, ship(s, 10, 1));
     expect(s.players[0].resources.akce).toBe(1000 - 100 - 100);
     expect(s.players[1].resources.akce).toBe(100);
@@ -94,7 +94,7 @@ describe('gemi seferi', () => {
   it('vergiye yetecek akçe yoksa sefer yapılamaz', () => {
     let s = seaWorld();
     giveBanksTo(s, 1);
-    s = act(s, { type: 'SET_STRAIT_POLICY', player: 1, straitId: 0, target: 0, allow: true, toll: 100 });
+    s = act(s, { type: 'SET_STRAIT_POLICY', player: 1, straitId: 0, target: 0, mode: 'toll', toll: 100 });
     s.players[0].resources.akce = 100;
     expect(validateAction(s, ship(s, 10, 1)).ok).toBe(false);
   });
@@ -155,22 +155,22 @@ describe('seferle savaşta karşı saldırı', () => {
 });
 
 describe('boğaz idaresi', () => {
-  it('her iki yakanın sahibi boğazı idare eder; idare kaybedilince ayarlar sıfırlanır', () => {
+  it('karşılıklı çiftin sahibi söz sahibi olur; söz hakkı kaybedilince ayarlar silinir', () => {
     let s = seaWorld();
     for (const b of s.map.straits[0].banks) s.owner[b] = 1;
     own(s, 0, [[4, 1]]);
     // Herhangi bir eylem idareyi yeniden hesaplar
     s = act(s, { type: 'END_TURN', player: 0 });
-    expect(s.straits[0].controller).toBe(1);
-    s = act(s, { type: 'SET_STRAIT_POLICY', player: 1, straitId: 0, target: 0, allow: false, toll: 0 });
-    expect(s.straits[0].policies[0]).toEqual({ allow: false, toll: 0 });
+    expect(s.straits[0].controllers).toEqual([1]);
+    s = act(s, { type: 'SET_STRAIT_POLICY', player: 1, straitId: 0, target: 0, mode: 'closed', toll: 0 });
+    expect(s.straits[0].policies[1][0]).toEqual({ mode: 'closed', toll: 0 });
     // P0 bir yakayı fethediyor
     s.currentPlayer = 0;
     s.phase = { kind: 'actions' };
     s = act(s, { type: 'ATTACK', player: 0, target: at(s, 4, 2) }, [7, 1]);
     s = act(s, { type: 'CONQUER_TILE', player: 0, tile: at(s, 4, 2) });
-    expect(s.straits[0].controller).toBeNull();
-    expect(s.straits[0].policies).toEqual({});
+    // Çok kareli boğazda P1'in öbür çifti durur; ilgili testler straits.test.ts içinde
+    expect(s.straits[0].controllers).toEqual(s.map.straits[0].tiles.length > 1 ? [1] : []);
   });
 });
 

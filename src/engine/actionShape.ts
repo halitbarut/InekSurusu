@@ -1,4 +1,4 @@
-import { RESOURCE_KEYS, type Action, type OfferItem, type ResourceKey } from './types';
+import { RESOURCE_KEYS, STRAIT_MODES, type Action, type OfferItem, type ResourceKey, type StraitMode } from './types';
 
 /**
  * Güvenilmeyen kaynaktan (ağdan, dosyadan) gelen eylemin biçim denetimi. Alanları tek tek okuyup yeni,
@@ -68,8 +68,8 @@ export function parseAction(raw: unknown): Action | null {
     case 'CONQUER_TILE':
       return ints('tile') ? { type: a.type, player, tile: a.tile as number } : null;
     case 'SET_STRAIT_POLICY':
-      if (!ints('straitId', 'target', 'toll') || !isBool(a.allow)) return null;
-      return { type: a.type, player, straitId: a.straitId as number, target: a.target as number, allow: a.allow, toll: a.toll as number };
+      if (!ints('straitId', 'target', 'toll') || !STRAIT_MODES.includes(a.mode as StraitMode)) return null;
+      return { type: a.type, player, straitId: a.straitId as number, target: a.target as number, mode: a.mode as StraitMode, toll: a.toll as number };
     case 'PROPOSE_OFFER': {
       if (!ints('to') || !Array.isArray(a.items) || a.items.length > MAX_OFFER_ITEMS_WIRE) return null;
       const items: OfferItem[] = [];

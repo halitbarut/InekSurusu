@@ -19,3 +19,4 @@ export { mapFromAscii } from './map/ascii';
 export * from './map/custom';
 export * from './actionShape';
 export * from './replay';
+export * from './migrate';

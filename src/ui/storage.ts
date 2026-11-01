@@ -1,4 +1,4 @@
-import { parseReplay, type GameConfig, type GameState, type ReplayData } from '../engine';
+import { REPLAY_VERSION, migrateState, parseReplay, type GameConfig, type GameState, type ReplayData } from '../engine';
 
 const KEY = 'inek-surusu-saves';
 export const AUTOSAVE_ID = 'auto';
@@ -18,7 +18,9 @@ function readAll(): SaveSlot[] {
   try {
     const raw = localStorage.getItem(KEY);
     const arr = raw ? (JSON.parse(raw) as SaveSlot[]) : [];
-    return Array.isArray(arr) ? arr : [];
+    if (!Array.isArray(arr)) return [];
+    // Eski kayıtlar güncel biçime çevrilir; eski kuralların tekrar kaydı oynatılamayacağı için bırakılır
+    return arr.map((s) => ({ ...s, state: migrateState(s.state), replay: s.replay?.version === REPLAY_VERSION ? s.replay : undefined }));
   } catch {
     return [];
   }
@@ -109,7 +111,7 @@ export function importState(text: string): GameState {
     throw new Error('Bu dosya bir İnek Sürüsü kaydı değil');
   }
   if (state.owner.length !== state.map.width * state.map.height) throw new Error('Kayıt bozuk: harita boyutu tutarsız');
-  return state;
+  return migrateState(state);
 }
 
 // ------------------------------------------------------------------

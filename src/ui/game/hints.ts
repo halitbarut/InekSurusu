@@ -41,7 +41,7 @@ const HINTS: Hint[] = [
     text: 'Bir rakibin başkentine komşusun! Başkent savaşı 3 kez art arda yüksek atmayı ister (1/8); kazanırsan rakip elenir.',
     when: (s, me) => attackableTiles(s, me).some((t) => battleKindAt(s, t) === 'capital'),
   },
-  { id: 'strait', icon: 'strait', text: 'Bir boğazı idare ediyorsun: "Boğazlarım"dan her oyuncu için geçiş izni ve vergi belirle.', when: (s, me) => s.straits.some((st) => st.controller === me) },
+  { id: 'strait', icon: 'strait', text: 'Bir boğazda söz sahibisin: "Boğazlarım"dan her oyuncu için geçiş ayarını ve vergiyi belirle.', when: (s, me) => s.straits.some((st) => st.controllers.includes(me)) },
   { id: 'diplomacy', icon: 'diplomacy', text: '"Diplomasi"den ittifak, barış ve takas teklif edebilirsin; müttefiklere ve barış yapılanlara saldırılamaz.', when: (s) => s.round >= 3 },
 ];
 
