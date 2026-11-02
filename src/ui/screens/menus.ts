@@ -126,11 +126,19 @@ export function renderMainMenu(host: HTMLElement, cb: MenuCallbacks) {
           h('button', { class: 'btn btn-big', onClick: () => cb.openReplay() }, icon('replay'), 'Replay aç'),
           h('button', { class: 'btn btn-big', onClick: () => cb.editor() }, icon('map'), 'Harita Editörü'),
           h('button', { class: 'btn btn-big', onClick: () => openSettings() }, icon('settings'), 'Ayarlar'),
+          h('button', { class: 'btn btn-big', onClick: () => openTrailer() }, icon('eye'), 'Tanıtım videosu'),
         ),
         h('p', { class: 'muted small' }, 'Aynı ekranda sırayla (hot-seat), çevrimiçi ya da botlarla 3–8 oyuncu.'),
       ),
     ),
   );
+}
+
+/** 21 saniyelik tanıtım videosu (public/media); yalnızca açılınca indirilir */
+function openTrailer() {
+  const video = h('video', { class: 'trailer', controls: true, autoplay: true, playsInline: true, preload: 'none', poster: './media/inek-surusu-tanitim.jpg', src: './media/inek-surusu-tanitim.mp4' });
+  const m = openModal({ title: 'Tanıtım videosu', icon: 'eye', wide: true, body: video });
+  void m.result.then(() => video.pause());
 }
 
 function openSettings() {

@@ -26,6 +26,11 @@
 </p>
 
 <p align="center">
+  <a href="https://halitbarut.github.io/InekSurusu/media/inek-surusu-tanitim.mp4"><img src="docs/media/tanitim-afis.jpg" alt="İnek Sürüsü tanıtım videosunu izle (21 saniye)" width="720"></a><br>
+  <sub><b><a href="https://halitbarut.github.io/InekSurusu/media/inek-surusu-tanitim.mp4">▶ Tanıtım videosunu izle</a></b> (21 sn, sesli) · oyunun içinde de ana menüden açılır</sub>
+</p>
+
+<p align="center">
   <img src="docs/screenshots/readme-game.png" alt="Oyun ekranı: kapalı denizli harita, devlet panelleri ve olay günlüğü" width="860"><br>
   <sub>Beş devletli bir oyunun 14. turu: kara tek parça, denizler boğazlarla bağlı havzalar</sub>
 </p>
@@ -117,6 +122,8 @@ yaşatma çabası.
 ## Hemen oyna
 
 Kurulum gerekmez: **[https://halitbarut.github.io/InekSurusu/](https://halitbarut.github.io/InekSurusu/)**
+
+Önce ne olduğuna bakmak istersen 21 saniyelik [tanıtım videosu](https://halitbarut.github.io/InekSurusu/media/inek-surusu-tanitim.mp4) var; ana menüdeki **Tanıtım videosu** düğmesi de aynısını açar.
 
 Oyunu açıp **Yeni oyun** ile botlara karşı başlayabilir, **Öğretici** ile kuralları adım adım öğrenebilir ya da **Çevrimiçi oyun → Oda kur**
 ile arkadaşlarına davet linki gönderebilirsin. Site, `main` dalına her gönderimde GitHub Actions ile yeniden yayınlanır

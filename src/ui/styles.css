@@ -2474,3 +2474,6 @@ footer {
 .strait-sign.ask { background: #2b47c9; }
 .strait-sign.toll { background: #a06a00; }
 .strait-sign.closed { background: #b3261e; }
+
+/* Tanıtım videosu */
+.trailer { display: block; width: 100%; max-height: 70vh; border-radius: 8px; background: #fbf8ef; }
